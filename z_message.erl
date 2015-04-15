@@ -6,7 +6,10 @@
 get_commands() ->
 	[
 		{"cm", fun check_messages/5, user},
-		{"tell", fun new_message/5, user}
+		{"tell", fun new_message/5, user},
+		{"save_msg", fun save_messages/5, admin},
+		{"load_msg", fun load_messages/5, admin},
+		{"dbg_msg", fun debug_messages/5, admin}
 	].
 
 get_data(#state{moduledata=M}) ->
@@ -32,7 +35,19 @@ check_messages(Origin, ReplyTo, Ping, _, State=#state{}) ->
 
 new_message(Origin, ReplyTo, Ping, Params, State=#state{}) ->
 	{irc, {msg, {ReplyTo, [Ping, new_message(Origin, hd(Params), string:join(tl(Params), " "), State)]}}}.
-	
+
+save_messages(_, ReplyTo, Ping, _, State=#state{}) ->
+	deinitialise(State),
+	{irc, {msg, {ReplyTo, [Ping, "Saved message data."]}}}.
+
+load_messages(_, ReplyTo, Ping, _, State=#state{}) ->
+	self() ! {state, initialise(State)},
+	{irc, {msg, {ReplyTo, [Ping, "Loaded message data."]}}}.
+
+debug_messages(_, ReplyTo, Ping, _, State=#state{}) ->
+	common:debug("MSGS", "~p", [get_data(State)]),
+	{irc, {msg, {ReplyTo, [Ping, "Messages printed to console."]}}}.
+
 check_messages_for(NickR, State=#state{}) ->
 	Messages = get_data(State),
         Nick = string:to_lower(NickR),
@@ -77,16 +92,16 @@ new_message(FromR, ToR, Msg, State=#state{nick=Self}) ->
         end.
 
 load_messages() ->
-        case file:consult("messages.erl") of
-                {ok, Terms} ->
+        case file:consult("messages.crl") of
+                {ok, [Term]} ->
                         common:debug("MSGS", "Loaded."),
-                        Terms;
+                        Term;
                 {error, _} ->
                         common:debug("MSGS", "Creating new."),
                         orddict:new()
         end.
 
 save_messages(Messages) ->
-        T = file:write_file("messages.erl", io_lib:format("~p", [Messages])),
+        T = file:write_file("messages.crl", io_lib:format("~p.~n", [Messages])),
         common:debug("MSGS", "~p", [T]).
 

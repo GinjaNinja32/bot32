@@ -4,7 +4,7 @@
 -define(SOCK_OPTIONS, [list, {packet, line}, {active, true}]).
 
 init() ->
-	case file:consult("core_config.erl") of
+	case file:consult("core_config.crl") of
 		{ok, [{Server, Port}]} -> init(Server, Port);
 		_ -> common:debug("CORE", "Failed to read config file!")
 	end.

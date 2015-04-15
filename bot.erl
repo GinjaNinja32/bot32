@@ -20,7 +20,7 @@ init() ->
 	{SeedA,SeedB,SeedC}=now(),
 	random:seed(SeedA,SeedB,SeedC),
 	BaseConfig = #config{nick="Bot32", prefix=$!, admins=sets:new(), user="Bot32", mode="0", real="Bot32", channels=sets:new(), ignore=sets:new(), on_join=[]},
-	case file:consult("bot_config.erl") of
+	case file:consult("bot_config.crl") of
 		{error, Reason} ->
 			common:debug("BOT", "Failed to load config file: ~p.", [Reason]),
 			UseConfig = BaseConfig;
