@@ -106,7 +106,7 @@ loop(State = #state{}) ->
 	end.
 
 message_admins(Category, Msg, Admins) ->
-	common:debug("BOT", [Category, ": ", Msg]),
+	common:debug("ADMIN", [Category, ": ", Msg]),
 	lists:foreach(fun(T) ->
 			core ! {irc, {msg, {T, [Category, ": ", Msg]}}}
 		end, sets:to_list(Admins)),
