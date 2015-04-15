@@ -1,7 +1,7 @@
 -module(z_message).
 -compile(export_all).
 
--record(state,  {nick, prefix, admins, ignore, dicemode, messages, commands}).
+-include("definitions.hrl").
 
 get_commands() ->
 	[
@@ -9,19 +9,32 @@ get_commands() ->
 		{"tell", fun new_message/5, user}
 	].
 
+get_data(#state{moduledata=M}) ->
+	case orddict:find(z_message, M) of
+		{ok, Value} -> Value;
+		error -> orddict:new()
+	end.
+
+set_data(S=#state{moduledata=M}, Data) ->
+	S#state{moduledata=orddict:store(z_message, Data, M)}.
+
+initialise(T) ->
+	Messages=load_messages(),
+	set_data(T, Messages).
+
+deinitialise(T) -> save_messages(get_data(T)).
+
 check_messages(Origin, ReplyTo, Ping, _, State=#state{}) ->
 	case check_messages_for(Origin, State) of
 		nomessages -> {irc, {msg, {ReplyTo, [Ping, "You have no new messages."]}}};
 		_ -> ok
 	end.
 
-initialise(T) -> T#state{messages=load_messages()}.
-deinitialise(T) -> save_messages(T#state.messages).
-
 new_message(Origin, ReplyTo, Ping, Params, State=#state{}) ->
 	{irc, {msg, {ReplyTo, [Ping, new_message(Origin, hd(Params), string:join(tl(Params), " "), State)]}}}.
 	
-check_messages_for(NickR, State=#state{messages=Messages}) ->
+check_messages_for(NickR, State=#state{}) ->
+	Messages = get_data(State),
         Nick = string:to_lower(NickR),
         case orddict:find(Nick, Messages) of
                 {ok, M} ->
@@ -29,7 +42,7 @@ check_messages_for(NickR, State=#state{messages=Messages}) ->
                                         {Date, Time} = format_time(Timestamp),
                                         core ! {irc, {msg, {Nick, [Message, " - From ", From, " at ", Time, " on ", Date]}}}
                                 end, M),
-                        self() ! {state, State#state{messages=orddict:erase(Nick, Messages)}},
+                        self() ! {state, set_data(State, orddict:erase(Nick, Messages))},
                         ok;
                 error -> nomessages
         end.
@@ -38,7 +51,8 @@ format_time({{Y, M, D}, {H, Mi, S}}) ->
     {io_lib:format("~b-~2..0b-~2..0b", [Y, M, D]),
         io_lib:format("~2..0b:~2..0b:~2..0b", [H, Mi, S])}.
 
-new_message(FromR, ToR, Msg, State=#state{nick=Self, messages=Messages}) ->
+new_message(FromR, ToR, Msg, State=#state{nick=Self}) ->
+	Messages = get_data(State),
         To = string:to_lower(ToR),
         SelfL = string:to_lower(Self),
         if
@@ -57,7 +71,7 @@ new_message(FromR, ToR, Msg, State=#state{nick=Self, messages=Messages}) ->
                         case NewValue of
                                 toomany -> [ToR, " has too many pending messages!"];
                                 _ ->
-                                        self() ! {state, State#state{messages=orddict:store(To, NewValue, Messages)}},
+                                        self() ! {state, set_data(State, orddict:store(To, NewValue, Messages))},
                                         ["Sending a message to ", ToR, " when they arrive."]
                         end
         end.

@@ -1,7 +1,7 @@
 -module(z_admin).
 -compile(export_all).
 
--record(state,  {nick, prefix, admins, ignore, dicemode, messages, commands}).
+-include("definitions.hrl").
 
 get_commands() ->
 	[

@@ -1,7 +1,7 @@
 -module(common).
 -compile(export_all).
 
--record(user, {nick, username, host}).
+-include("definitions.hrl").
 
 debug(What, Msg) -> io:fwrite("[~s] ~s~n", [What, Msg]).
 debug(What, Format, List) ->

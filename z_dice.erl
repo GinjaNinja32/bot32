@@ -1,7 +1,7 @@
 -module(z_dice).
 -compile(export_all).
 
--record(state, {nick, prefix, admins, ignore, dicemode, messages, commands}).
+-include("definitions.hrl").
 
 get_commands() ->
 	[
@@ -17,29 +17,39 @@ get_commands() ->
 initialise(T) -> T.
 deinitialise(_) -> ok.
 
+get_data(#state{moduledata=M}) ->
+        case orddict:find(z_dice, M) of
+                {ok, Value} -> Value;
+                error -> internal
+        end.
+
+set_data(S=#state{moduledata=M}, Data) ->
+        S#state{moduledata=orddict:store(z_dice, Data, M)}.
+
+
 dicemode(_Origin, ReplyTo, Ping, Params, State) ->
 	case Params of
-		[] ->	{irc, {msg, {ReplyTo, [Ping, "Dice mode is: ", format_dicemode(State#state.dicemode)]}}};
+		[] ->	{irc, {msg, {ReplyTo, [Ping, "Dice mode is: ", format_dicemode(get_data(State))]}}};
 		["internal"] ->
 			[
-				{state, State#state{dicemode=internal}},
+				{state, set_data(State, internal)},
 				{irc, {msg, {ReplyTo, [Ping, "Dice mode is now: ", format_dicemode(internal)]}}}
 			];
 		["random"] ->
 			[
-				{state, State#state{dicemode=random}},
+				{state, set_data(State, random)},
 				{irc, {msg, {ReplyTo, [Ping, "Dice mode is now: ", format_dicemode(random)]}}}
 			];
 		_ ->	{irc, {msg, {ReplyTo, [Ping, "Unknown dice mode: ", string:join(Params, " ")]}}}
 	end.
 
 dice(_Origin, ReplyTo, Ping, Params, State) ->
-	{irc, {msg, {ReplyTo, [Ping, get_dice(Params, yes, State#state.dicemode)]}}}.
+	{irc, {msg, {ReplyTo, [Ping, get_dice(Params, yes, get_data(State))]}}}.
 edice(_Origin, ReplyTo, Ping, Params, State) ->
-	{irc, {msg, {ReplyTo, [Ping, get_dice(Params, no, State#state.dicemode)]}}}.
+	{irc, {msg, {ReplyTo, [Ping, get_dice(Params, no, get_data(State))]}}}.
 
-format_dicemode("internal") -> "Internal RNG";
-format_dicemode("random") -> "random.org";
+format_dicemode(internal) -> "Internal RNG";
+format_dicemode(random) -> "random.org";
 format_dicemode(Mode) -> io_lib:format("~p", [Mode]).
 
 parse_dice("", Default) -> Default;

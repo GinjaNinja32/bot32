@@ -1,14 +1,12 @@
 -module(core).
 -compile(export_all).
 
-% -record(user, {nick, username, host}).
-
 -define(SOCK_OPTIONS, [list, {packet, line}, {active, true}]).
 
 init() ->
 	case file:consult("core_config.erl") of
 		{ok, [{Server, Port}]} -> init(Server, Port);
-		_ -> common:debug("Failed to read config file!")
+		_ -> common:debug("CORE", "Failed to read config file!")
 	end.
 
 init(Server, Port) ->

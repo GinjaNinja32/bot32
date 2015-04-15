@@ -1,11 +1,10 @@
 -module(bot).
 -compile(export_all).
 
--record(state,  {nick, prefix, admins, ignore, dicemode, messages, commands}).
--record(config, {nick, prefix, admins, ignore, dicemode, user, mode, real, channels, on_join}).
--record(user, {nick, username, host}).
+-include("definitions.hrl").
 
--define(VERSION, "Bot32 v0.1").
+-record(config, {nick, prefix, admins, ignore, user, mode, real, channels, on_join}).
+
 -define(MODULES, [z_basic, z_dice, z_message, z_status, z_admin]).
 
 waitfor(Ident) ->
@@ -20,7 +19,7 @@ init() ->
 	register(bot, self()),
 	{SeedA,SeedB,SeedC}=now(),
 	random:seed(SeedA,SeedB,SeedC),
-	BaseConfig = #config{nick="Bot32", prefix=$!, admins=sets:new(), user="Bot32", mode="0", real="Bot32", channels=sets:new(), ignore=sets:new(), on_join=[], dicemode=internal},
+	BaseConfig = #config{nick="Bot32", prefix=$!, admins=sets:new(), user="Bot32", mode="0", real="Bot32", channels=sets:new(), ignore=sets:new(), on_join=[]},
 	case file:consult("bot_config.erl") of
 		{error, Reason} ->
 			common:debug("BOT", "Failed to load config file: ~p.", [Reason]),
@@ -46,8 +45,6 @@ init() ->
 
 						{on_join, Cmd}		when is_tuple(Cmd)				-> Config#config{on_join = [Cmd | OJ]};
 
-						{dicemode, Mode}	when is_atom(Mode)				-> Config#config{dicemode = Mode};
-
 						T -> common:debug("BOT", "Failed to parse config line ~p!", [T])
 					end
 				end, BaseConfig, Terms)
@@ -70,8 +67,8 @@ init() ->
 				prefix   = UseConfig#config.prefix,
 				admins   = UseConfig#config.admins,
 				ignore   = UseConfig#config.ignore,
-				dicemode = UseConfig#config.dicemode,
-				commands = Commands
+				commands = Commands,
+				moduledata  = orddict:new()
 			    }, ?MODULES),
 	case loop(State) of
 		FinalState=#state{} ->
