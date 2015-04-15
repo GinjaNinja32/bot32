@@ -5,7 +5,7 @@ get_commands() ->
 	[
 		{"status",   genstatus ("baystation12.net", 8000), user},
 		{"players",  genplayers("baystation12.net", 8000), user},
-		{"admins",   genadmins ("baystation12.net", 8000), user},
+		{"admins",   genadmins ("baystation12.net", 8000), user}
 	].
 
 initialise(T) -> T.
