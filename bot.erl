@@ -5,7 +5,7 @@
 
 -record(config, {nick, prefix, admins, ignore, user, mode, real, channels, on_join}).
 
--define(MODULES, [z_basic, z_dice, z_message, z_status, z_admin]).
+-define(MODULES, [z_basic, z_dice, z_message, z_status, z_admin, z_quotes]).
 
 waitfor(Ident) ->
 	case whereis(Ident) of

@@ -1,2 +1,3 @@
 *.beam
-messages.erl
+messages.crl
+quotes.crl
