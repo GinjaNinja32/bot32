@@ -96,12 +96,12 @@ load_messages() ->
                 {ok, [Term]} ->
                         common:debug("MSGS", "Loaded."),
                         Term;
-                {error, _} ->
-                        common:debug("MSGS", "Creating new."),
+                {error, T} ->
+                        common:debug("MSGS", "Creating new (error is ~p)", [T]),
                         orddict:new()
         end.
 
 save_messages(Messages) ->
         T = file:write_file("messages.crl", io_lib:format("~p.~n", [Messages])),
-        common:debug("MSGS", "~p", [T]).
+        common:debug("MSGS", "Save status: ~p", [T]).
 

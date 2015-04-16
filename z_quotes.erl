@@ -6,6 +6,7 @@
 get_commands() ->
 	[
 		{"quote", fun quote/5, user},
+		{"quotename", fun quotename/5, user},
 		{"addquote", fun addquote/5, user},
 		{"makequote", fun addquote/5, user},
 		{"save_quote", fun savequote/5, admin},
@@ -30,6 +31,9 @@ deinitialise(T) -> save_quotes(get_data(T)).
 quote(_, ReplyTo, Ping, Params, State=#state{}) ->
 	{irc, {msg, {ReplyTo, [Ping, get_quote(string:strip(string:to_lower(string:join(Params, " "))), get_data(State))]}}}.
 
+quotename(_, ReplyTo, Ping, Params, State=#state{}) ->
+	{irc, {msg, {ReplyTo, [Ping, get_quote_name(string:strip(string:to_lower(string:join(Params, " "))), get_data(State))]}}}.
+
 addquote(_, ReplyTo, Ping, Params, State=#state{}) ->
 	{Reply, Data} = add_quote(string:to_lower(hd(Params)), string:strip(string:join(tl(Params), " ")), get_data(State)),
 	self() ! {state, set_data(State, Data)},
@@ -52,10 +56,15 @@ get_quote(String, Quotes) ->
 		end, Quotes),
 	pick_quote(Matching).
 
+get_quote_name([], _) -> "Please supply a username to quote from.";
+get_quote_name(String, Quotes) ->
+	Matching = lists:filter(fun({Cat, _}) -> Cat == String end, Quotes),
+	pick_quote(Matching).
+
 pick_quote([]) -> "No matching quotes.";
 pick_quote(Q) ->
 	{Cat, Quote} = lists:nth(random:uniform(length(Q)), Q),
-	[Quote, " - ",Cat].
+	["\"", Quote, "\" - ",Cat].
 
 add_quote(Category, String, Quotes) ->
 	LowerString = string:to_lower(String),
@@ -71,8 +80,8 @@ load_quotes() ->
 		{ok, [Term]} ->
 			common:debug("QUOTE", "Loaded."),
 			Term;
-		{error, _} ->
-			common:debug("QUOTE", "Creating new."),
+		{error, E} ->
+			common:debug("QUOTE", "Creating new (error ~p).", [E]),
 			[]
 	end.
 
