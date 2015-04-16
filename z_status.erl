@@ -13,7 +13,7 @@ deinitialise(_) -> ok.
 
 genstatus (Server, Port) -> fun(_,RT,_,_,_) -> status (RT,Server,Port) end.
 genplayers(Server, Port) -> fun(_,RT,_,_,_) -> players(RT,Server,Port) end.
-genadmins (Server, Port) -> fun(_,RT,_,_,_) -> players(RT,Server,Port) end.
+genadmins (Server, Port) -> fun(_,RT,_,_,_) -> admins (RT,Server,Port) end.
 
 status(RT, S, P) ->
         case byond:send(S, P, "status") of
@@ -40,6 +40,7 @@ players(RT, S, P) ->
                         PlayerList = safeget(Dict, "playerlist"),
                         case PlayerList of
                                 "???" -> {irc, {msg, {RT, "Players: Unknown!"}}};
+				[] ->	{irc, {msg, {RT, "No players present."}}};
                                 _ ->
                                         {_, Str, _} = lists:foldl(fun acc_players/2, {0, [], RT}, lists:map(fun(T) -> [hd(T)," ",tl(T)] end, lists:sort(PlayerList))),
                                         {irc, {msg, {RT, ["Players: ", string:join(lists:reverse(Str), ", ")]}}}
