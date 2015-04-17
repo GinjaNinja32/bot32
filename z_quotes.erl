@@ -58,7 +58,7 @@ get_quote(String, Quotes) ->
 
 get_quote_name([], _) -> "Please supply a username to quote from.";
 get_quote_name(String, Quotes) ->
-	Matching = lists:filter(fun({Cat, _}) -> Cat == String end, Quotes),
+	Matching = lists:filter(fun({Cat, _}) -> lists:prefix(String, Cat) end, Quotes),
 	pick_quote(Matching).
 
 pick_quote([]) -> "No matching quotes.";

@@ -170,6 +170,7 @@ handle_irc(notice, _, _) -> ok;
 handle_irc(part, _, _) -> ok;
 handle_irc(quit, _, _) -> ok;
 handle_irc(mode, _, _) -> ok;
+handle_irc(numeric, {{A,B},Params}, _) -> common:debug("BOT", "Numeric received: ~p_~p ~s", [A,B,string:join(Params," ")]);
 
 handle_irc(Type, Params, _State) -> common:debug("BOT", "unknown irctype ~p <<<~p>>>, continuing", [Type, Params]).
 

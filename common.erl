@@ -56,10 +56,8 @@ tcp_parse(S, M) ->
 					case string:to_integer(Cmd) of
 						{error, _} -> common:debug("PARSE", "Unknown TCP message received; ~s : ~p", [Cmd, Params]);
 						{I, []} ->
-							case numeric_parse(I) of
-								{unknown, B} -> common:debug("PARSE", "Unknown numeric received; ~p : ~s", [B, string:join(Params, " ")]);
-								{A, B} -> common:debug("PARSE", "Numeric received; ~p_~p : ~s", [A, B, string:join(Params, " ")])
-							end;
+							Parsed = numeric_parse(I),
+							{irc, {numeric, {Parsed, Params}}};
 						{_, _} -> common:debug("PARSE", "Unknown TCP message received; ~s : ~s", [Cmd, string:join(Params, " ")])
 					end
 			end
