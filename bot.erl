@@ -1,11 +1,10 @@
 -module(bot).
 -compile(export_all).
+-compile({no_auto_import,[load_module/2]}).
 
 -include("definitions.hrl").
 
--record(config, {nick, prefix, admins, ignore, user, mode, real, channels, on_join}).
-
--define(MODULES, [z_basic, z_dice, z_message, z_status, z_admin, z_quotes]).
+-record(config, {nick, prefix, admins, ignore, user, mode, real, channels, on_join, modules}).
 
 waitfor(Ident) ->
 	case whereis(Ident) of
@@ -19,13 +18,13 @@ init() ->
 	register(bot, self()),
 	{SeedA,SeedB,SeedC}=now(),
 	random:seed(SeedA,SeedB,SeedC),
-	BaseConfig = #config{nick="Bot32", prefix=$!, admins=sets:new(), user="Bot32", mode="0", real="Bot32", channels=sets:new(), ignore=sets:new(), on_join=[]},
+	BaseConfig = #config{nick="Bot32", prefix=$!, admins=sets:new(), user="Bot32", mode="0", real="Bot32", channels=sets:new(), ignore=sets:new(), on_join=[], modules=[z_basic]},
 	case file:consult("bot_config.crl") of
 		{error, Reason} ->
 			common:debug("BOT", "Failed to load config file: ~p.", [Reason]),
 			UseConfig = BaseConfig;
 		{ok, Terms} ->
-			UseConfig = lists:foldl(fun(Option, Config=#config{admins=A, on_join=OJ, channels=C, ignore=I}) ->
+			UseConfig = lists:foldl(fun(Option, Config=#config{admins=A, on_join=OJ, channels=C, ignore=I, modules=M}) ->
 					case Option of
 						{nick, Nick}		when is_list(Nick) orelse is_binary(Nick)	-> Config#config{nick=Nick};
 						{user, User}		when is_list(User) orelse is_binary(User)	-> Config#config{user=User};
@@ -43,13 +42,18 @@ init() ->
 						{ignore, Ignore}	when is_list(Ignore) orelse is_binary(Ignore)	-> Config#config{ignore=sets:add_element(string:to_lower(Ignore), I)};
 						{ignores, Ignores}	when is_list(Ignores)				-> Config#config{ignore=lists:foldl(fun sets:add_element/2, I, lists:map(fun string:to_lower/1, Ignores))};
 
+						{module, Mod}		when is_atom(Mod)				-> Config#config{modules = [Mod | M]};
+						{modules, Mods}		when is_list(Mods)				-> Config#config{modules=lists:foldl(
+																fun	(Mod, MX) when is_atom(Mod) -> [Mod|MX];
+																	(Mod, _) -> common:debug("BOT", "Non-atomic module ~p specified!", [Mod])
+																 end, M, Mods)};
+
 						{on_join, Cmd}		when is_tuple(Cmd)				-> Config#config{on_join = [Cmd | OJ]};
 
 						T -> common:debug("BOT", "Failed to parse config line ~p!", [T])
 					end
 				end, BaseConfig, Terms)
 	end,
-	Commands = load_commands(),
 	waitfor(core), % wait for core to startup
 	core ! {irc, {user, {UseConfig#config.user, UseConfig#config.mode, UseConfig#config.real}}},
 	core ! {irc, {nick, UseConfig#config.nick}},
@@ -60,34 +64,47 @@ init() ->
 	timer:sleep(50), % wait for server auth
 	lists:foreach(fun(T) -> core ! {irc, {join, T}} end, sets:to_list(UseConfig#config.channels)),
 	common:debug("BOT", "starting"),
-	State = lists:foldl(fun(Module, S) ->
-			apply(Module, initialise, [S])
-		end,  #state{
+	State = load_modules(UseConfig#config.modules,
+			    #state{
 				nick     = UseConfig#config.nick,
 				prefix   = UseConfig#config.prefix,
 				admins   = UseConfig#config.admins,
 				ignore   = UseConfig#config.ignore,
-				commands = Commands,
-				moduledata  = orddict:new()
-			    }, ?MODULES),
+				commands = {orddict:new(), orddict:new()},
+				moduledata  = orddict:new(),
+				modules = sets:new()
+			    }),
 	case loop(State) of
 		FinalState=#state{} ->
-			lists:foreach(fun(Module, S) ->
-					apply(Module, deinitialise, [S])
-				end, FinalState, ?MODULES);
+			lists:foreach(fun(Module) ->
+					apply(Module, deinitialise, [FinalState])
+				end, FinalState#state.modules),
+			common:debug("BOT", "quitting");
 		T -> common:debug("BOT", "quitting under condition ~p", [T])
-	end,
-	common:debug("BOT", "quitting").
+	end.
 
 reinit(State) ->
 	register(bot, self()),
 	common:debug("BOT", "starting"),
-	loop(State),
-	common:debug("BOT", "quitting").
+	case loop(State) of
+		FinalState=#state{} ->
+			lists:foreach(fun(Module) ->
+					apply(Module, deinitialise, [FinalState])
+				end, FinalState#state.modules),
+			common:debug("BOT", "quitting");
+		T -> common:debug("BOT", "quitting under condition ~p", [T])
+	end.
 
 loop(State = #state{}) ->
 	case receive
-		{irc, {Type, Params}} -> handle_irc(Type, Params, State);
+		{irc, {Type, Params}} ->
+			try
+				handle_irc(Type, Params, State)
+			catch
+				throw:T -> common:debug("BOT", "handle_irc threw ~p, continuing", [T]);
+				error:T -> common:debug("BOT", "handle_irc errored ~p, continuing", [T]);
+				exit:T -> common:debug("BOT", "handle_irc exited ~p, continuing", [T])
+			end;
 		T when is_atom(T) -> T;
 		{T, K} when is_atom(T) -> {T, K};
 		T -> common:debug("BOT", "unknown receive ~p, continuing", [T])
@@ -177,16 +194,48 @@ handle_irc(Type, Params, _State) -> common:debug("BOT", "unknown irctype ~p <<<~
 handle_admin_command(Origin, ReplyTo, Ping, Cmd, Params, State=#state{commands={AdminCmd,_}}) ->
 	case string:to_lower(Cmd) of
 		"update" ->		update;
-		"help" ->		core ! {irc, {msg, {ReplyTo, ["Admin commands: update, reloadcommands, help, ", string:join(orddict:fetch_keys(AdminCmd), ", "), "."]}}},
+		"help" ->		core ! {irc, {msg, {ReplyTo, ["Admin commands: update, reload_all, drop_all, load_mod, drop_mod, reload_mod, help, ", string:join(orddict:fetch_keys(AdminCmd), ", "), "."]}}},
 						handle_command(Origin, ReplyTo, Ping, Cmd, Params, State);
 
-		"reloadcommands" ->
-			NewCmds = load_commands(),
-			self() ! {state, State#state{commands=NewCmds}},
-			{irc, {msg, {ReplyTo, [Ping, "Reloaded commands."]}}};
+		"reload_all" ->
+			Modules = sets:to_list(State#state.modules),
+			self() ! {state, reload_modules(Modules, State)},
+			{irc, {msg, {ReplyTo, [Ping, "Reloaded."]}}};
+
+		"drop_all" ->
+			Modules = sets:to_list(State#state.modules),
+			self() ! {state, unload_modules(Modules, State)},
+			{irc, {msg, {ReplyTo, [Ping, "Reloaded."]}}};
+
+		"load_mod" ->
+			case Params of
+				[] -> {irc, {msg, {ReplyTo, [Ping, "Provide a module to load."]}}};
+				ModuleStrings ->
+					Modules = lists:map(fun erlang:list_to_atom/1, ModuleStrings),
+					self() ! {state, load_modules(Modules, State)},
+					{irc, {msg, {ReplyTo, [Ping, "Loaded."]}}}
+			end;
+
+		"drop_mod" ->
+			case Params of
+				[] -> {irc, {msg, {ReplyTo, [Ping, "Provide a module to unload."]}}};
+				ModuleStrings ->
+					Modules = lists:map(fun erlang:list_to_atom/1, ModuleStrings),
+					self() ! {state, unload_modules(Modules, State)},
+					{irc, {msg, {ReplyTo, [Ping, "Unloaded."]}}}
+			end;
+
+		"reload_mod" ->
+			case Params of
+				[] -> {irc, {msg, {ReplyTo, [Ping, "Provide a module to reload."]}}};
+				ModuleStrings ->
+					Modules = lists:map(fun erlang:list_to_atom/1, ModuleStrings),
+					self() ! {state, reload_modules(Modules, State)},
+					{irc, {msg, {ReplyTo, [Ping, "Reloaded."]}}}
+			end;
 
 		T -> case orddict:find(T, AdminCmd) of
-			{ok, Result} -> apply(Result, [Origin, ReplyTo, Ping, Params, State]);
+			{ok, {_,Result}} -> apply(Result, [Origin, ReplyTo, Ping, Params, State]);
 			error -> handle_command(Origin, ReplyTo, Ping, Cmd, Params, State)
 		end
 	end.
@@ -196,20 +245,42 @@ handle_command(Origin, ReplyTo, Ping, Cmd, Params, State=#state{commands={_,User
 		"help" -> {irc, {msg, {ReplyTo, ["User commands: help, ", string:join(orddict:fetch_keys(UserCmd), ", "), "."]}}};
 
 		T -> case orddict:find(T, UserCmd) of
-			{ok, Result} -> apply(Result, [Origin, ReplyTo, Ping, Params, State]);
+			{ok, {_,Result}} -> apply(Result, [Origin, ReplyTo, Ping, Params, State]);
 			error -> {irc, {msg, {ReplyTo, [Ping, "Unknown command!"]}}}
 		end
 	end.
 
-load_commands() ->
-	lists:foldl(fun(T,AT) ->
-			lists:foldl(fun({Cmd,Fun,Restrict},{Admin,User}) ->
-				case Restrict of
-					user -> {Admin,orddict:store(Cmd,Fun,User)};
-					admin -> {orddict:store(Cmd,Fun,Admin),User};
-					_ ->
-						common:debug("CMD", "Unknown command restriction ~p", [Restrict]),
-						{Admin,User}
-				end
-			end, AT, apply(T, get_commands, []))
-		end, {orddict:new(), orddict:new()}, ?MODULES).
+load_modules(Modules, State) -> lists:foldl(fun load_module/2, State, Modules).
+
+load_module(Module, State) ->
+	common:debug("MODULE", "loading ~p", [Module]),
+
+	% Load commands
+	NewCmds = lists:foldl(fun({Cmd,Fun,Restrict}, {Admin,User}) ->
+		case Restrict of
+			user -> {Admin, orddict:store(Cmd, {Module, Fun}, User)};
+			admin -> {orddict:store(Cmd, {Module, Fun}, Admin), User};
+			_ ->
+				common:debug("CMD", "Unknown command restriction ~p", [Restrict]),
+				{Admin, User}
+		end
+	end, State#state.commands, apply(Module, get_commands, [])),
+
+	% Initialise
+	apply(Module, initialise, [State#state{commands = NewCmds, modules = sets:add_element(Module, State#state.modules)}]).
+
+unload_modules(Modules, State) -> lists:foldl(fun unload_module/2, State, Modules).
+
+unload_module(Module, State) ->
+	common:debug("MODULE", "unloading ~p", [Module]),
+
+	% Remove commands
+	{Admin,User} = State#state.commands,
+	A = orddict:filter(fun(_, {Mod, _}) -> Mod /= Module end, Admin),
+	B = orddict:filter(fun(_, {Mod, _}) -> Mod /= Module end, User),
+
+	% Deinitialise
+	apply(Module, deinitialise, [State#state{commands = {A, B}, modules = sets:del_element(Module, State#state.modules)}]).
+
+reload_modules(Modules, State) -> lists:foldl(fun reload_module/2, State, Modules).
+reload_module(Module, State) -> load_module(Module, unload_module(Module, State)).

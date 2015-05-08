@@ -2,7 +2,7 @@
 -export([send/3]).
 
 send(Addr, Port, Msg) ->
-	case gen_tcp:connect(Addr, Port, [binary, {packet, raw}, {active, false}]) of
+	case gen_tcp:connect(Addr, Port, [binary, {packet, raw}, {active, false}], 30 * 1000) of
 		{ok, Sock} ->
 			case gen_tcp:send(Sock, encode(Msg)) of
 				ok ->

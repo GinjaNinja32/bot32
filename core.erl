@@ -6,7 +6,8 @@
 init() ->
 	case file:consult("core_config.crl") of
 		{ok, [{Server, Port}]} -> init(Server, Port);
-		_ -> common:debug("CORE", "Failed to read config file!")
+		{ok, Terms} -> common:debug("CORE", "Wrong config file format: ~p", [Terms]);
+		{error, R} -> common:debug("CORE", "Failed to read config file: ~p", [R])
 	end.
 
 init(Server, Port) ->

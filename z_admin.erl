@@ -21,36 +21,55 @@ get_commands() ->
 	].
 
 initialise(T) -> T.
-deinitialise(_) -> ok.
+deinitialise(T) -> T.
 
-admin(_Origin, ReplyTo, Ping, Params, State=#state{admins=Admins}) ->
+admin(_, ReplyTo, Ping, [], _) ->
+	{irc, {msg, {ReplyTo, [Ping, "Please provide an admin to add."]}}};
+admin(_, ReplyTo, Ping, Params, State=#state{admins=Admins}) ->
 	self() ! {state, State#state{admins=sets:add_element(string:to_lower(hd(Params)), Admins)}},
 	{irc, {msg, {ReplyTo, [Ping, "Added ", hd(Params), " to the admins list."]}}}.
 
+deadmin(_, ReplyTo, Ping, [], _) ->
+	{irc, {msg, {ReplyTo, [Ping, "Please provide an admin to remove."]}}};
 deadmin(_Origin, ReplyTo, Ping, Params, State=#state{admins=Admins}) ->
 	self() ! {state, State#state{admins=sets:del_element(string:to_lower(hd(Params)), Admins)}},
 	{irc, {msg, {ReplyTo, [Ping, "Removed ", hd(Params), " from the admins list."]}}}.
 
+join(_, ReplyTo, Ping, [], _) ->
+	{irc, {msg, {ReplyTo, [Ping, "Please provide a channel to join."]}}};
 join(_, ReplyTo, Ping, Params, _) ->
 	{multi, [
 		{irc, {msg, {ReplyTo, [Ping, "Joining ", hd(Params), "."]}}},
 		{irc, {join, hd(Params)}}
 	]}.
 
+part(_, ReplyTo, Ping, [], _) ->
+	{irc, {msg, {ReplyTo, [Ping, "Please provide a channel to part."]}}};
 part(_, ReplyTo, Ping, Params, _) ->
 	{multi, [
 		{irc, {msg, {ReplyTo, [Ping, "Parting ", hd(Params), "."]}}},
 		{irc, {part, {hd(Params), string:join(tl(Params), " ")}}}
 	]}.
 
+nick(_, RT, Ping, [], _) -> {irc, {msg, {RT, [Ping, "Please provide a nick for me."]}}};
 nick(_, _, _, Params, _) -> {irc, {nick, hd(Params)}}.
 
 quit(_, _, _, Params, _) -> {irc, {quit, string:join(Params, " ")}}.
 
+speak (_, RT, Ping, [], _) -> {irc, {msg, {RT, [Ping, "Please provide a channel and message."]}}};
+speak (_, RT, Ping, [_], _) -> {irc, {msg, {RT, [Ping, "Please provide a message."]}}};
 speak (_, _, _, Params, _) -> {irc, {msg,          {hd(Params), string:join(tl(Params), " ")}}}.
+
+notice(_, RT, Ping, [_], _) -> {irc, {msg, {RT, [Ping, "Please provide a message."]}}};
+notice(_, RT, Ping, [], _) -> {irc, {msg, {RT, [Ping, "Please provide a channel and message."]}}};
 notice(_, _, _, Params, _) -> {irc, {notice,       {hd(Params), string:join(tl(Params), " ")}}}.
+
+action(_, RT, Ping, [_], _) -> {irc, {msg, {RT, [Ping, "Please provide an action."]}}};
+action(_, RT, Ping, [], _) -> {irc, {msg, {RT, [Ping, "Please provide a channel and action."]}}};
 action(_, _, _, Params, _) -> {irc, {ctcp, {action, hd(Params), string:join(tl(Params), " ")}}}.
 
+
+ignore(_, ReplyTo, Ping, [], _) -> {irc, {msg, {ReplyTo, [Ping, "Please provide a nick to ignore."]}}};
 ignore(_, ReplyTo, Ping, Params, State=#state{ignore=I}) ->
 	Nick = string:to_lower(hd(Params)),
 	case sets:is_element(Nick, I) of
@@ -58,6 +77,8 @@ ignore(_, ReplyTo, Ping, Params, State=#state{ignore=I}) ->
 		false -> self() ! {state, State#state{ignore=sets:add_element(Nick, I)}},
 			{irc, {msg, {ReplyTo, [Ping, "Now ignoring ", Nick, "."]}}}
 	end.
+
+unignore(_, ReplyTo, Ping, [], _) -> {irc, {msg, {ReplyTo, [Ping, "Please provide a nick to unignore."]}}};
 unignore(_, ReplyTo, Ping, Params, State=#state{ignore=I}) ->
 	Nick = string:to_lower(hd(Params)),
 	case sets:is_element(Nick, I) of
@@ -72,6 +93,7 @@ whoignore(_, ReplyTo, Ping, _, #state{ignore=I}) ->
 		false -> {irc, {msg, {ReplyTo, [Ping, "Ignore list: ", string:join(sets:to_list(I), ", ")]}}}
 	end.
 
+prefix(_, ReplyTo, Ping, [], _) -> {irc, {msg, {ReplyTo, [Ping, "Please provide a prefix to use for commands."]}}};
 prefix(_, ReplyTo, Ping, Params, State=#state{}) ->
 	self() ! {state, State#state{prefix=hd(hd(Params))}},
 	{irc, {msg, {ReplyTo, [Ping, "Prefix set to ", hd(hd(Params))]}}}.

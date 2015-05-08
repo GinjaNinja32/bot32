@@ -25,7 +25,9 @@ initialise(T) ->
 	Messages=load_messages(),
 	set_data(T, Messages).
 
-deinitialise(T) -> save_messages(get_data(T)).
+deinitialise(T) ->
+	save_messages(get_data(T)),
+	T#state{moduledata=orddict:erase(z_message, T#state.moduledata)}.
 
 check_messages(Origin, ReplyTo, Ping, _, State=#state{}) ->
 	case check_messages_for(Origin, State) of
@@ -33,6 +35,10 @@ check_messages(Origin, ReplyTo, Ping, _, State=#state{}) ->
 		_ -> ok
 	end.
 
+new_message(_, ReplyTo, Ping, [], _) ->
+	{irc, {msg, {ReplyTo, [Ping, "Please provide a recipient and a message."]}}};
+new_message(_, ReplyTo, Ping, [_], _) ->
+	{irc, {msg, {ReplyTo, [Ping, "Please provide a message."]}}};
 new_message(Origin, ReplyTo, Ping, Params, State=#state{}) ->
 	{irc, {msg, {ReplyTo, [Ping, new_message(Origin, hd(Params), string:join(tl(Params), " "), State)]}}}.
 
@@ -57,7 +63,9 @@ check_messages_for(NickR, State=#state{}) ->
                                         {Date, Time} = format_time(Timestamp),
                                         core ! {irc, {msg, {Nick, [Message, " - From ", From, " at ", Time, " on ", Date]}}}
                                 end, M),
-                        self() ! {state, set_data(State, orddict:erase(Nick, Messages))},
+			NewData = orddict:erase(Nick, Messages),
+			save_messages(NewData),
+                        self() ! {state, set_data(State, NewData)},
                         ok;
                 error -> nomessages
         end.
@@ -86,7 +94,9 @@ new_message(FromR, ToR, Msg, State=#state{nick=Self}) ->
                         case NewValue of
                                 toomany -> [ToR, " has too many pending messages!"];
                                 _ ->
-                                        self() ! {state, set_data(State, orddict:store(To, NewValue, Messages))},
+					NewData = orddict:store(To, NewValue, Messages),
+					save_messages(NewData),
+                                        self() ! {state, set_data(State, NewData)},
                                         ["Sending a message to ", ToR, " when they arrive."]
                         end
         end.

@@ -15,12 +15,14 @@ get_commands() ->
 	].
 
 initialise(T) -> T.
-deinitialise(_) -> ok.
+deinitialise(T) -> T.
 
 get_data(#state{moduledata=M}) ->
         case orddict:find(z_dice, M) of
                 {ok, Value} -> Value;
-                error -> internal
+                error ->
+			common:debug("DICE", "Data not found, using internal."),
+			internal
         end.
 
 set_data(S=#state{moduledata=M}, Data) ->
@@ -31,15 +33,11 @@ dicemode(_Origin, ReplyTo, Ping, Params, State) ->
 	case Params of
 		[] ->	{irc, {msg, {ReplyTo, [Ping, "Dice mode is: ", format_dicemode(get_data(State))]}}};
 		["internal"] ->
-			[
-				{state, set_data(State, internal)},
-				{irc, {msg, {ReplyTo, [Ping, "Dice mode is now: ", format_dicemode(internal)]}}}
-			];
+			self() ! {state, set_data(State, internal)},
+			{irc, {msg, {ReplyTo, [Ping, "Dice mode is now: ", format_dicemode(internal)]}}};
 		["random"] ->
-			[
-				{state, set_data(State, random)},
-				{irc, {msg, {ReplyTo, [Ping, "Dice mode is now: ", format_dicemode(random)]}}}
-			];
+			self() ! {state, set_data(State, random)},
+			{irc, {msg, {ReplyTo, [Ping, "Dice mode is now: ", format_dicemode(random)]}}};
 		_ ->	{irc, {msg, {ReplyTo, [Ping, "Unknown dice mode: ", string:join(Params, " ")]}}}
 	end.
 

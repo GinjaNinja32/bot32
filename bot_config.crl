@@ -9,9 +9,13 @@
 % {admin, "AdminName"}. - add AdminName to the admin list
 % {admins, ["AdminA", "AdminB", "AdminC"]}. - add AdminA, AdminB, and AdminC to the admin list
 % {on_join, {msg, {"NickServ", "IDENTIFY password"}}}. - send commands on join
+% {module, Module}.
+% {modules, [Module, Module, Module]}.
 
 {nick, "Bot32"}.
 {user, "Bot32"}.
 {real, "Bot32"}.
 {mode, "0"}.
 {prefix, $&}.
+
+{modules, [z_basic, z_dice, z_message, z_status, z_admin, z_quotes, z_eval, z_git]}.

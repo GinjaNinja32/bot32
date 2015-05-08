@@ -7,6 +7,17 @@ debug(What, Msg) -> io:fwrite("[~s] ~s~n", [What, Msg]).
 debug(What, Format, List) ->
 	io:fwrite("[~s] ~s~n", [What, io_lib:format(Format, List)]).
 
+flatten(L) -> lists:reverse(flatten(L, [])).
+
+flatten([], O) -> O;
+flatten([A|B], O) when is_list(A) -> flatten(B, flatten(A, O));
+flatten([A|B], O) -> flatten(B, [A | O]);
+flatten(A, O) -> [A | O].
+
+proper([A|B]) when not is_list(B) -> [proper(A), proper(B)];
+proper([A|B]) -> [proper(A) | proper(B)];
+proper(A) -> A.
+
 % Spawn this method to have your code compiled and reloaded.
 purge_call(Module, Function, Param) ->
 	code:purge(Module),
@@ -15,8 +26,21 @@ purge_call(Module, Function, Param) ->
 	Module:Function(Param).
 
 raw_send(Sock, Msg) ->
-	%debug("SEND", Msg),
-	gen_tcp:send(Sock, [Msg, "\r\n"]).
+	try
+		Raw = re:replace(flatten(Msg), "[\r\n]", "", [global]),
+		if
+			length(Raw) > 400 ->
+				{T,_} = lists:split(397, Raw),
+				Send = [T, "..."];
+			true ->
+				Send = Raw
+		end,
+		gen_tcp:send(Sock, [Send, "\r\n"])
+	catch
+		throw:X -> debug("RAW", "Thrown ~p (message ~p)", [X, Msg]);
+		error:X -> debug("RAW", "Errored ~p (message ~p)", [X, Msg]);
+		exit:X -> debug("RAW", "Exited ~p (message ~p)", [X, Msg])
+	end.
 
 start() ->
 	spawn(core, init, []),
