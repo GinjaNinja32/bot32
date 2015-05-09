@@ -173,12 +173,18 @@ handle_irc(ctcp, {Type, #user{nick=Nick}, _Message}, _State) ->
 	end;
 
 handle_irc(nick, {#user{nick=MyNick}, NewNick}, State=#state{nick=MyNick}) -> {state, State#state{nick=NewNick}};
-handle_irc(nick, {_, N}, S=#state{}) ->
-	z_message:check_messages_for(N, S),
+handle_irc(nick, {_, N}, S=#state{modules=M}) ->
+	case sets:is_element(z_message, M) of
+		true -> z_message:check_messages_for(N, S);
+		_ -> ok
+	end,
 	ok;
 
-handle_irc(join, {#user{nick=N}, _Channel}, S=#state{}) ->
-	z_message:check_messages_for(N, S),
+handle_irc(join, {#user{nick=N}, _Channel}, S=#state{modules=M}) ->
+	case sets:is_element(z_message, M) of
+		true ->	z_message:check_messages_for(N, S);
+		_ -> ok
+	end,
 	ok;
 
 handle_irc(topic, _, _) -> ok;
