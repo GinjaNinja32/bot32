@@ -115,6 +115,7 @@ loop(State = #state{}) ->
 		error -> error;
 		ok -> loop(State);
 		{state, S = #state{}} -> loop(S);
+		{setkey, {Key, Val}} -> loop(State#state{moduledata = orddict:store(Key, Val, State#state.moduledata)});
 		update -> spawn(common,purge_call,[bot,reinit, State]), ok;
 		S -> common:debug("BOT", "unknown code ~p, continuing", [S]), loop(State)
 	end.
@@ -175,14 +176,14 @@ handle_irc(ctcp, {Type, #user{nick=Nick}, _Message}, _State) ->
 handle_irc(nick, {#user{nick=MyNick}, NewNick}, State=#state{nick=MyNick}) -> {state, State#state{nick=NewNick}};
 handle_irc(nick, {_, N}, S=#state{modules=M}) ->
 	case sets:is_element(z_message, M) of
-		true -> z_message:check_messages_for(N, S);
+		true -> z_message:check_messages_for(N, z_message:get_data(S));
 		_ -> ok
 	end,
 	ok;
 
 handle_irc(join, {#user{nick=N}, _Channel}, S=#state{modules=M}) ->
 	case sets:is_element(z_message, M) of
-		true ->	z_message:check_messages_for(N, S);
+		true ->	z_message:check_messages_for(N, z_message:get_data(S));
 		_ -> ok
 	end,
 	ok;
@@ -193,6 +194,7 @@ handle_irc(notice, _, _) -> ok;
 handle_irc(part, _, _) -> ok;
 handle_irc(quit, _, _) -> ok;
 handle_irc(mode, _, _) -> ok;
+handle_irc(numeric, {{rpl,away},_}, _) -> ok;
 handle_irc(numeric, {{A,B},Params}, _) -> common:debug("BOT", "Numeric received: ~p_~p ~s", [A,B,string:join(Params," ")]);
 
 handle_irc(Type, Params, _State) -> common:debug("BOT", "unknown irctype ~p <<<~p>>>, continuing", [Type, Params]).
@@ -211,7 +213,7 @@ handle_admin_command(Origin, ReplyTo, Ping, Cmd, Params, State=#state{commands={
 		"drop_all" ->
 			Modules = sets:to_list(State#state.modules),
 			self() ! {state, unload_modules(Modules, State)},
-			{irc, {msg, {ReplyTo, [Ping, "Reloaded."]}}};
+			{irc, {msg, {ReplyTo, [Ping, "Unloaded."]}}};
 
 		"load_mod" ->
 			case Params of

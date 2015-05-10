@@ -25,6 +25,10 @@ get_data(#state{moduledata=M}) ->
 set_data(S=#state{moduledata=M}, Data) ->
 	S#state{moduledata=orddict:store(z_quotes, Data, M)}.
 
+store_data(Data) ->
+	bot ! {setkey, {z_quotes, Data}},
+	ok.
+
 initialise(T) -> set_data(T, load_quotes()).
 
 deinitialise(T) ->
@@ -49,15 +53,15 @@ addquote(_, ReplyTo, Ping, [_], _) ->
 addquote(_, ReplyTo, Ping, Params, State=#state{}) ->
 	{Reply, Data} = add_quote(string:to_lower(hd(Params)), string:strip(string:join(tl(Params), " ")), get_data(State)),
 	save_quotes(Data),
-	self() ! {state, set_data(State, Data)},
+	store_data(Data),
 	{irc, {msg, {ReplyTo, [Ping, Reply]}}}.
 
 savequote(_, ReplyTo, Ping, _, State=#state{}) ->
-	deinitialise(State),
+	save_quotes(get_data(State)),
 	{irc, {msg, {ReplyTo, [Ping, "Saved quotes."]}}}.
 
-loadquote(_, ReplyTo, Ping, _, State=#state{}) ->
-	self() ! {state, set_data(State, load_quotes())},
+loadquote(_, ReplyTo, Ping, _, _) ->
+	store_data(load_quotes()),
 	{irc, {msg, {ReplyTo, [Ping, "Loaded quotes."]}}}.
 
 delquote(_, ReplyTo, Ping, Params, State=#state{}) ->
@@ -66,7 +70,7 @@ delquote(_, ReplyTo, Ping, Params, State=#state{}) ->
 		{multi_match,Num} -> {irc, {msg, {ReplyTo, [Ping, integer_to_list(Num), " matching quotes found."]}}};
 		NewData ->
 			save_quotes(NewData),
-			self() ! {state, set_data(State, NewData)},
+			store_data(NewData),
 			{irc, {msg, {ReplyTo, [Ping, "Quote deleted."]}}}
 	end.
 

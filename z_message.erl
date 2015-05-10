@@ -21,6 +21,10 @@ get_data(#state{moduledata=M}) ->
 set_data(S=#state{moduledata=M}, Data) ->
 	S#state{moduledata=orddict:store(z_message, Data, M)}.
 
+store_data(Data) ->
+	bot ! {setkey, {z_message, Data}},
+	ok.
+
 initialise(T) ->
 	Messages=load_messages(),
 	set_data(T, Messages).
@@ -30,7 +34,7 @@ deinitialise(T) ->
 	T#state{moduledata=orddict:erase(z_message, T#state.moduledata)}.
 
 check_messages(Origin, ReplyTo, Ping, _, State=#state{}) ->
-	case check_messages_for(Origin, State) of
+	case check_messages_for(Origin, get_data(State)) of
 		nomessages -> {irc, {msg, {ReplyTo, [Ping, "You have no new messages."]}}};
 		_ -> ok
 	end.
@@ -40,22 +44,21 @@ new_message(_, ReplyTo, Ping, [], _) ->
 new_message(_, ReplyTo, Ping, [_], _) ->
 	{irc, {msg, {ReplyTo, [Ping, "Please provide a message."]}}};
 new_message(Origin, ReplyTo, Ping, Params, State=#state{}) ->
-	{irc, {msg, {ReplyTo, [Ping, new_message(Origin, hd(Params), string:join(tl(Params), " "), State)]}}}.
+	{irc, {msg, {ReplyTo, [Ping, create_message(Origin, hd(Params), string:join(tl(Params), " "), State#state.nick, get_data(State))]}}}.
 
 save_messages(_, ReplyTo, Ping, _, State=#state{}) ->
-	deinitialise(State),
+	save_messages(get_data(State)),
 	{irc, {msg, {ReplyTo, [Ping, "Saved message data."]}}}.
 
-load_messages(_, ReplyTo, Ping, _, State=#state{}) ->
-	self() ! {state, initialise(State)},
+load_messages(_, ReplyTo, Ping, _, _) ->
+	store_data(load_messages()),
 	{irc, {msg, {ReplyTo, [Ping, "Loaded message data."]}}}.
 
 debug_messages(_, ReplyTo, Ping, _, State=#state{}) ->
 	common:debug("MSGS", "~p", [get_data(State)]),
 	{irc, {msg, {ReplyTo, [Ping, "Messages printed to console."]}}}.
 
-check_messages_for(NickR, State=#state{}) ->
-	Messages = get_data(State),
+check_messages_for(NickR, Messages) ->
         Nick = string:to_lower(NickR),
         case orddict:find(Nick, Messages) of
                 {ok, M} ->
@@ -65,7 +68,7 @@ check_messages_for(NickR, State=#state{}) ->
                                 end, M),
 			NewData = orddict:erase(Nick, Messages),
 			save_messages(NewData),
-                        self() ! {state, set_data(State, NewData)},
+                        store_data(NewData),
                         ok;
                 error -> nomessages
         end.
@@ -74,8 +77,7 @@ format_time({{Y, M, D}, {H, Mi, S}}) ->
     {io_lib:format("~b-~2..0b-~2..0b", [Y, M, D]),
         io_lib:format("~2..0b:~2..0b:~2..0b", [H, Mi, S])}.
 
-new_message(FromR, ToR, Msg, State=#state{nick=Self}) ->
-	Messages = get_data(State),
+create_message(FromR, ToR, Msg, Self, Messages) ->
         To = string:to_lower(ToR),
         SelfL = string:to_lower(Self),
         if
@@ -96,7 +98,7 @@ new_message(FromR, ToR, Msg, State=#state{nick=Self}) ->
                                 _ ->
 					NewData = orddict:store(To, NewValue, Messages),
 					save_messages(NewData),
-                                        self() ! {state, set_data(State, NewData)},
+                                        store_data(NewData),
                                         ["Sending a message to ", ToR, " when they arrive."]
                         end
         end.
