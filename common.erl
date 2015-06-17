@@ -59,8 +59,8 @@ tcp_parse(S, M) ->
 			Origin = parse_origin(RawOrigin),
 			case tl(Tokens) of
 				% Setup & system
-				["NICK", Nick] -> {irc, {nick, {Origin, Nick}}};
-				["QUIT" | Reason] -> {irc, {quit, {Origin, Reason}}};
+				["NICK", Nick] -> {irc, {nick, {Origin, tl(Nick)}}};
+				["QUIT" | Reason] -> {irc, {quit, {Origin, [tl(hd(Reason)) | tl(Reason)]}}};
 				["MODE" | Params] -> {irc, {mode, {Origin, Params}}};
 				["KICK", Channel, Nick | Params] ->
 					{irc, {kick, {Origin, Nick, Channel, [tl(hd(Params)) | tl(Params)]}}};
@@ -68,7 +68,7 @@ tcp_parse(S, M) ->
 					{irc, {topic, {Origin, Channel, [tl(hd(Topic)) | tl(Topic)]}}};
 
 				% Channel management
-				["JOIN", Channel] -> {irc, {join, {Origin, Channel}}};
+				["JOIN", [_|Channel]] -> {irc, {join, {Origin, Channel}}};
 				["PART", Channel | Msg] -> {irc, {part, {Origin, Channel, Msg}}};
 				
 				% Messaging
@@ -84,7 +84,8 @@ tcp_parse(S, M) ->
 							{irc, {numeric, {Parsed, Params}}};
 						{_, _} -> common:debug("PARSE", "Unknown TCP message received; ~s : ~s", [Cmd, string:join(Params, " ")])
 					end
-			end
+			end;
+		_ -> debug("PARSE", "Expected :, saw '~s'.", [M])
 	end.
 
 parse_ctcp(Origin, Tokens) ->
@@ -265,3 +266,14 @@ numeric_parse(Num) ->
 		502 -> {err, users_dont_match};
 		_ -> {unknown, Num}
 	end.
+
+format_time_difference(T) when T <    60 ->  t_quant(T,          "second");
+format_time_difference(T) when T <  3600 -> [t_quant(T div   60, "minute"), t_quant2( T rem    60,           "second")];
+format_time_difference(T) when T < 86400 -> [t_quant(T div  3600,  "hour"), t_quant2((T rem  3600) div   60, "minute")];
+format_time_difference(T)                -> [t_quant(T div 86400,   "day"), t_quant2((T rem 86400) div 3600,   "hour")].
+
+t_quant(1,U) -> ["1 ", U];
+t_quant(V,U) -> [integer_to_list(V),32,U,115].
+
+t_quant2(0,_) -> "";
+t_quant2(V,U) -> [", ",t_quant(V,U)].

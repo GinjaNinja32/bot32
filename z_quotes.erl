@@ -8,12 +8,19 @@ get_commands() ->
 		{"quote", fun quote/5, user},
 		{"quotename", fun quotename/5, user},
 		{"quoteword", fun quoteword/5, user},
-		{"addquote", fun addquote/5, user},
+		{"addquote",  fun addquote/5, user},
 		{"makequote", fun addquote/5, user},
-		{"save_quote", fun savequote/5, admin},
-		{"load_quote", fun loadquote/5, admin},
-		{"delquote", fun delquote/5, admin},
-		{"remquote", fun delquote/5, admin}
+		{"save_quote", fun savequote/5, host},
+		{"load_quote", fun loadquote/5, host},
+		{"delquote",    gen_delquote(fun gen_genmatch/1  ), admin},
+		{"delquote_c",  gen_delquote(fun gen_catmatch/1  ), admin},
+		{"delquote_e",  gen_delquote(fun gen_exmatch/1   ), admin},
+		{"delquote_ce", gen_delquote(fun gen_excatmatch/1), admin},
+		{"remquote",    gen_delquote(fun gen_genmatch/1  ), admin},
+		{"remquote_c",  gen_delquote(fun gen_catmatch/1  ), admin},
+		{"remquote_e",  gen_delquote(fun gen_exmatch/1   ), admin},
+		{"remquote_ce", gen_delquote(fun gen_excatmatch/1), admin}
+
 	].
 
 get_data(#state{moduledata=M}) ->
@@ -44,7 +51,7 @@ quotename(_, ReplyTo, Ping, Params, State=#state{}) ->
 	{irc, {msg, {ReplyTo, [Ping, get_quote_name(string:strip(string:to_lower(string:join(Params, " "))), get_data(State))]}}}.
 
 quoteword(_, ReplyTo, Ping, Params, State=#state{}) ->
-	{irc, {msg, {ReplyTo, [Ping, get_quote(" " ++ string:strip(string:to_lower(string:join(Params, " "))) ++ " ", get_data(State))]}}}.
+	{irc, {msg, {ReplyTo, [Ping, get_quote_word(string:strip(string:join(Params, " ")), get_data(State))]}}}.
 
 addquote(_, ReplyTo, Ping, [], _) ->
 	{irc, {msg, {ReplyTo, [Ping, "Please provide a category and a quote."]}}};
@@ -64,14 +71,35 @@ loadquote(_, ReplyTo, Ping, _, _) ->
 	store_data(load_quotes()),
 	{irc, {msg, {ReplyTo, [Ping, "Loaded quotes."]}}}.
 
-delquote(_, ReplyTo, Ping, Params, State=#state{}) ->
-	case remove_quote(string:join(Params, " "), get_data(State)) of
-		no_match -> {irc, {msg, {ReplyTo, [Ping, "No matching quotes found."]}}};
-		{multi_match,Num} -> {irc, {msg, {ReplyTo, [Ping, integer_to_list(Num), " matching quotes found."]}}};
-		NewData ->
-			save_quotes(NewData),
-			store_data(NewData),
-			{irc, {msg, {ReplyTo, [Ping, "Quote deleted."]}}}
+gen_genmatch(Params) ->
+	Quot = string:to_lower(string:join(Params, " ")),
+	fun({_,Q}) -> string:str(string:to_lower(Q), Quot) /= 0 end.
+
+gen_exmatch(Params) ->
+	Quot = string:to_lower(string:join(Params, " ")),
+	fun({_,Q}) -> string:to_lower(Q) == Quot end.
+
+gen_catmatch(Params) ->
+	Cat = string:to_lower(hd(Params)),
+	General = gen_genmatch(tl(Params)),
+	fun(T={C,_}) -> Cat == C andalso General(T) end.
+
+gen_excatmatch(Params) ->
+	Cat = string:to_lower(hd(Params)),
+	General = gen_exmatch(tl(Params)),
+	fun(T={C,_}) -> Cat == C andalso General(T) end.
+
+gen_delquote(Func) ->
+	fun(_, ReplyTo, Ping, [], _) -> {irc, {msg, {ReplyTo, [Ping, "Provide a quote to delete!"]}}};
+	   (_, ReplyTo, Ping, Params, State=#state{}) ->
+		case remove_quote(Func(Params), get_data(State)) of
+			no_match -> {irc, {msg, {ReplyTo, [Ping, "No matching quotes found."]}}};
+			{multi_match, Num} -> {irc, {msg, {ReplyTo, [Ping, integer_to_list(Num), " matching quotes found."]}}};
+			NewData ->
+				save_quotes(NewData),
+				store_data(NewData),
+				{irc, {msg, {ReplyTo, [Ping, "Quote deleted."]}}}
+		end
 	end.
 
 %
@@ -83,11 +111,8 @@ get_quote(String, Quotes) ->
 		end, Quotes),
 	pick_quote(Matching).
 
-remove_quote([], _) -> no_match;
-remove_quote(String, Quotes) ->
-	case lists:filter(fun({_, Q}) ->
-				string:str(string:to_lower(Q), String) /= 0
-			end, Quotes) of
+remove_quote(MatchFunc, Quotes) ->
+	case lists:filter(MatchFunc, Quotes) of
 		[] -> no_match;
 		[Quote] -> lists:delete(Quote, Quotes);
 		Q -> {multi_match, length(Q)}
@@ -96,6 +121,29 @@ remove_quote(String, Quotes) ->
 get_quote_name([], _) -> "Please supply a username to quote from.";
 get_quote_name(String, Quotes) ->
 	Matching = lists:filter(fun({Cat, _}) -> lists:prefix(String, Cat) end, Quotes),
+	pick_quote(Matching).
+
+get_quote_word([], _) -> "Please supply a word or words to find quotes for.";
+get_quote_word(String, Quotes) ->
+	Regexed = lists:foldl(fun([F,R], Str) -> re:replace(Str, F, R) end, String,
+		[
+			["\\\\","\\\\\\\\"],
+			["\\^", "\\\\^"],
+			["\\$", "\\\\$"],
+			["\\.", "\\\\."],
+			["\\[", "\\\\["],
+			["\\]", "\\\\]"],
+			["\\(", "\\\\("],
+			["\\)", "\\\\)"],
+			["\\?", "\\\\?"],
+			["\\*", "\\\\*"],
+			["\\+", "\\\\+"],
+			["\\{", "\\\\{"],
+			["\\-", "\\\\-"]
+		]),
+	Matching = lists:filter(fun({_,Q}) ->
+			re:run(Q, ["\\W",Regexed,"\\W"], [{capture, none}, caseless]) == match
+		end, Quotes),
 	pick_quote(Matching).
 
 pick_quote([]) -> "No matching quotes.";

@@ -30,7 +30,7 @@ loop(Sock) ->
 					case whereis(bot) of
 						undefined ->
 								case T of
-									{msg, {_User, _Channel, ["##SPAWN"]}} -> common:debug("CORE", "Spawn request received, spawning!"), spawn(bot,init,[]);
+									{msg, {_User, _Channel, ["##SPAWN"]}} -> common:debug("CORE", "Spawn request received, spawning!"), spawn(bot,init,[]), ok;
 									_ -> common:debug("CORE", "could not find bot PID!")
 								end;
 						Pid -> Pid ! {irc, T}, ok

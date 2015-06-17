@@ -3,8 +3,8 @@
 
 get_commands() ->
 	[
-		{"eval", gen_eval(fun eval/1), admin},
-		{"evalstr", gen_eval_str(fun eval/1), admin},
+		{"eval", gen_eval(fun eval/1), host},
+		{"evalstr", gen_eval_str(fun eval/1), host},
 		{"math", gen_eval(fun math/1), user}
 	].
 
@@ -14,8 +14,15 @@ deinitialise(T) -> T.
 gen_eval(Func) ->
 	fun(_,ReplyTo,Ping,[    ],_) -> {irc, {msg, {ReplyTo, [Ping, "Provide a string to evaluate!"]}}};
 	   (_,ReplyTo,Ping,Params,_) ->
-		case Func(string:join(Params, " ")++".") of
+		Raw = lists:flatten(string:join(Params, " ")),
+		Str = case lists:last(Raw) of
+			$. -> Raw;
+			_ -> Raw ++ "."
+		end,
+		case Func(Str) of
 			{ok, Value} -> {irc, {msg, {ReplyTo, [Ping, re:replace(io_lib:format("~w", [Value]), "[\r\n]", "")]}}};
+			{error, {errored, {badmatch, {error, {_,_,Err}}}}} ->
+				{irc, {msg, {ReplyTo, [Ping, "Error: ", re:replace(Err, "[\r\n]", "")]}}};
 			{error, {Type, Error}} ->
 				T = re:replace(io_lib:format("Uncaught ~w ~w", [Type, Error]), "[\r\n]", ""),
 				common:debug("EVAL", "~s", [T]),
@@ -26,8 +33,15 @@ gen_eval(Func) ->
 gen_eval_str(Func) ->
 	fun(_,ReplyTo,Ping,[    ],_) -> {irc, {msg, {ReplyTo, [Ping, "Provide a string to evaluate!"]}}};
 	   (_,ReplyTo,Ping,Params,_) ->
-		case Func(string:join(Params, " ")++".") of
+		Raw = lists:flatten(string:join(Params, " ")),
+		Str = case lists:last(Raw) of
+			$. -> Raw;
+			_ -> Raw ++ "."
+		end,
+		case Func(Str) of
 			{ok, Value} -> {irc, {msg, {ReplyTo, [Ping, re:replace(io_lib:format("~s", [Value]), "[\r\n]", "")]}}};
+			{error, {errored, {badmatch, {error, {_,_,Err}}}}} ->
+				{irc, {msg, {ReplyTo, [Ping, "Error: ", re:replace(io_lib:format("~s", [Err]), "[\r\n]", "")]}}};
 			{error, {Type, Error}} ->
 				T = re:replace(io_lib:format("Uncaught ~w ~w", [Type, Error]), "[\r\n]", ""),
 				common:debug("EVAL", "~s", [T]),

@@ -63,9 +63,9 @@ dice_roll(N, S, M, StrN, StrS, StrM, Collapse, Dicemode) ->
                 true -> get_dice(N, S, Collapse, M, Dicemode)
         end.
 
-
+get_dice([], _, _) -> "Provide a string to roll in the form AdB, or AdB+/-C";
 get_dice(Params, Collapse, Dicemode) ->
-        R = re:run(Params, "^([0-9]*)d([0-9]*)([\\+-][0-9]+)?", [{capture, all_but_first, list}]),
+        R = re:run(hd(Params), "^([0-9]*)d([0-9]*)([\\+-][0-9]+)?", [{capture, all_but_first, list}]),
         case R of
                 {match, [StrN, StrS, StrM]} ->
                                 N = parse_dice(StrN, 1),

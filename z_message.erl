@@ -7,9 +7,9 @@ get_commands() ->
 	[
 		{"cm", fun check_messages/5, user},
 		{"tell", fun new_message/5, user},
-		{"save_msg", fun save_messages/5, admin},
-		{"load_msg", fun load_messages/5, admin},
-		{"dbg_msg", fun debug_messages/5, admin}
+		{"save_msg", fun save_messages/5, host},
+		{"load_msg", fun load_messages/5, host},
+		{"dbg_msg", fun debug_messages/5, host}
 	].
 
 get_data(#state{moduledata=M}) ->
@@ -64,7 +64,10 @@ check_messages_for(NickR, Messages) ->
                 {ok, M} ->
                         lists:foreach(fun({From, Timestamp, Message}) ->
                                         {Date, Time} = format_time(Timestamp),
-                                        core ! {irc, {msg, {Nick, [Message, " - From ", From, " at ", Time, " on ", Date]}}}
+					ThenSecs = calendar:datetime_to_gregorian_seconds(Timestamp),
+					Secs = calendar:datetime_to_gregorian_seconds(calendar:now_to_universal_time(os:timestamp())),
+					DiffStr = common:format_time_difference(Secs - ThenSecs),
+                                        core ! {irc, {msg, {Nick, [Message, " - From ", From, " at ", Date, " ", Time, " UTC (",DiffStr," ago)"]}}}
                                 end, M),
 			NewData = orddict:erase(Nick, Messages),
 			save_messages(NewData),
