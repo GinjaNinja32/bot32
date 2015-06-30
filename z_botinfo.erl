@@ -6,7 +6,9 @@
 get_commands() ->
 	[
 		{"uptime", fun uptime/5, user},
-		{"version", fun version/5, user}
+		{"version", fun version/5, user},
+		{"source", fun source/5, user},
+		{"github", fun source/5, user}
 	].
 
 sectimestamp() -> calendar:datetime_to_gregorian_seconds(calendar:now_to_universal_time(os:timestamp())).
@@ -31,3 +33,6 @@ version(_, RT, P, _, _) ->
 	end,
 
 	{irc, {msg, {RT, [P, ?VERSION, " running on Erlang ", ErlVer, " on ", atom_to_list(OSname), $ , OSver, $.]}}}.
+
+source(_, RT, P, _, _) ->
+	{irc, {msg, {RT, [P, "http://github.com/GinjaNinja32/bot32"]}}}.
