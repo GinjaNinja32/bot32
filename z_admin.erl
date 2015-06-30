@@ -9,6 +9,7 @@ get_commands() ->
 %		{"deadmin", fun deadmin/5, admin},
 		{"setrank", fun setrank/5, host},
 		{"getrank", fun getrank/5, admin},
+		{"whorank", fun whorank/5, admin},
 		{"join", fun join/5, admin},
 		{"part", fun part/5, admin},
 		{"nick", fun nick/5, admin},
@@ -19,7 +20,9 @@ get_commands() ->
 		{"ignore", fun ignore/5, admin},
 		{"unignore", fun unignore/5, admin},
 		{"whoignore", fun whoignore/5, admin},
-		{"prefix", fun prefix/5, host}
+		{"prefix", fun prefix/5, host},
+		{"addprefix", fun addprefix/5, host},
+		{"remprefix", fun remprefix/5, host}
 	].
 
 initialise(T) -> T.
@@ -54,14 +57,17 @@ setrank(_, ReplyTo, Ping, [Rank | Nicks], State) ->
 							false -> core ! {irc, {msg, {ReplyTo, [Ping, "Received an incorrect or unexpected WHOIS reply to WHOIS ",Nick,"!"]}}}, Stat
 						end;
 					_ ->
-						common:debug("BOT", "badly formatted message was ~p", [Params]),
+						logging:log(error, "BOT", "badly formatted message was ~p", [string:join(Params, " ")]),
 						core ! {irc, {msg, {ReplyTo, [Ping, "Received a badly-formatted RPL_WHOISUSER message to WHOIS ",Nick,"!"]}}},
 						Stat
 				end;
-			{irc, {numeric, {{err,nosuchnick}, _}}} ->
+			{irc, {numeric, {{err,no_such_nick}, _}}} ->
 				core ! {irc, {msg, {ReplyTo, [Ping, "No user with nick ",Nick," found!"]}}}, Stat;
 			brkloop -> throw(return)
+		after 1000 -> throw(return)
 		end end, State, Nicks),
+	X = file:write_file("permissions.crl", io_lib:format("~p.~n", [NewState#state.permissions])),
+	logging:log(info, "BOT", "permissions save: ~p", [X]),
 	{state, NewState}
 	catch
 		throw:return -> {irc, {msg, {ReplyTo, [Ping, "Loop cancelled."]}}}
@@ -75,6 +81,12 @@ getrank(_, ReplyTo, Ping, [Nick], State) ->
 		T when is_list(T) -> [integer_to_list(length(T)), " entries found (?)"];
 		_ -> "Error."
 	end,
+	{irc, {msg, {ReplyTo, [Ping, Reply]}}}.
+
+whorank(_, ReplyTo, Ping, _, State) ->
+	List = orddict:fetch_keys(State#state.permissions),
+	{Initial,_,_} = hd(List),
+	Reply = lists:foldl(fun({N,_,_},K) -> [N,","|K] end, Initial, tl(List)),
 	{irc, {msg, {ReplyTo, [Ping, Reply]}}}.
 
 %admin(_, ReplyTo, Ping, [], _) ->
@@ -149,5 +161,36 @@ whoignore(_, ReplyTo, Ping, _, #state{ignore=I}) ->
 
 prefix(_, ReplyTo, Ping, [], _) -> {irc, {msg, {ReplyTo, [Ping, "Please provide a prefix to use for commands."]}}};
 prefix(_, ReplyTo, Ping, Params, State=#state{}) ->
-	self() ! {state, State#state{prefix=hd(hd(Params))}},
+	self() ! {state, State#state{prefix=[hd(hd(Params))]}},
 	{irc, {msg, {ReplyTo, [Ping, "Prefix set to ", hd(hd(Params))]}}}.
+
+addprefix(_, ReplyTo, Ping, [], _) -> {irc, {msg, {ReplyTo, [Ping, "Please provide an additional prefix to use for commands."]}}};
+addprefix(_, ReplyTo, Ping, Params, State=#state{}) ->
+	Reply = case State#state.prefix of
+		Old when is_number(Old) -> New = [hd(hd(Params)) , Old], ["Prefix set to ",New];
+		Old when is_list(Old)   -> New = [hd(hd(Params)) | Old], ["Prefix set to ",New];
+		_ -> New = [hd(hd(Params))], io_lib:format("Unknown prefix format ~w", [State#state.prefix])
+	end,
+	self() ! {state, State#state{prefix=New}},
+	{irc, {msg, {ReplyTo, [Ping, Reply]}}}.
+
+remprefix(_, ReplyTo, Ping, [], _) -> {irc, {msg, {ReplyTo, [Ping, "Please provide a prefix to stop using for commands."]}}};
+remprefix(_, ReplyTo, Ping, Params, State=#state{}) ->
+	ToRemove = hd(hd(Params)),
+	Reply = case State#state.prefix of
+		Old when is_number(Old) ->
+			if
+				ToRemove == Old -> New = [];
+				true -> New = [Old]
+			end,
+			["Prefix set to ", New];
+		Old when is_list(Old) ->
+			New = lists:delete(ToRemove, Old),
+			["Prefix set to ", New];
+		Old ->
+			New = Old, io_lib:format("Unknown prefix format ~w", [Old])
+	end,
+	self() ! {state, State#state{prefix=New}},
+	{irc, {msg, {ReplyTo, [Ping, Reply]}}}.
+
+

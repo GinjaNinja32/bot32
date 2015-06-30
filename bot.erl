@@ -4,7 +4,7 @@
 
 -include("definitions.hrl").
 
--record(config, {nick, prefix, permissions, ignore, user, mode, real, channels, on_join, modules}).
+-record(config, {nick, prefix, permissions, ignore, user, mode, real, channels, on_join, modules, pass}).
 
 waitfor(Ident) ->
 	case whereis(Ident) of
@@ -22,10 +22,10 @@ init() ->
 		{ok, [Perms]} -> Perms;
 		_ -> orddict:new()
 	end,
-	BaseConfig = #config{nick="Bot32", prefix=$!, permissions=BasePerms, user="Bot32", mode="0", real="Bot32", channels=sets:new(), ignore=sets:new(), on_join=[], modules=[z_basic]},
+	BaseConfig = #config{nick="Bot32", prefix=$!, permissions=BasePerms, user="Bot32", mode="0", real="Bot32", channels=sets:new(), ignore=sets:new(), on_join=[], modules=[z_basic], pass=none},
 	case file:consult("bot_config.crl") of
 		{error, Reason} ->
-			common:debug("BOT", "Failed to load config file: ~p.", [Reason]),
+			logging:log(error, "BOT", "Failed to load config file: ~p.", [Reason]),
 			UseConfig = BaseConfig;
 		{ok, Terms} ->
 			UseConfig = lists:foldl(fun(Option, Config=#config{permissions=Perms, on_join=OJ, channels=C, ignore=I, modules=M}) ->
@@ -58,16 +58,21 @@ init() ->
 						{module, Mod}		when is_atom(Mod)				-> Config#config{modules = [Mod | M]};
 						{modules, Mods}		when is_list(Mods)				-> Config#config{modules=lists:foldl(
 																fun	(Mod, MX) when is_atom(Mod) -> [Mod|MX];
-																	(Mod, _) -> common:debug("BOT", "Non-atomic module ~p specified!", [Mod])
+																	(Mod, _) -> logging:log(error, "BOT", "Non-atomic module ~p specified!", [Mod])
 																 end, M, Mods)};
 
+						{pass, Password}	when Password == none orelse is_list(Password)  -> Config#config{pass=Password};
 						{on_join, Cmd}		when is_tuple(Cmd)				-> Config#config{on_join = [Cmd | OJ]};
 
-						T -> common:debug("BOT", "Failed to parse config line ~p!", [T]), Config
+						T -> logging:log(error, "BOT", "Failed to parse config line ~p!", [T]), Config
 					end
 				end, BaseConfig, Terms)
 	end,
 	waitfor(core), % wait for core to startup
+	if
+		UseConfig#config.pass /= none -> core ! {irc, {pass, UseConfig#config.pass}};
+		true -> ok
+	end,
 	core ! {irc, {user, {UseConfig#config.user, UseConfig#config.mode, UseConfig#config.real}}},
 	core ! {irc, {nick, UseConfig#config.nick}},
 	timer:sleep(250),
@@ -76,7 +81,7 @@ init() ->
 		end, UseConfig#config.on_join),
 	timer:sleep(50), % wait for server auth
 	lists:foreach(fun(T) -> core ! {irc, {join, T}} end, sets:to_list(UseConfig#config.channels)),
-	common:debug("BOT", "starting"),
+	logging:log(info, "BOT", "starting"),
 	State = load_modules(UseConfig#config.modules,
 			    #state{
 				nick     = UseConfig#config.nick,
@@ -90,29 +95,29 @@ init() ->
 	case loop(State) of
 		FinalState=#state{} ->
 			X = file:write_file("permissions.crl", io_lib:format("~p.~n", [FinalState#state.permissions])),
-			common:debug("BOT", "permissions save: ~p", [X]),
+			logging:log(info, "BOT", "permissions save: ~p", [X]),
 			lists:foreach(fun(Module) ->
 					apply(Module, deinitialise, [FinalState])
 				end, sets:to_list(FinalState#state.modules)),
-			common:debug("BOT", "quitting");
-		T -> common:debug("BOT", "quitting under condition ~p", [T])
+			logging:log(info, "BOT", "quitting");
+		T -> logging:log(info, "BOT", "quitting under condition ~p", [T])
 	end.
 
 reinit(State) ->
 	register(bot, self()),
-	common:debug("BOT", "starting"),
+	logging:log(info, "BOT", "starting"),
 	case loop(State) of
 		FinalState=#state{} ->
 			lists:foreach(fun(Module) ->
 					apply(Module, deinitialise, [FinalState])
 				end, sets:to_list(FinalState#state.modules)),
-			common:debug("BOT", "quitting");
-		T -> common:debug("BOT", "quitting under condition ~p", [T])
+			logging:log(info, "BOT", "quitting");
+		T -> logging:log(info, "BOT", "quitting under condition ~p", [T])
 	end.
 
 notify_error(msg, {#user{nick=N}, MyNick, _}, #state{nick=MyNick}) -> {irc, {msg, {N, "Error!"}}};
 notify_error(msg, {#user{nick=N}, Channel, _}, _) -> {irc, {msg, {Channel, [N, ": Error!"]}}};
-notify_error(X, Y, _) -> common:debug("BOT", "~p : ~p", [X,Y]).
+notify_error(X, Y, _) -> logging:log(error, "BOT", "~p : ~p", [X,Y]).
 
 loop(State = #state{}) ->
 	case receive
@@ -120,37 +125,37 @@ loop(State = #state{}) ->
 			try
 				handle_irc(Type, Params, State)
 			catch
-				throw:T -> common:debug("BOT", "handle_irc threw ~p, continuing",   [T]), notify_error(Type, Params, State);
-				error:T -> common:debug("BOT", "handle_irc errored ~p, continuing", [T]), notify_error(Type, Params, State);
-				exit:T ->  common:debug("BOT", "handle_irc exited ~p, continuing",  [T]), notify_error(Type, Params, State)
+				throw:T -> logging:log(error, "BOT", "handle_irc threw ~p, continuing",   [T]), notify_error(Type, Params, State);
+				error:T -> logging:log(error, "BOT", "handle_irc errored ~p, continuing", [T]), notify_error(Type, Params, State);
+				exit:T ->  logging:log(error, "BOT", "handle_irc exited ~p, continuing",  [T]), notify_error(Type, Params, State)
 			end;
 		T when is_atom(T) -> T;
 		{T, K} when is_atom(T) -> {T, K};
-		T -> common:debug("BOT", "unknown receive ~p, continuing", [T])
+		T -> logging:log(error, "BOT", "unknown receive ~p, continuing", [T])
 	end of
-		{multi, List} -> lists:foreach(fun(T) -> core ! T end, List), loop(State);
-		{irc, What} -> core ! {irc,What}, loop(State);
+		{multi, List} -> lists:foreach(fun(T) -> core ! T end, List), bot:loop(State);
+		{irc, What} -> core ! {irc,What}, bot:loop(State);
 		quit -> State;
 		error -> error;
-		ok -> loop(State);
-		{state, S = #state{}} -> loop(S);
-		{setkey, {Key, Val}} -> loop(State#state{moduledata = orddict:store(Key, Val, State#state.moduledata)});
+		ok -> bot:loop(State);
+		{state, S = #state{}} -> bot:loop(S);
+		{setkey, {Key, Val}} -> bot:loop(State#state{moduledata = orddict:store(Key, Val, State#state.moduledata)});
 		update -> spawn(common,purge_call,[bot,reinit, State]), ok;
-		S -> common:debug("BOT", "unknown code ~p, continuing", [S]), loop(State)
+		S -> logging:log(error, "BOT", "unknown code ~p, continuing", [S]), bot:loop(State)
 	end.
 
 message_admins(Category, Msg, Admins) ->
-	common:debug("ADMIN", [Category, ": ", Msg]),
+	logging:log(info, "ADMIN", [Category, ": ", Msg]),
 	lists:foreach(fun(T) ->
 			core ! {irc, {msg, {T, [Category, ": ", Msg]}}}
 		end, sets:to_list(Admins)),
 	ok.
 
 message_all_rank(Category, Msg, Rank, Permissions) ->
-	common:debug(Rank, "~s: ~s", [Category, Msg]),
+	logging:log(info, Rank, "~s: ~s", [Category, Msg]),
 	lists:foreach(fun({N,_U,_H}) ->
 			core ! {irc, {msg, {N, [Category, ": ", Msg]}}}
-		end, orddict:fetch_keys(orddict:filter(fun(_,V) -> V == Rank end, Permissions))).
+		end, orddict:fetch_keys(orddict:filter(fun(_,V) -> lists:member(Rank,V) end, Permissions))).
 
 is_ignored(#user{nick=N}, Ignored) ->
 	sets:is_element(string:to_lower(N), Ignored).
@@ -166,6 +171,27 @@ hasperm(#user{nick=N,username=U,host=H}, Perm, Permissions) ->
 	case orddict:find({string:to_lower(N),U,H}, Permissions) of
 		{ok, T} -> lists:member(Perm, T);
 		error -> false
+	end.
+
+
+parse_command([],_,_) -> notcommand;
+parse_command(Params, Prefix, BotAliases) when is_list(Prefix) ->
+	case lists:member(hd(hd(Params)), Prefix) of
+		true -> {tl(hd(Params)), tl(Params)};
+		false -> parse_command(Params, none, BotAliases)
+	end;
+parse_command(Params, Prefix, BotAliases) ->
+	case hd(Params) of
+		[Prefix | Command] -> {Command, tl(Params)};
+		X when length(Params) > 1 ->
+			case lists:any(fun(Alias) -> lists:prefix(string:to_lower(Alias), string:to_lower(X)) end, BotAliases) of
+				true -> case tl(Params) of
+						[] -> {[], []};
+						_ -> {hd(tl(Params)), tl(tl(Params))}
+					end;
+				false -> notcommand
+			end;
+		_ -> notcommand
 	end.
 
 handle_irc(msg, {User=#user{nick=Nick}, Channel, Tokens}, State=#state{nick=MyNick, prefix=Prefix, permissions=Permissions, ignore=Ignored, modules=M}) ->
@@ -185,29 +211,43 @@ handle_irc(msg, {User=#user{nick=Nick}, Channel, Tokens}, State=#state{nick=MyNi
 					ReplyPing = "",
 					case hasperm(User, admin, Permissions) of
 						true -> ok;
-						_ -> message_all_rank(["Query from ",Nick], string:join(Tokens, " "), admin, Permissions)
+						_ -> message_all_rank(["Query from ",Nick], string:join(Tokens, " "), pmlog, Permissions)
 					end;
 				_ ->
 					ReplyChannel = Channel,
 					ReplyPing = Nick ++ ": "
 			end,
-			case hd(Tokens) of
-				[Prefix | Command] ->
+			case parse_command(Tokens, Prefix, [MyNick]) of
+				{Command, Arguments} ->
+					logging:log(info, "BOT", "Command in ~s from ~s: ~s ~s", [Channel, User#user.nick, Command, string:join(Arguments, " ")]),
 					Rank = rankof(User, Permissions),
 					case hasperm(User, host, Permissions) of
-						true -> handle_host_command(Rank, Nick, ReplyChannel, ReplyPing, Command, tl(Tokens), State);
-						false ->      handle_command(Rank, Nick, ReplyChannel, ReplyPing, Command, tl(Tokens), State)
+						true -> handle_host_command(Rank, Nick, ReplyChannel, ReplyPing, Command, Arguments, State);
+						false ->     handle_command(Rank, Nick, ReplyChannel, ReplyPing, Command, Arguments, State)
 					end;
-				X ->
-					case lists:prefix(string:to_lower(MyNick), string:to_lower(X)) of
-						true ->
-							Rank = rankof(User, Permissions),
-							case hasperm(User, host, Permissions) of
-								true -> handle_host_command(Rank, Nick, ReplyChannel, ReplyPing, hd(tl(Tokens)), tl(tl(Tokens)), State);
-								false ->      handle_command(Rank, Nick, ReplyChannel, ReplyPing, hd(tl(Tokens)), tl(tl(Tokens)), State)
-							end;
-						false -> ok
+				notcommand ->
+					case lists:dropwhile(fun(X) -> re:run(X, "^https?://.*$", [{capture, none}]) /= match end, Tokens) of
+						_ -> ok; % Temporary until oldNT is gone
+						[URL|_] ->
+							os:putenv("url", URL),
+							{irc, {msg, {ReplyChannel, [ReplyPing, os:cmd("/home/bot32/urltitle.sh $url")]}}}
+					end,
+					case lists:dropwhile(fun(X) -> re:run(X, "^(\[[1-9][0-9]+\]|#[1-9][0-9]+)$", [{capture, none}]) /= match end, Tokens) of
+						[] -> ok;
+						[PRNum|_] ->
+							case PRNum of
+								[$# | Num] -> GH_NUM = Num;
+								[$[ | Num] -> GH_NUM = lists:reverse(tl(lists:reverse(Num)))
+							end,
+							os:putenv("url", ["http://github.com/Baystation12/Baystation12/issues/", GH_NUM]),
+							URLTitle = string:strip(re:replace(os:cmd("/home/bot32/urltitle.sh $url"), "([^·]*·[^·]*) · .*", "\\1", [{return, list}])),
+							case re:run(URLTitle, "Issue #[0-9]+$", [{capture, none}]) of
+								match -> ShowURL = ["http://github.com/Baystation12/Baystation12/issues/", GH_NUM];
+								nomatch -> ShowURL = ["http://github.com/Baystation12/Baystation12/pull/", GH_NUM]
+							end,
+							{irc, {msg, {ReplyChannel, [ReplyPing, ShowURL, " - ", URLTitle]}}}
 					end
+							
 			end
 	end;
 
@@ -215,7 +255,7 @@ handle_irc(ctcp, {Type, #user{nick=Nick}, _Message}, _State) ->
 	case Type of
 		version -> {irc, {ctcp_re, {version, Nick, ?VERSION}}};
 		action -> ok;
-		_ -> common:debug("BOT", "Unknown CTCP message ~p, continuing", [Type])
+		_ -> logging:log(error, "BOT", "Unknown CTCP message ~p, continuing", [Type])
 	end;
 
 handle_irc(nick, {#user{nick=MyNick}, NewNick}, State=#state{nick=MyNick}) -> {state, State#state{nick=NewNick}};
@@ -267,14 +307,14 @@ handle_irc(quit, {#user{nick=N}, Reason}, S=#state{modules=M}) ->
 
 handle_irc(mode, _, _) -> ok;
 handle_irc(numeric, {{rpl,away},_}, _) -> ok;
-handle_irc(numeric, {{A,B},Params}, _) -> common:debug("BOT", "Numeric received: ~p_~p ~s", [A,B,string:join(Params," ")]);
+handle_irc(numeric, {{A,B},Params}, _) -> logging:log(info, "BOT", "Numeric received: ~p_~p ~s", [A,B,string:join(Params," ")]);
 
-handle_irc(Type, Params, _State) -> common:debug("BOT", "unknown irctype ~p <<<~p>>>, continuing", [Type, Params]).
+handle_irc(Type, Params, _State) -> logging:log(error, "BOT", "unknown irctype ~p <<<~p>>>, continuing", [Type, Params]).
 
 handle_host_command(Rank, Origin, ReplyTo, Ping, Cmd, Params, State=#state{}) ->
 	case string:to_lower(Cmd) of
 		"update" ->		update;
-		"help" ->		core ! {irc, {msg, {ReplyTo, ["builtin host commands: update, reload_all, drop_all, load_mod, drop_mod, reload_mod"]}}},
+		"help" ->		core ! {irc, {msg, {Origin, ["builtin host commands: update, reload_all, drop_all, load_mod, drop_mod, reload_mod"]}}},
 					handle_command(Rank, Origin, ReplyTo, Ping, Cmd, Params, State);
 
 		"reload_all" ->
@@ -334,7 +374,7 @@ handle_command(Ranks, Origin, ReplyTo, Ping, Cmd, Params, State=#state{commands=
 					error -> orddict:new()
 				end,
 				case string:to_lower(Cmd) of
-					"help" -> core ! {irc, {msg, {ReplyTo, [io_lib:format("~s commands: ",[Rank]), string:join(orddict:fetch_keys(RankCmds), ", "), "."]}}}, unhandled;
+					"help" -> core ! {irc, {msg, {Origin, [io_lib:format("~s commands: ",[Rank]), string:join(orddict:fetch_keys(RankCmds), ", "), "."]}}}, unhandled;
 		
 					T -> case orddict:find(T, RankCmds) of
 						{ok, {_,Result}} -> apply(Result, [Origin, ReplyTo, Ping, Params, State]);
@@ -355,7 +395,7 @@ handle_command(Ranks, Origin, ReplyTo, Ping, Cmd, Params, State=#state{commands=
 load_modules(Modules, State) -> lists:foldl(fun load_module/2, State, Modules).
 
 load_module(Module, State) ->
-	common:debug("MODULE", "loading ~p", [Module]),
+	logging:log(info, "MODULE", "loading ~p", [Module]),
 
 	% Load commands
 	NewCmds = lists:foldl(
@@ -379,7 +419,7 @@ load_module(Module, State) ->
 unload_modules(Modules, State) -> lists:foldl(fun unload_module/2, State, Modules).
 
 unload_module(Module, State) ->
-	common:debug("MODULE", "unloading ~p", [Module]),
+	logging:log(info, "MODULE", "unloading ~p", [Module]),
 
 	% Remove commands
 	Cleaned = orddict:map(fun(_,RankCmds) ->
@@ -406,7 +446,7 @@ recompile_module(Module, State) ->
 		code:load_file(Module),
 		load_module(Module, Sa)
 	catch
-		throw:X -> common:debug("MODULE", "Recompile of ~p threw ~p", [Module, X]), State;
-		error:X -> common:debug("MODULE", "Recompile of ~p errored ~p", [Module, X]), State;
-		exit:X -> common:debug("MODULE", "Recompile of ~p exited ~p", [Module, X]), State
+		throw:X -> logging:log(error, "MODULE", "Recompile of ~p threw ~p", [Module, X]), State;
+		error:X -> logging:log(error, "MODULE", "Recompile of ~p errored ~p", [Module, X]), State;
+		exit:X -> logging:log(error, "MODULE", "Recompile of ~p exited ~p", [Module, X]), State
 	end.

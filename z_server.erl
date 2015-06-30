@@ -4,82 +4,78 @@
 -include("definitions.hrl").
 -define(Timer, 100).
 
+waitfor_gone(Ident) ->
+	case whereis(Ident) of
+		undefined -> ok;
+		_ ->
+			timer:sleep(100),
+			waitfor_gone(Ident)
+	end.
+
 get_commands() ->
 	[
 		{"pm", fun pm/5, server},
+		{"msg", fun pm/5, server},
+		{"age", fun age/5, server},
 		{"notes", fun notes/5, server},
 		{"notify", fun notify/5, user}
 	].
 
 initialise(T) ->
-	case orddict:find(z_server, T#state.moduledata) of
-		{ok, OldPid} when is_pid(OldPid) -> OldPid ! stop;
-		_ -> ok
-	end,
 	case file:consult("server.crl") of
-		{ok, [{Server, Port, Pwd}]} ->
-			Pid = spawn(z_server, sloop, [Server, Port, 45678, Pwd]),
-			set_data(T, Pid);
-		{error, T} -> common:debug("SERVER", "~p", [T]), error
-	end.
+		{ok, [{Server, Port, Pwd}]} -> spawn(z_server, sloop, [Server, Port, 45678, Pwd]);
+		{error, E} -> logging:log(error, "SERVER", "~p", [E]), error
+	end,
+	T.
 
 deinitialise(T) ->
-	Pid = get_data(T),
-	Pid ! stop,
-	timer:sleep(25),
-	T#state{moduledata=orddict:erase(z_server, T#state.moduledata)}.
-
-get_data(S=#state{moduledata=M}) ->
-	case orddict:find(z_server, M) of
-		{ok, Value} -> Value;
-		error ->
-			common:debug("SERVER", "Pid not found, loading!"),
-			NewState = initialise(S),
-			self() ! {state, NewState},
-			get_data(NewState)
-	end.
-
-set_data(S=#state{moduledata=M}, Data) ->
-	S#state{moduledata=orddict:store(z_server, Data, M)}.
+	case whereis(z_server) of
+		undefined -> ok;
+		Pid -> Pid ! stop
+	end,
+	waitfor_gone(z_server),
+	T.
 
 %
 
 pm(_, RT, Ping, [], _) -> {irc, {msg, {RT, [Ping, "Provide a user to PM and a message."]}}};
 pm(_, RT, Ping, [_], _) -> {irc, {msg, {RT, [Ping, "Provide a message."]}}};
-pm(N, RT, Ping, Params, State) ->
-	Pid = get_data(State),
-	common:debug("SERVER", "debug ~w | ~w", [hd(Params), tl(Params)]),
-	Pid ! {pm, N, RT, Ping, string:to_lower(hd(Params)), string:join(tl(Params), " ")},
+pm(N, RT, Ping, Params, _) ->
+	z_server ! {pm, N, RT, Ping, string:to_lower(hd(Params)), string:join(tl(Params), " ")},
 	ok.
 
 notes(_, RT, Ping, [], _) -> {irc, {msg, {RT, [Ping, "Provide a user to find notes for."]}}};
-notes(N, RT, Ping, [Key], State) ->
-	Pid = get_data(State),
-	Pid ! {notes, N, RT, Ping, string:to_lower(Key)},
+notes(N, RT, Ping, [Key], _) ->
+	z_server ! {notes, N, RT, Ping, string:to_lower(Key)},
 	ok;
 notes(_, RT, Ping, _, _) -> {irc, {msg, {RT, [Ping, "Provide a single key."]}}}.
 
-notify(N, RT, Ping, _, State) ->
-	Pid = get_data(State),
-	Pid ! {notify, N, RT, Ping},
+age(_, RT, Ping, [], _) -> {irc, {msg, {RT, [Ping, "Provide a key to check the age of."]}}};
+age(_, RT, Ping, [Key], _) ->
+	z_server ! {age, RT, Ping, Key},
+	ok;
+age(_, RT, Ping, _, _) -> {irc, {msg, {RT, [Ping, "Provide a single key."]}}}.
+
+notify(N, RT, Ping, _, _) ->
+	z_server ! {notify, N, RT, Ping},
 	ok.
 
 sloop(Svr, Prt, SPrt, Pwd) ->
 	case gen_tcp:listen(SPrt, [list, {packet, http}, {active, false}]) of
 		{ok, SvrSock} ->
-			common:debug("SERVER", "Starting loop."),
+			logging:log(info, "SERVER", "Starting loop."),
 			register(z_server, self()),
 			loop(SvrSock, Svr, Prt, SPrt, Pwd, sets:new()),
-			common:debug("SERVER", "Ending loop."),
+			logging:log(info, "SERVER", "Ending loop."),
 			gen_tcp:close(SvrSock);
 		{error, Reason} ->
-			common:debug("SERVER", "Failed to open listen socket: ~p", [Reason])
+			logging:log(error, "SERVER", "Failed to open listen socket: ~p", [Reason])
 	end.
 
 loop(SvrSock, Svr, Prt, SPrt, Pwd, Notify) ->
 	case receive
 		{pm, Sender, ReplyChannel, ReplyPing, Recipient, Message} ->
-			common:debug("SERVER", "sending PM ~s to ~s", [Message, Recipient]),
+			logging:log(info, "SERVER", "sending PM ~s to ~s", [Message, Recipient]),
 			Reply = case byond:send(Svr, Prt, io_lib:format("?adminmsg=~s;msg=~s;key=~s;sender=~s", lists:map(fun byond:vencode/1, [Recipient, Message, Pwd, Sender]))) of
 				{error, T} -> io_lib:format("Error: ~s", [T]);
 				Dict ->
@@ -91,7 +87,7 @@ loop(SvrSock, Svr, Prt, SPrt, Pwd, Notify) ->
 			core ! {irc, {msg, {ReplyChannel, [ReplyPing, Reply]}}},
 			ok;
 		{notes, _, ReplyChannel, ReplyPing, Lookup} ->
-			common:debug("SERVER", "finding notes for ~s", [Lookup]),
+			logging:log(info, "SERVER", "finding notes for ~s", [Lookup]),
 			Reply = case byond:send(Svr, Prt, io_lib:format("?notes=~s;key=~s", lists:map(fun byond:vencode/1, [Lookup, Pwd]))) of
 				{error, T} -> io_lib:format("Error: ~s", [T]);
 				Dict ->
@@ -99,7 +95,7 @@ loop(SvrSock, Svr, Prt, SPrt, Pwd, Notify) ->
 						"No information found on the given key." -> "No information found on the given key.";
 						T ->
 							os:putenv("sprunge", T),
-							X = os:cmd("echo $sprunge | /home/nyx/bin/privatepaste.py --no-tee -e 1800"),
+							X = os:cmd("echo $sprunge | /home/bot32/privatepaste.py --no-tee -e 1800"),
 							case X of
 								"Pasting...\n" ++ URL -> URL;
 								_ -> ["unknown error: ", X]
@@ -108,6 +104,15 @@ loop(SvrSock, Svr, Prt, SPrt, Pwd, Notify) ->
 			end,
 			core ! {irc, {msg, {ReplyChannel, [ReplyPing, Reply]}}},
 			ok;
+		{age, ReplyChannel, ReplyPing, Key} ->
+			logging:log(info, "SERVER", "finding age for ~s", [Key]),
+			Reply = case byond:send(Svr, Prt, io_lib:format("?age=~s;key=~s", lists:map(fun byond:vencode/1, [Key, Pwd]))) of
+				{error, T} -> io_lib:format("Error: ~s", [T]);
+				Dict -> ["Age of ", Key, ": ", hd(orddict:fetch_keys(Dict))]
+			end,
+			core ! {irc, {msg, {ReplyChannel, [ReplyPing, Reply]}}},
+			ok;
+						
 		{notify, Who, ReplyChannel, ReplyPing} ->
 			case sets:is_element(string:to_lower(Who), Notify) of
 				true ->
@@ -129,15 +134,15 @@ loop(SvrSock, Svr, Prt, SPrt, Pwd, Notify) ->
 	end of
 		ok ->         loop(SvrSock, Svr, Prt, SPrt, Pwd, Notify);
 		{notify,N} ->
-			common:debug("SERVER", "setting notify as ~p", [sets:to_list(N)]),
+			logging:log(info, "SERVER", "setting notify as ~p", [sets:to_list(N)]),
 			loop(SvrSock, Svr, Prt, SPrt, Pwd, N);
 		stop -> ok;
-		E -> common:debug("SERVER", "received unknown status ~p, exiting", [E])
+		E -> logging:log(error, "SERVER", "received unknown status ~p, exiting", [E])
 	end.
 
 readsock(Socket, Pwd, Notify) ->
 	% timeout specified just to avoid crashing the bot if bad things happen
-	case gen_tcp:recv(Socket, 0, 5000) of
+	case gen_tcp:recv(Socket, 0, 20000) of
 		{ok, {http_request, 'GET', URL, _}} ->
 			Plist = tl(URL), % a=x;b=y;c=z
 			Dict = byond:params2dict(Plist),
@@ -145,21 +150,25 @@ readsock(Socket, Pwd, Notify) ->
 				{ok, Pwd} ->
 					case {orddict:find("chan", Dict), orddict:find("mesg", Dict)} of
 						{{ok, Chan}, {ok, Mesg}} ->
-							Msg = re:replace(Mesg, "[\r\n\t]+", " ", [global]),
-							common:debug("SERVER", "relaying to ~s: ~s", [Chan, Msg]),
+							Msg = re:replace(Mesg, "[\r\n\t]+", " ", [global, {return, list}]),
+							logging:log(info, "SERVER", "relaying to ~s: ~s", [Chan, Msg]),
 							case string:str(Msg, "Server starting up on ") of
 								1 ->
 									lists:foreach(fun(T) -> core ! {irc, {msg, {T, Msg}}} end, sets:to_list(Notify)),
 									self() ! {notify, sets:new()};
 								_ -> ok
 							end,
+							case string:str(Msg, "A round of ") of
+								1 -> lists:foreach(fun(T) -> core ! {irc, {msg, {T, Msg}}} end, sets:to_list(Notify));
+								_ -> ok
+							end,
 							core ! {irc, {msg, {Chan, Msg}}};
-						_ -> common:debug("SERVER", "received correctly keyed message with no channel and/or message")
+						_ -> logging:log(info, "SERVER", "received correctly keyed message with no channel and/or message")
 					end;
-				{ok, NotPwd} -> common:debug("SERVER", "received incorrect key ~s", [NotPwd]);
-				error -> common:debug("SERVER", "received non-keyed message '~s'", [Plist])
+				{ok, NotPwd} -> logging:log(info, "SERVER", "received incorrect key ~s", [NotPwd]);
+				error -> logging:log(info, "SERVER", "received non-keyed message '~s'", [Plist])
 			end,
 			gen_tcp:send(Socket, "HTTP/1.1 200 OK\r\n\r\n"),
 			gen_tcp:close(Socket);
-		{error, T} -> common:debug("SERVER", "error in readsock: ~p", [T])
+		{error, T} -> logging:log(error, "SERVER", "error in readsock: ~p", [T])
 	end.

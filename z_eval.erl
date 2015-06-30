@@ -25,7 +25,7 @@ gen_eval(Func) ->
 				{irc, {msg, {ReplyTo, [Ping, "Error: ", re:replace(Err, "[\r\n]", "")]}}};
 			{error, {Type, Error}} ->
 				T = re:replace(io_lib:format("Uncaught ~w ~w", [Type, Error]), "[\r\n]", ""),
-				common:debug("EVAL", "~s", [T]),
+				logging:log(info, "EVAL", "~s", [T]),
 				{irc, {msg, {ReplyTo, [Ping, T]}}}
 		end
 	end.
@@ -44,7 +44,7 @@ gen_eval_str(Func) ->
 				{irc, {msg, {ReplyTo, [Ping, "Error: ", re:replace(io_lib:format("~s", [Err]), "[\r\n]", "")]}}};
 			{error, {Type, Error}} ->
 				T = re:replace(io_lib:format("Uncaught ~w ~w", [Type, Error]), "[\r\n]", ""),
-				common:debug("EVAL", "~s", [T]),
+				logging:log(info, "EVAL", "~s", [T]),
 				{irc, {msg, {ReplyTo, [Ping, T]}}}
 		end
 	end.

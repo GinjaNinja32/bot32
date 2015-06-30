@@ -72,12 +72,12 @@ loadquote(_, ReplyTo, Ping, _, _) ->
 	{irc, {msg, {ReplyTo, [Ping, "Loaded quotes."]}}}.
 
 gen_genmatch(Params) ->
-	Quot = string:to_lower(string:join(Params, " ")),
-	fun({_,Q}) -> string:str(string:to_lower(Q), Quot) /= 0 end.
+	Regexed = util:regex_escape(string:to_lower(string:join(Params, " "))),
+	fun({_,Q}) -> re:run(Q, Regexed, [{capture, none}, caseless]) == match end.
 
 gen_exmatch(Params) ->
-	Quot = string:to_lower(string:join(Params, " ")),
-	fun({_,Q}) -> string:to_lower(Q) == Quot end.
+	Regexed = util:regex_escape(string:to_lower(string:join(Params, " "))),
+	fun({_,Q}) -> re:run(Q, [$^, Regexed, $$], [{capture, none}, caseless]) == match end.
 
 gen_catmatch(Params) ->
 	Cat = string:to_lower(hd(Params)),
@@ -106,8 +106,9 @@ gen_delquote(Func) ->
 
 get_quote([], Quotes) -> pick_quote(Quotes);
 get_quote(String, Quotes) ->
+	Regexed = util:regex_escape(String),
 	Matching = lists:filter(fun({Cat, Q}) ->
-			string:str(string:to_lower(Q), String) /= 0 orelse Cat == String
+			re:run(Q, Regexed, [{capture, none}, caseless]) == match orelse Cat == String
 		end, Quotes),
 	pick_quote(Matching).
 
@@ -125,24 +126,9 @@ get_quote_name(String, Quotes) ->
 
 get_quote_word([], _) -> "Please supply a word or words to find quotes for.";
 get_quote_word(String, Quotes) ->
-	Regexed = lists:foldl(fun([F,R], Str) -> re:replace(Str, F, R) end, String,
-		[
-			["\\\\","\\\\\\\\"],
-			["\\^", "\\\\^"],
-			["\\$", "\\\\$"],
-			["\\.", "\\\\."],
-			["\\[", "\\\\["],
-			["\\]", "\\\\]"],
-			["\\(", "\\\\("],
-			["\\)", "\\\\)"],
-			["\\?", "\\\\?"],
-			["\\*", "\\\\*"],
-			["\\+", "\\\\+"],
-			["\\{", "\\\\{"],
-			["\\-", "\\\\-"]
-		]),
+	Regexed = util:regex_escape(String),
 	Matching = lists:filter(fun({_,Q}) ->
-			re:run(Q, ["\\W",Regexed,"\\W"], [{capture, none}, caseless]) == match
+			re:run(Q, [$\\, $W, Regexed, $\\, $W], [{capture, none}, caseless]) == match
 		end, Quotes),
 	pick_quote(Matching).
 
@@ -163,14 +149,14 @@ add_quote(Category, String, Quotes) ->
 load_quotes() ->
 	case file:consult("quotes.crl") of
 		{ok, [Term]} ->
-			common:debug("QUOTE", "Loaded."),
+			logging:log(info, "QUOTE", "Loaded."),
 			Term;
 		{error, E} ->
-			common:debug("QUOTE", "Creating new (error ~p).", [E]),
+			logging:log(info, "QUOTE", "Creating new (error ~p).", [E]),
 			[]
 	end.
 
 save_quotes(Quotes) ->
 	file:write_file("quotes.crl", io_lib:format("~p.~n", [Quotes])),
-	common:debug("QUOTE", "Saved.").
+	logging:log(info, "QUOTE", "Saved.").
 

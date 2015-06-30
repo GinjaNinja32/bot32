@@ -55,7 +55,7 @@ load_messages(_, ReplyTo, Ping, _, _) ->
 	{irc, {msg, {ReplyTo, [Ping, "Loaded message data."]}}}.
 
 debug_messages(_, ReplyTo, Ping, _, State=#state{}) ->
-	common:debug("MSGS", "~p", [get_data(State)]),
+	logging:log(info, "MSGS", "~p", [get_data(State)]),
 	{irc, {msg, {ReplyTo, [Ping, "Messages printed to console."]}}}.
 
 check_messages_for(NickR, Messages) ->
@@ -109,14 +109,14 @@ create_message(FromR, ToR, Msg, Self, Messages) ->
 load_messages() ->
         case file:consult("messages.crl") of
                 {ok, [Term]} ->
-                        common:debug("MSGS", "Loaded."),
+                        logging:log(info, "MSGS", "Loaded."),
                         Term;
                 {error, T} ->
-                        common:debug("MSGS", "Creating new (error is ~p)", [T]),
+                        logging:log(info, "MSGS", "Creating new (error is ~p)", [T]),
                         orddict:new()
         end.
 
 save_messages(Messages) ->
         T = file:write_file("messages.crl", io_lib:format("~p.~n", [Messages])),
-        common:debug("MSGS", "Save status: ~p", [T]).
+        logging:log(info, "MSGS", "Save status: ~p", [T]).
 

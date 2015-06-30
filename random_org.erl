@@ -18,5 +18,5 @@ generate(Num, Min, Max) when is_integer(Num) andalso is_integer(Min) andalso is_
 
 	Numbers;
 
-generate(_, _, _) -> common:debug("RAND", "Potential injection attempt detected!").
+generate(_, _, _) -> logging:log(error, "RAND", "Potential injection attempt detected!").
 	

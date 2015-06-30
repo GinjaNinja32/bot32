@@ -37,7 +37,7 @@ deinitialise(T) ->
 
 debug(_, RT, P, _, State) ->
 	D=get_data(State),
-	common:debug("SEEN", "~p", [D]),
+	logging:log(info, "SEEN", "~p", [D]),
 	{irc, {msg, {RT, [P, "Dumped state to console."]}}}.
 
 seen(_, RT, P, [], _) -> {irc, {msg, {RT, [P, "Provide a nick to search for!"]}}};
@@ -108,14 +108,14 @@ on_kick(User, Channel, Reason, WhoBy, State) ->
 load_seen() ->
 	case file:consult("seen.crl") of
 		{ok, [Term]} -> Term;
-		{ok, _} -> common:debug("SEEN", "Illegal save format!"), orddict:new();
-		{error, E} -> common:debug("SEEN", "Error reading file: ~p!", [E]), orddict:new()
+		{ok, _} -> logging:log(error, "SEEN", "Illegal save format!"), orddict:new();
+		{error, E} -> logging:log(error, "SEEN", "Error reading file: ~p!", [E]), orddict:new()
 	end.
 
 save_seen(Data) ->
 	case file:write_file("seen.crl", io_lib:format("~p.~n", [Data])) of
 		ok -> ok;
-		T -> common:debug("SEEN", "Save status: ~p", [T])
+		T -> logging:log(info, "SEEN", "Save status: ~p", [T])
 	end.
 
 format_tstamp(T) ->

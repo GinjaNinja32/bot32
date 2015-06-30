@@ -17,7 +17,7 @@ get_data(S=#state{moduledata=M}) ->
 	case orddict:find(z_git, M) of
 		{ok, Value} -> Value;
 		error ->
-			common:debug("GIT", "Data not found, loading!"),
+			logging:log(error, "GIT", "Data not found, loading!"),
 			Trees = load_trees(),
 			self() ! {state, set_data(S, Trees)},
 			Trees
@@ -74,15 +74,12 @@ load_tree(Branch) ->
 	string:tokens(os:cmd(["cd /home/nyx/github/baystation12; git ls-files --with-tree upstream/", Branch]), "\r\n").
 
 search_tree(Tree, String, Branch) ->
-	%common:debug("GIT", integer_to_list(length(Tree))),
-	%common:debug("GIT", "~p", [Tree]),
 	case lists:filter(fun(T) ->
 				string:str(string:to_lower(T), String) /= 0
 			end, Tree) of
 		[] -> "No matches found.";
 		[Match] -> ["http://github.com/Baystation12/Baystation12/blob/", Branch, "/", Match];
 		Multi ->
-			%common:debug("GIT", "~p", [Multi]),
 			["Multiple results found: ", join_list_max_len(Multi, "; ", 300)]
 	end.
 

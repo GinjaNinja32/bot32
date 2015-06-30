@@ -60,7 +60,7 @@ get_defs(String) ->
 			"cd /home/nyx/github/baystation12; ",
 			string:join(lists:map(fun(T) -> ["git show upstream/",String,":",T] end, ?DefinitionFiles), "; ")
 		])),
-	common:debug("DEFINES", "Extracted ~b defines from branch '~s'", [length(T), String]),
+	logging:log(info, "DEFINES", "Extracted ~b defines from branch '~s'", [length(T), String]),
 	T.
 
 extract_defs(String) ->

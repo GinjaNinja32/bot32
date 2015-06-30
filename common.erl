@@ -2,6 +2,7 @@
 -compile(export_all).
 
 -include("definitions.hrl").
+-define(MAX_LENGTH, 448).
 
 debug(What, Msg) -> io:fwrite("[~s] ~s~n", [What, Msg]).
 debug(What, Format, List) ->
@@ -29,17 +30,17 @@ raw_send(Sock, Msg) ->
 	try
 		Raw = re:replace(flatten(Msg), "[\r\n]", "", [global]),
 		if
-			length(Raw) > 400 ->
-				{T,_} = lists:split(397, Raw),
+			length(Raw) > ?MAX_LENGTH ->
+				{T,_} = lists:split(?MAX_LENGTH-3, Raw),
 				Send = [T, "..."];
 			true ->
 				Send = Raw
 		end,
-		gen_tcp:send(Sock, [Send, "\r\n"])
+		?TRANSPORT:send(Sock, [Send, "\r\n"])
 	catch
-		throw:X -> debug("RAW", "Thrown ~p (message ~p)", [X, Msg]);
-		error:X -> debug("RAW", "Errored ~p (message ~p)", [X, Msg]);
-		exit:X -> debug("RAW", "Exited ~p (message ~p)", [X, Msg])
+		throw:X -> logging:log(error, "RAW", "Thrown ~p (message ~p)", [X, Msg]);
+		error:X -> logging:log(error, "RAW", "Errored ~p (message ~p)", [X, Msg]);
+		exit:X ->  logging:log(error, "RAW", "Exited ~p (message ~p)", [X, Msg])
 	end.
 
 start() ->
@@ -78,14 +79,14 @@ tcp_parse(S, M) ->
 				% Errors
 				[Cmd | Params] ->
 					case string:to_integer(Cmd) of
-						{error, _} -> common:debug("PARSE", "Unknown TCP message received; ~s : ~p", [Cmd, Params]);
+						{error, _} -> logging:log(error, "PARSE", "Unknown TCP message received; ~s : ~p", [Cmd, Params]);
 						{I, []} ->
 							Parsed = numeric_parse(I),
 							{irc, {numeric, {Parsed, Params}}};
-						{_, _} -> common:debug("PARSE", "Unknown TCP message received; ~s : ~s", [Cmd, string:join(Params, " ")])
+						{_, _} -> logging:log(error, "PARSE", "Unknown TCP message received; ~s : ~s", [Cmd, string:join(Params, " ")])
 					end
 			end;
-		_ -> debug("PARSE", "Expected :, saw '~s'.", [M])
+		_ -> logging:log(error, "PARSE", "Expected :, saw '~s'.", [M])
 	end.
 
 parse_ctcp(Origin, Tokens) ->
@@ -119,7 +120,7 @@ parse_notice(Origin, Channel, Message) ->
 		true -> {irc, {notice, {Origin, Channel, Message}}}
 	end.
 
-tcp_send(S, {pass, Pass}) ->					raw_send(S, ["PASS ", Pass]);
+tcp_send(S, {pass, Pass}) ->					raw_send(S, ["PASS :", Pass]);
 tcp_send(S, {user, {User, Mode, Real}} ) ->		raw_send(S, ["USER ",User," ",Mode," * :",Real]);
 tcp_send(S, {nick, Nick}) ->					raw_send(S, ["NICK ",Nick]);
 tcp_send(S, {quit, Message}) ->					raw_send(S, ["QUIT :",Message]), core!quit;
@@ -134,14 +135,14 @@ tcp_send(S, {notice, {Recipient, Message}}) ->	raw_send(S, ["NOTICE ",Recipient,
 tcp_send(S, {ctcp_re, {version, R, V}}) ->		raw_send(S, ["NOTICE ",R," :\1VERSION ",V,1]);
 tcp_send(S, {ctcp_re, {action, R, V}}) ->              raw_send(S, ["NOTICE ",R," :\1ACTION ",V,1]);
 tcp_send(S, {ctcp_re, {unknown, R, V}}) ->              raw_send(S, ["NOTICE ",R," :\1",V,1]);
-tcp_send(_S, {T, X}) ->							common:debug("SEND", "Unknown IRC message type or fomat {~p, ~p}", [T, X]).
+tcp_send(_S, {T, X}) ->							logging:log(error, "SEND", "Unknown IRC message type or fomat {~p, ~p}", [T, X]).
 
 parse_origin(O) ->
 	case re:run(O, "([^!@]+)(!([^!@]+)@([^!@]+))?", [{capture, all_but_first, list}]) of
 		nomatch -> notuser;
 		{match, [N, _, U, H]}-> #user{nick=N, username=U, host=H};
 		{match, [Svr]} -> Svr;
-		T -> common:debug("PARSE", "Something broke in user_string; ~p", [T]), error
+		T -> logging:log(error, "PARSE", "Something broke in user_string; ~p", [T]), error
 	end.
 
 numeric_parse(Num) ->

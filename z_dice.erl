@@ -21,7 +21,7 @@ get_data(#state{moduledata=M}) ->
         case orddict:find(z_dice, M) of
                 {ok, Value} -> Value;
                 error ->
-			common:debug("DICE", "Data not found, using internal."),
+			logging:log(error, "DICE", "Data not found, using internal."),
 			internal
         end.
 
@@ -57,9 +57,9 @@ parse_dice(Str, _Default) ->
 
 dice_roll(N, S, M, StrN, StrS, StrM, Collapse, Dicemode) ->
         if
-                N == error -> common:debug("ERR", ["to_integer of ",StrN]), "Internal error.";
-                S == error -> common:debug("ERR", ["to_integer of ",StrS]), "Internal error.";
-                M == error -> common:debug("ERR", ["to_integer of ",StrM]), "Internal error.";
+                N == error -> logging:log(error, "ERR", ["to_integer of ",StrN]), "Internal error.";
+                S == error -> logging:log(error, "ERR", ["to_integer of ",StrS]), "Internal error.";
+                M == error -> logging:log(error, "ERR", ["to_integer of ",StrM]), "Internal error.";
                 true -> get_dice(N, S, Collapse, M, Dicemode)
         end.
 
@@ -108,7 +108,7 @@ roll_dice(N, S, Dicemode) ->
                 random -> roll_dice_random(N, S);
                 internal -> roll_dice_internal(N, S, []);
                 _ ->
-                        common:debug("DICE", "Illegal dice mode '~p', using 'internal' instead!", [Dicemode]),
+                        logging:log(error, "DICE", "Illegal dice mode '~p', using 'internal' instead!", [Dicemode]),
                         roll_dice_internal(N, S, [])
         end.
 

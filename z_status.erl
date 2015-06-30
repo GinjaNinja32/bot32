@@ -3,14 +3,18 @@
 
 get_commands() ->
 	[
-		{"status",   genstatus ("baystation12.net", 8000), user},
-		{"players",  genplayers("baystation12.net", 8000), user},
-		{"admins",   genadmins ("baystation12.net", 8000), user},
-		{"mode",     genmode   ("baystation12.net", 8000), user},
-		{"teststatus",  genstatus ("gn32.mooo.com", 3210), user},
-		{"testplayers", genplayers("gn32.mooo.com", 3210), user},
-		{"testadmins",  genadmins ("gn32.mooo.com", 3210), user},
-		{"testmode",    genmode ("gn32.mooo.com", 3210), user}
+		{"status",      genstatus ("baystation12.net", 8000), user},
+		{"players",     genplayers("baystation12.net", 8000), user},
+		{"admins",      genadmins ("baystation12.net", 8000), user},
+		{"mode",        genmode   ("baystation12.net", 8000), user},
+		{"devstatus",   genstatus ("baystation12.net", 8100), user},
+		{"devplayers",  genplayers("baystation12.net", 8100), user},
+		{"devadmins",   genadmins ("baystation12.net", 8100), user},
+		{"devmode",     genmode   ("baystation12.net", 8100), user},
+		{"teststatus",  genstatus ("gn32.mooo.com",    3210), user},
+		{"testplayers", genplayers("gn32.mooo.com",    3210), user},
+		{"testadmins",  genadmins ("gn32.mooo.com",    3210), user},
+		{"testmode",    genmode   ("gn32.mooo.com",    3210), user}
 	].
 
 initialise(T) -> T.
