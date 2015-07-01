@@ -33,6 +33,10 @@ deinitialise(T) ->
 	save_messages(get_data(T)),
 	T#state{moduledata=orddict:erase(z_message, T#state.moduledata)}.
 
+handle_event(nick, {_, N}, S) -> check_messages_for(N, get_data(S));
+handle_event(join, {#user{nick=N}, _}, S) -> check_messages_for(N, get_data(S));
+handle_event(_,_,_) -> ok.
+
 check_messages(Origin, ReplyTo, Ping, _, State=#state{}) ->
 	case check_messages_for(Origin, get_data(State)) of
 		nomessages -> {irc, {msg, {ReplyTo, [Ping, "You have no new messages."]}}};

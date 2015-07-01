@@ -263,57 +263,17 @@ handle_irc(ctcp, {Type, #user{nick=Nick}, _Message}, _State) ->
 	end;
 
 handle_irc(nick, {#user{nick=MyNick}, NewNick}, State=#state{nick=MyNick}) -> {state, State#state{nick=NewNick}};
-handle_irc(nick, {#user{nick=Old}, N}, S=#state{modules=M}) ->
-	case sets:is_element(z_message, M) of
-		true -> z_message:check_messages_for(N, z_message:get_data(S));
-		_ -> ok
-	end,
-	case sets:is_element(z_seen, M) of
-		true -> z_seen:on_nick(Old, N, S);
-		_ -> ok
-	end,
-	ok;
 
-handle_irc(join, {#user{nick=N}, Channel}, S=#state{modules=M}) ->
-	case sets:is_element(z_message, M) of
-		true ->	z_message:check_messages_for(N, z_message:get_data(S));
-		_ -> ok
-	end,
-	case sets:is_element(z_seen, M) of
-		true -> z_seen:on_join(N, Channel, S);
-		_ -> ok
-	end,
-	ok;
-
-handle_irc(kick, {#user{nick=N}, WhoKicked, Channel, Reason}, S=#state{modules=M}) -> 
-	case sets:is_element(z_seen, M) of
-		true -> z_seen:on_kick(WhoKicked, Channel, Reason, N, S);
-		_ -> ok
-	end,
-	ok;
-
-handle_irc(topic, _, _) -> ok;
 handle_irc(notice, _, _) -> ok;
 
-handle_irc(part, {#user{nick=N}, Channel, Reason}, S=#state{modules=M}) ->
-	case sets:is_element(z_seen, M) of
-		true -> z_seen:on_part(N, Channel, Reason, S);
-		_ -> ok
-	end,
-	ok;
-
-handle_irc(quit, {#user{nick=N}, Reason}, S=#state{modules=M}) ->
-	case sets:is_element(z_seen, M) of
-		true -> z_seen:on_quit(N, Reason, S);
-		_ -> ok
-	end,
-	ok;
-
-handle_irc(mode, _, _) -> ok;
 handle_irc(numeric, {{rpl,away},_}, _) -> ok;
 handle_irc(numeric, {{A,B},Params}, _) -> logging:log(info, "BOT", "Numeric received: ~p_~p ~s", [A,B,string:join(Params," ")]);
 
-handle_irc(Type, Params, _State) -> logging:log(error, "BOT", "unknown irctype ~p <<<~p>>>, continuing", [Type, Params]).
+handle_irc(Type, Params, State) ->
+	lists:foreach(fun(Module) ->
+				lists:member({handle_event,3}, Module:module_info(exports))
+				andalso Module:handle_event(Type, Params, State)
+			end, sets:to_list(State#state.modules)).
 
 handle_host_command(Rank, Origin, ReplyTo, Ping, Cmd, Params, State=#state{}) ->
 	case string:to_lower(Cmd) of
