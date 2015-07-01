@@ -1,13 +1,15 @@
 
 % This file has the syntax of Erlang, and is read via file:consult()
 % Possible options:
+% {pass, "Password"}. - set the password to use on connection, or use 'none' for no password (the default is 'none')
 % {nick, "NickHere"}. - set the bot's nick
 % {user, "UserHere"}. - set the bot's user
 % {real, "RealNameHere"}. - set the bot's realname
 % {mode, "ModeHere"}. - set the bot's user-mode
 % {prefix, $!}. - set the command prefix; this example sets the prefix to !
-% {admin, "AdminName"}. - add AdminName to the admin list
-% {admins, ["AdminA", "AdminB", "AdminC"]}. - add AdminA, AdminB, and AdminC to the admin list
+% {permission, {"Nick", "User", "Host"}, permission}. - force Nick!User@Host to have permission 'permission'
+% {channel, "#Channel"}. - Join #Channel on connect
+% {ignores, ["Nick1", "Nick2"]}. - Ignore Nick1 and Nick2
 % {on_join, {msg, {"NickServ", "IDENTIFY password"}}}. - send commands on join
 % {module, Module}.
 % {modules, [Module, Module, Module]}.
@@ -17,5 +19,6 @@
 {real, "Bot32"}.
 {mode, "0"}.
 {prefix, $&}.
+{channel, "#bot32-test"}.
 
-{modules, [z_basic, z_dice, z_message, z_status, z_admin, z_quotes, z_eval, z_git]}.
+{modules, [z_basic, z_dice, z_message, z_status, z_admin, z_quotes, z_eval, z_git, z_seen, z_units, z_defines, z_server, z_dictionary, z_timezone, z_weather, z_botinfo]}.

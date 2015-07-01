@@ -161,36 +161,38 @@ whoignore(_, ReplyTo, Ping, _, #state{ignore=I}) ->
 
 prefix(_, ReplyTo, Ping, [], _) -> {irc, {msg, {ReplyTo, [Ping, "Please provide a prefix to use for commands."]}}};
 prefix(_, ReplyTo, Ping, Params, State=#state{}) ->
-	self() ! {state, State#state{prefix=[hd(hd(Params))]}},
-	{irc, {msg, {ReplyTo, [Ping, "Prefix set to ", hd(hd(Params))]}}}.
+	<<Prefix/utf8, _/binary>> = list_to_binary(hd(Params)),
+	self() ! {state, State#state{prefix=[Prefix]}},
+	{irc, {msg, {ReplyTo, [Ping, <<"Prefix set to ", Prefix/utf8>>]}}}.
 
 addprefix(_, ReplyTo, Ping, [], _) -> {irc, {msg, {ReplyTo, [Ping, "Please provide an additional prefix to use for commands."]}}};
 addprefix(_, ReplyTo, Ping, Params, State=#state{}) ->
+	<<Prefix/utf8, _/binary>> = list_to_binary(hd(Params)),
 	Reply = case State#state.prefix of
-		Old when is_number(Old) -> New = [hd(hd(Params)) , Old], ["Prefix set to ",New];
-		Old when is_list(Old)   -> New = [hd(hd(Params)) | Old], ["Prefix set to ",New];
-		_ -> New = [hd(hd(Params))], io_lib:format("Unknown prefix format ~w", [State#state.prefix])
+		Old when is_number(Old) -> New = [Prefix, Old], [<<"Prefix set to ">>, format_prefixes(New)];
+		Old when is_list(Old)   -> New = [Prefix | Old], [<<"Prefix set to ">>,format_prefixes(New)];
+		_ -> New = [Prefix], io_lib:format(<<"Unknown prefix format ~w">>, [State#state.prefix])
 	end,
 	self() ! {state, State#state{prefix=New}},
 	{irc, {msg, {ReplyTo, [Ping, Reply]}}}.
 
-remprefix(_, ReplyTo, Ping, [], _) -> {irc, {msg, {ReplyTo, [Ping, "Please provide a prefix to stop using for commands."]}}};
+remprefix(_, ReplyTo, Ping, [], _) -> {irc, {msg, {ReplyTo, [Ping, <<"Please provide a prefix to stop using for commands.">>]}}};
 remprefix(_, ReplyTo, Ping, Params, State=#state{}) ->
-	ToRemove = hd(hd(Params)),
+	<<ToRemove/utf8, _/binary>> = list_to_binary(hd(Params)),
 	Reply = case State#state.prefix of
 		Old when is_number(Old) ->
 			if
 				ToRemove == Old -> New = [];
 				true -> New = [Old]
 			end,
-			["Prefix set to ", New];
+			[<<"Prefix set to ">>, format_prefixes(New)];
 		Old when is_list(Old) ->
 			New = lists:delete(ToRemove, Old),
-			["Prefix set to ", New];
+			[<<"Prefix set to ">>, format_prefixes(New)];
 		Old ->
-			New = Old, io_lib:format("Unknown prefix format ~w", [Old])
+			New = Old, io_lib:format(<<"Unknown prefix format ~w">>, [Old])
 	end,
 	self() ! {state, State#state{prefix=New}},
 	{irc, {msg, {ReplyTo, [Ping, Reply]}}}.
 
-
+format_prefixes(List) -> lists:foldr(fun(T,B) -> <<T/utf8, B/binary>> end, <<>>, List).

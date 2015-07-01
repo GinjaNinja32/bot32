@@ -176,8 +176,9 @@ hasperm(#user{nick=N,username=U,host=H}, Perm, Permissions) ->
 
 parse_command([],_,_) -> notcommand;
 parse_command(Params, Prefix, BotAliases) when is_list(Prefix) ->
-	case lists:member(hd(hd(Params)), Prefix) of
-		true -> {tl(hd(Params)), tl(Params)};
+	<<FirstChar/utf8, Rest/binary>> = list_to_binary(hd(Params)),
+	case lists:member(FirstChar, Prefix) of
+		true -> {binary_to_list(Rest), tl(Params)};
 		false -> parse_command(Params, none, BotAliases)
 	end;
 parse_command(Params, Prefix, BotAliases) ->
@@ -230,7 +231,10 @@ handle_irc(msg, {User=#user{nick=Nick}, Channel, Tokens}, State=#state{nick=MyNi
 						_ -> ok; % Temporary until oldNT is gone
 						[URL|_] ->
 							os:putenv("url", URL),
-							{irc, {msg, {ReplyChannel, [ReplyPing, os:cmd("/home/bot32/urltitle.sh $url")]}}}
+							case os:cmd("/home/bot32/urltitle.sh $url") of
+								"" -> ok;
+								Show -> {irc, {msg, {ReplyChannel, [ReplyPing, Show]}}}
+							end
 					end,
 					case lists:dropwhile(fun(X) -> re:run(X, "^(\[[1-9][0-9]+\]|#[1-9][0-9]+)$", [{capture, none}]) /= match end, Tokens) of
 						[] -> ok;

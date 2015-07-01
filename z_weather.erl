@@ -47,10 +47,10 @@ parse_reply(Text) ->
 	end.
 
 create_reply(Dict) ->
-	Str = lists:foldl(fun({Key,Format}, String) ->
+	Str = lists:foldr(fun({Key,Format}, String) ->
 			case orddict:find(Key, Dict) of
 				error -> String;
 				{ok,V} -> [io_lib:format(Format, [string:strip(V)]) | String]
-			end end, [], lists:reverse(?WEATHER_STRINGS)),
+			end end, [], ?WEATHER_STRINGS),
 	string:join(Str, "; ").
 	
