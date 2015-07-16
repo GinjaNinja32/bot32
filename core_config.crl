@@ -1,6 +1,7 @@
-% This file must contain EXACTLY ONE {Server, Port} tuple entry.
+% This file must contain EXACTLY ONE {Server, Port, Transport} tuple entry.
 % If common:start() or core:init() is called without arguments, this is what will be used.
+% Transport must be either 'ssl', 'gen_tcp', or the name of an accessible Erlang module with a compatible interface.
 
 % Uncomment this and ensure it is correct before starting the bot.
-%{"irc.example.com", 6667}.
+%{"irc.example.com", 6667, gen_tcp}.
 

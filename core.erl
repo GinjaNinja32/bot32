@@ -6,12 +6,12 @@
 
 init() ->
 	case file:consult("core_config.crl") of
-		{ok, [{Server, Port}]} -> init(Server, Port, gen_tcp);
+		{ok, [{Server, Port, Transport}]} -> init(Server, Transport, Port);
 		{ok, Terms} -> logging:log(error, "CORE", "Wrong config file format: ~p", [Terms]);
 		{error, R} -> logging:log(error, "CORE", "Failed to read config file: ~p", [R])
 	end.
 
-init(Server, Port, Transport) ->
+init(Server, Transport, Port) ->
 	case Transport of
 		ssl -> ssl:start();
 		_ -> ok

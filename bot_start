@@ -21,7 +21,7 @@ main(Args) ->
 
 rconfig() ->
 	case file:consult("core_config.crl") of
-		{ok, [{S,P}]} -> {S,P,gen_tcp};
+		{ok, [{S,P,T}]} -> {S,P,T};
 		_ -> {none, none, gen_tcp}
 	end.
 
