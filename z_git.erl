@@ -78,7 +78,7 @@ search_tree(Tree, String, Branch) ->
 				string:str(string:to_lower(T), String) /= 0
 			end, Tree) of
 		[] -> "No matches found.";
-		[Match] -> ["http://github.com/Baystation12/Baystation12/blob/", Branch, "/", Match];
+		[Match] -> ["http://github.com/Baystation12/Baystation12/blob/", Branch, "/", re:replace(Match, " ", "%20", [global, {return, list}])];
 		Multi ->
 			["Multiple results found: ", join_list_max_len(Multi, "; ", 300)]
 	end.

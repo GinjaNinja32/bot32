@@ -45,8 +45,14 @@ pm(N, RT, Ping, Params, _) ->
 	ok.
 
 notes(_, RT, Ping, [], _) -> {irc, {msg, {RT, [Ping, "Provide a user to find notes for."]}}};
-notes(N, RT, Ping, [Key], _) ->
-	z_server ! {notes, N, RT, Ping, string:to_lower(Key)},
+notes(N, RT, Ping, [Key], #state{permissions=P}) ->
+	case RT of
+		N -> z_server ! {notes, N, RT, Ping, string:to_lower(Key)};
+		_ -> case lists:member(server, bot:rankof_chan(RT, P)) of
+			true -> z_server ! {notes, N, RT, Ping, string:to_lower(Key)};
+			false -> z_server ! {notes, N, N, "", string:to_lower(Key)}
+		end
+	end,
 	ok;
 notes(_, RT, Ping, _, _) -> {irc, {msg, {RT, [Ping, "Provide a single key."]}}}.
 
@@ -61,7 +67,7 @@ notify(N, RT, Ping, _, _) ->
 	ok.
 
 sloop(Svr, Prt, SPrt, Pwd) ->
-	case gen_tcp:listen(SPrt, [list, {packet, http}, {active, false}]) of
+	case gen_tcp:listen(SPrt, [list, {packet, http}, {active, false}, {reuseaddr, true}]) of
 		{ok, SvrSock} ->
 			logging:log(info, "SERVER", "Starting loop."),
 			register(z_server, self()),
@@ -92,12 +98,15 @@ loop(SvrSock, Svr, Prt, SPrt, Pwd, Notify) ->
 				{error, T} -> io_lib:format("Error: ~s", [T]);
 				Dict ->
 					case hd(orddict:fetch_keys(Dict)) of
-						"No information found on the given key." -> "No information found on the given key.";
+						"No information found on the given key." -> ["No information found on the key '", Lookup, "'."];
 						T ->
-							os:putenv("sprunge", T),
-							X = os:cmd("echo $sprunge | /home/bot32/privatepaste.py --no-tee -e 1800"),
-							case X of
-								"Pasting...\n" ++ URL -> URL;
+							os:putenv("pp_content", T),
+							Password = genpasswd(),
+							os:putenv("pp_passwd", Password),
+							X = os:cmd("echo $pp_content | /home/bot32/privatepaste.py --no-tee -e '1 hour' -p \"$pp_passwd\""),
+							case re:run(X, ["Pasting...\\n(.+)/", util:regex_escape(Password)], [{capture, all_but_first, binary}]) of
+								{match, [URL]} ->
+									["Notes for ", Lookup, ": ", URL, " - password is ", Password];
 								_ -> ["unknown error: ", X]
 							end
 					end
@@ -162,7 +171,7 @@ readsock(Socket, Pwd, Notify) ->
 								1 -> lists:foreach(fun(T) -> core ! {irc, {msg, {T, Msg}}} end, sets:to_list(Notify));
 								_ -> ok
 							end,
-							core ! {irc, {msg, {Chan, Msg}}};
+							sendmsg(Chan, Msg);
 						_ -> logging:log(info, "SERVER", "received correctly keyed message with no channel and/or message")
 					end;
 				{ok, NotPwd} -> logging:log(info, "SERVER", "received incorrect key ~s", [NotPwd]);
@@ -172,3 +181,13 @@ readsock(Socket, Pwd, Notify) ->
 			gen_tcp:close(Socket);
 		{error, T} -> logging:log(error, "SERVER", "error in readsock: ~p", [T])
 	end.
+
+sendmsg(Chan, Msg) when length(Msg) > 350 ->
+	{A,B} = lists:split(350, Msg),
+	core ! {irc, {msg, {Chan, A}}},
+	sendmsg(Chan, "<continued> " ++ B);
+sendmsg(Chan, Msg) ->
+	core ! {irc, {msg, {Chan, Msg}}}.
+
+genpasswd() ->
+	base64:encode(crypto:strong_rand_bytes(6)).

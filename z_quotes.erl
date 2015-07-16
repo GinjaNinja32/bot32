@@ -80,12 +80,12 @@ gen_exmatch(Params) ->
 	fun({_,Q}) -> re:run(Q, [$^, Regexed, $$], [{capture, none}, caseless]) == match end.
 
 gen_catmatch(Params) ->
-	Cat = string:to_lower(hd(Params)),
+	Cat = list_to_binary(string:to_lower(hd(Params))),
 	General = gen_genmatch(tl(Params)),
 	fun(T={C,_}) -> Cat == C andalso General(T) end.
 
 gen_excatmatch(Params) ->
-	Cat = string:to_lower(hd(Params)),
+	Cat = list_to_binary(string:to_lower(hd(Params))),
 	General = gen_exmatch(tl(Params)),
 	fun(T={C,_}) -> Cat == C andalso General(T) end.
 
@@ -121,7 +121,8 @@ remove_quote(MatchFunc, Quotes) ->
 
 get_quote_name([], _) -> "Please supply a username to quote from.";
 get_quote_name(String, Quotes) ->
-	Matching = lists:filter(fun({Cat, _}) -> lists:prefix(String, Cat) end, Quotes),
+	Regexed = util:regex_escape(String),
+	Matching = lists:filter(fun({Cat, _}) -> re:run(Cat, <<"^", Regexed/binary>>, [{capture, none}, caseless]) == match end, Quotes),
 	pick_quote(Matching).
 
 get_quote_word([], _) -> "Please supply a word or words to find quotes for.";
@@ -135,14 +136,15 @@ get_quote_word(String, Quotes) ->
 pick_quote([]) -> "No matching quotes.";
 pick_quote(Q) ->
 	{Cat, Quote} = lists:nth(random:uniform(length(Q)), Q),
-	["\"", Quote, "\" - ",Cat].
+	<<"\"", Quote/binary, "\" - ", Cat/binary>>.
 
 add_quote(Category, String, Quotes) ->
-	LowerString = string:to_lower(String),
+	Regexed = util:regex_escape(String),
+	common:debug("quote", Regexed),
 	case length(lists:filter(fun({_, Q}) ->
-				string:to_lower(Q) == LowerString
+				re:run(Q, <<"^", Regexed/binary, "$">>, [{capture, none}, caseless]) == match
 			end, Quotes)) of
-		0 -> {"Quote added.", [{Category, String} | Quotes]};
+		0 -> {"Quote added.", [{list_to_binary(Category), list_to_binary(String)} | Quotes]};
 		_ -> {"Quote is already listed.", Quotes}
 	end.
 

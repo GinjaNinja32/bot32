@@ -1,5 +1,5 @@
 -module(logging).
--export([log/3, log/4, init/0, timestamp/0, loop/2]).
+-export([log/3, log/4, init/0, timestamp/0, loop/3]).
 
 log(Level, What, Message) -> log(Level, What, Message, []).
 log(Level, What, Message, FormatParams) ->
@@ -26,30 +26,52 @@ mkentry(Level, What, Message, FormatParams) ->
 datestr({Date,_}) -> datestr(Date);
 datestr({Yr,Mn,Dy}) -> io_lib:format("~b-~b-~b", [Yr,Mn,Dy]).
 
-init() ->
+init() -> init([debug]).
+init(Muted) ->
 	LogDate = datestr(calendar:now_to_universal_time(os:timestamp())),
 	case mklog(["main-", LogDate]) of
 		{ok, Log} ->
 			register(log, self()),
-			loop(Log, LogDate);
+			loop(Log, LogDate, Muted);
 		error -> fail
 	end.
 
-loop(RLog, LogDate) ->
+loop(RLog, RLogDate, Muted) ->
 	receive
+		{all, Level} ->
+			NL = lists:delete(Level, Muted),
+			io:fwrite("~p~n", [NL]),
+			loop(RLog, RLogDate, NL);
+		{rll, Level} ->
+			case lists:member(Level, Muted) of
+				true -> NL = Muted;
+				false -> NL = [Level | Muted]
+			end,
+			io:fwrite("~p~n", [NL]),
+			loop(RLog, RLogDate, NL);
 		{log, Level, What, Message, FormatParams} ->
 			case datestr(calendar:now_to_universal_time(os:timestamp())) of
-				LogDate -> Log = RLog;
+				RLogDate -> Log = RLog, LogDate = RLogDate;
 				DateStr -> 
 					case mklog(["main-", DateStr]) of
-						{ok, Log} -> ok;
-						error -> Log = RLog
+						{ok, Log} ->
+							file:close(RLog),
+							LogDate = DateStr;
+						error ->
+							Log = RLog,
+							LogDate = RLogDate
 					end
 			end,
-			io:fwrite("[~s][~s] ~s~n", [Level, What, io_lib:format(Message, FormatParams)]),
+			case lists:member(Level, Muted) of
+				false ->
+					io:fwrite("[~s][~s] ~s~n", [Level, What, io_lib:format(Message, FormatParams)])
+						;
+				true -> ok
+			end
+			,
 			case file:write(Log, mkentry(Level, What, Message, FormatParams)) of
-				ok -> logging:loop(Log, LogDate);
-				{error, Reason} -> io:fwrite("[error][LOGGING] ~s~n", [Reason]), init()
+				ok -> logging:loop(Log, LogDate, Muted);
+				{error, Reason} -> io:fwrite("[error][LOGGING] ~s~n", [Reason]), init(Muted)
 			end;
 		stop -> ok
 	end.

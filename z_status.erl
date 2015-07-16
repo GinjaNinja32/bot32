@@ -55,12 +55,12 @@ players(RT, S, P) ->
         case byond:send(S, P, "status") of
                 {error, X} -> core ! {irc, {msg, {RT, io_lib:format("Error: ~p", [X])}}};
                 Dict ->
-                        PlayerList = safeget(Dict, "playerlist"),
-                        case PlayerList of
+                        case safeget(Dict, "playerlist") of
                                 "???" -> core ! {irc, {msg, {RT, "Players: Unknown!"}}};
 				[] ->	core ! {irc, {msg, {RT, "No players present."}}};
-                                _ ->
-                                        {_, Str, _} = lists:foldl(fun acc_players/2, {0, [], RT}, lists:map(fun(T) -> [hd(T),160,tl(T)] end, lists:sort(PlayerList))),
+                                PlayerList ->
+					Ordered = lists:sort(lists:map(fun(N) -> re:replace(N, " ", [160], [{return, list}]) end, PlayerList)),
+                                        {_, Str, _} = lists:foldl(fun acc_players/2, {0, [], RT}, lists:map(fun(T) -> [hd(T),160,tl(T)] end, Ordered)),
                                         core ! {irc, {msg, {RT, ["Players: ", string:join(lists:reverse(Str), ", ")]}}}
                         end
         end.

@@ -35,7 +35,8 @@ init() ->
 						{mode, Mode}		when is_list(Mode) orelse is_binary(Mode)	-> Config#config{mode=Mode};
 						{real, Real}		when is_list(Real) orelse is_binary(Real)	-> Config#config{real=Real};
 
-						{prefix, Prefix}	when is_integer(Prefix)				-> Config#config{prefix=Prefix};
+						{prefix, Prefix}	when is_integer(Prefix)				-> Config#config{prefix=[Prefix]};
+						{prefixes, Prefixes}	when is_list(Prefixes)				-> Config#config{prefix=Prefixes};
 
 						{permission, {N,U,H}, P}	when is_list(N) andalso is_list(U) andalso is_list(H) andalso is_atom(P) ->
 														NUH = {string:to_lower(N),U,H},
@@ -160,25 +161,42 @@ message_all_rank(Category, Msg, Rank, Permissions) ->
 is_ignored(#user{nick=N}, Ignored) ->
 	sets:is_element(string:to_lower(N), Ignored).
 
-rankof(#user{nick=N,username=U,host=H}, Permissions) ->
-	case orddict:find({string:to_lower(N),U,H}, Permissions) of
-		{ok, T} -> T;
+rankof(Usr=#user{}, Permissions) -> rankof(Usr, Permissions, none).
+rankof(#user{nick=N,username=U,host=H}, Permissions, Channel) ->
+	C = case Channel of
+		none ->	none;
+		_ -> list_to_binary(Channel)
+	end,
+	orddict:fold(fun
+			({Nick,User,Host}, Perms, PermsSoFar) ->
+				case    (re:run(N, util:regex_star(Nick), [{capture, none}, caseless]) == match)
+				andalso (re:run(U, util:regex_star(User), [{capture, none}]) == match)
+				andalso (re:run(H, util:regex_star(Host), [{capture, none}]) == match) of
+					true -> lists:umerge(lists:usort(Perms), PermsSoFar);
+					false -> PermsSoFar
+				end;
+			(Chan, Perms, PermsSoFar) ->
+				if Chan == C -> lists:umerge(lists:usort(Perms), PermsSoFar);
+				   true -> PermsSoFar
+				end
+		end, [user], Permissions).
+
+rankof_chan(Channel, Permissions) ->
+	case orddict:find(list_to_binary(Channel), Permissions) of
+		{ok, Value} -> Value;
 		error -> [user]
 	end.
 
 hasperm(_, user, _) -> true;
-hasperm(#user{nick=N,username=U,host=H}, Perm, Permissions) ->
-	case orddict:find({string:to_lower(N),U,H}, Permissions) of
-		{ok, T} -> lists:member(Perm, T);
-		error -> false
-	end.
-
+hasperm(User=#user{}, Perm, Permissions) ->
+	lists:member(Perm, rankof(User, Permissions)).
 
 parse_command([],_,_) -> notcommand;
 parse_command(Params, Prefix, BotAliases) when is_list(Prefix) ->
 	<<FirstChar/utf8, Rest/binary>> = list_to_binary(hd(Params)),
 	case lists:member(FirstChar, Prefix) of
-		true -> {binary_to_list(Rest), tl(Params)};
+		true when Rest /= <<>> -> {binary_to_list(Rest), tl(Params)};
+		true -> notcommand;
 		false -> parse_command(Params, none, BotAliases)
 	end;
 parse_command(Params, Prefix, BotAliases) ->
@@ -195,7 +213,8 @@ parse_command(Params, Prefix, BotAliases) ->
 		_ -> notcommand
 	end.
 
-handle_irc(msg, {User=#user{nick=Nick}, Channel, Tokens}, State=#state{nick=MyNick, prefix=Prefix, permissions=Permissions, ignore=Ignored, modules=M}) ->
+% handle_irc(msg, {_,T,_}, _) when T /= "#bot32-test" -> ok;
+handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}, State=#state{nick=MyNick, prefix=Prefix, permissions=Permissions, ignore=Ignored, modules=M}) ->
 	case sets:is_element(z_seen, M) of
 		true -> if
 				Channel /= MyNick -> z_seen:on_privmsg(Nick, Channel, State);
@@ -218,25 +237,26 @@ handle_irc(msg, {User=#user{nick=Nick}, Channel, Tokens}, State=#state{nick=MyNi
 					ReplyChannel = Channel,
 					ReplyPing = Nick ++ ": "
 			end,
-			case parse_command(Tokens, Prefix, [MyNick]) of
+			logging:log(debug, "BOT", "Parsing command: ~p", [Tokens]),
+			case parse_command(Tokens, Prefix, [MyNick, "NT"]) of
 				{Command, Arguments} ->
 					logging:log(info, "BOT", "Command in ~s from ~s: ~s ~s", [Channel, User#user.nick, Command, string:join(Arguments, " ")]),
-					Rank = rankof(User, Permissions),
+					Rank = rankof(User, Permissions, ReplyChannel),
 					case hasperm(User, host, Permissions) of
 						true -> handle_host_command(Rank, Nick, ReplyChannel, ReplyPing, Command, Arguments, State);
 						false ->     handle_command(Rank, Nick, ReplyChannel, ReplyPing, Command, Arguments, State)
 					end;
 				notcommand ->
 					case lists:dropwhile(fun(X) -> re:run(X, "^https?://.*$", [{capture, none}]) /= match end, Tokens) of
-						_ -> ok; % Temporary until oldNT is gone
+						[] -> ok;
 						[URL|_] ->
 							os:putenv("url", URL),
 							case os:cmd("/home/bot32/urltitle.sh $url") of
 								"" -> ok;
-								Show -> {irc, {msg, {ReplyChannel, [ReplyPing, Show]}}}
+								Show -> core ! {irc, {msg, {ReplyChannel, [ReplyPing, Show]}}}
 							end
 					end,
-					case lists:dropwhile(fun(X) -> re:run(X, "^(\[[1-9][0-9]+\]|#[1-9][0-9]+)$", [{capture, none}]) /= match end, Tokens) of
+					case lists:dropwhile(fun(X) -> re:run(X, "^(\\[[1-9][0-9]+\\]|#[1-9][0-9]+)$", [{capture, none}]) /= match end, Tokens) of
 						[] -> ok;
 						[PRNum|_] ->
 							case PRNum of
@@ -249,9 +269,12 @@ handle_irc(msg, {User=#user{nick=Nick}, Channel, Tokens}, State=#state{nick=MyNi
 								match -> ShowURL = ["http://github.com/Baystation12/Baystation12/issues/", GH_NUM];
 								nomatch -> ShowURL = ["http://github.com/Baystation12/Baystation12/pull/", GH_NUM]
 							end,
-							{irc, {msg, {ReplyChannel, [ReplyPing, ShowURL, " - ", URLTitle]}}}
-					end
-							
+							core ! {irc, {msg, {ReplyChannel, [ReplyPing, ShowURL, " - ", URLTitle]}}}
+					end,
+					lists:foreach(fun(Module) ->
+							lists:member({handle_event,3}, Module:module_info(exports))
+							andalso Module:handle_event(msg, Params, State)
+						end, sets:to_list(State#state.modules))
 			end
 	end;
 
@@ -280,6 +303,9 @@ handle_host_command(Rank, Origin, ReplyTo, Ping, Cmd, Params, State=#state{}) ->
 		"update" ->		update;
 		"help" ->		core ! {irc, {msg, {Origin, ["builtin host commands: update, reload_all, drop_all, load_mod, drop_mod, reload_mod"]}}},
 					handle_command(Rank, Origin, ReplyTo, Ping, Cmd, Params, State);
+
+		"modules" ->
+			{irc, {msg, {ReplyTo, [Ping, string:join(lists:map(fun atom_to_list/1, lists:sort(sets:to_list(State#state.modules))), " ")]}}};
 
 		"reload_all" ->
 			Modules = sets:to_list(State#state.modules),
@@ -333,17 +359,19 @@ handle_host_command(Rank, Origin, ReplyTo, Ping, Cmd, Params, State=#state{}) ->
 handle_command(Ranks, Origin, ReplyTo, Ping, Cmd, Params, State=#state{commands=Commands}) ->
 	Result = lists:foldl(fun
 			(Rank, unhandled) ->
-				RankCmds = case orddict:find(Rank, Commands) of
+				case case orddict:find(Rank, Commands) of
 					{ok, X} -> X;
 					error -> orddict:new()
-				end,
-				case string:to_lower(Cmd) of
-					"help" -> core ! {irc, {msg, {Origin, [io_lib:format("~s commands: ",[Rank]), string:join(orddict:fetch_keys(RankCmds), ", "), "."]}}}, unhandled;
-		
-					T -> case orddict:find(T, RankCmds) of
-						{ok, {_,Result}} -> apply(Result, [Origin, ReplyTo, Ping, Params, State]);
-						error -> unhandled
-					end
+				end of
+					[] -> unhandled;
+					RankCmds ->
+						case string:to_lower(Cmd) of
+							"help" -> core ! {irc, {msg, {Origin, [io_lib:format("~s commands: ",[Rank]), string:join(orddict:fetch_keys(RankCmds), ", "), "."]}}}, unhandled;
+							T -> case orddict:find(T, RankCmds) of
+								{ok, {_,Result}} -> apply(Result, [Origin, ReplyTo, Ping, Params, State]);
+								error -> unhandled
+							end
+						end
 				end;
 			(_, Result) -> Result
 		end, unhandled, Ranks),
@@ -351,9 +379,41 @@ handle_command(Ranks, Origin, ReplyTo, Ping, Cmd, Params, State=#state{commands=
 		"help" -> ok;
 		_ ->
 			case Result of
-				unhandled -> {irc, {msg, {ReplyTo, [Ping, "Unknown command '",Cmd,"'!"]}}};
+				unhandled ->
+					case alternate_commands([Cmd | Params]) of
+						false -> ok; % {irc, {msg, {ReplyTo, [Ping, "Unknown command '",Cmd,"'!"]}}};
+						R -> {irc, {msg, {ReplyTo, [Ping, R]}}}
+					end;
 				_ -> Result
 			end
+	end.
+
+alternate_commands(Tokens) ->
+	AltFunctions = [fun select_or_string/1, fun alternate_eightball/1],
+	lists:foldl(fun
+			(Func, false) -> Func(Tokens);
+			(_,Re) -> Re
+		end, false, AltFunctions).
+
+select_or_string(List) ->
+	case collapse_or_string(List, [], []) of
+		false -> false;
+		[] -> false;
+		[_] -> false;
+		Options -> lists:nth(random:uniform(length(Options)), Options)
+	end.
+
+collapse_or_string([], [], _) -> false;
+collapse_or_string([], COpt, Options) -> [COpt | Options];
+collapse_or_string(["or"|_], [], _) -> false;
+collapse_or_string(["or"|L], COpt, Options) -> collapse_or_string(L, [], [COpt | Options]);
+collapse_or_string([T|L], [], Options) -> collapse_or_string(L, [T], Options);
+collapse_or_string([T|L], COpt, Options) -> collapse_or_string(L, [COpt,32|T], Options).
+
+alternate_eightball(List) ->
+	case util:lasttail(util:lasttail(List)) of
+		$? -> util:eightball();
+		_ -> false
 	end.
 
 load_modules(Modules, State) -> lists:foldl(fun load_module/2, State, Modules).
@@ -378,7 +438,21 @@ load_module(Module, State) ->
 	end, State#state.commands, apply(Module, get_commands, [])),
 
 	% Initialise
-	apply(Module, initialise, [State#state{commands = NewCmds, modules = sets:add_element(Module, State#state.modules)}]).
+	case case lists:member({data_persistence,0}, Module:module_info(exports)) of
+		true -> Module:data_persistence();
+		false -> manual
+	end of
+		manual -> apply(Module, initialise, [State#state{commands = NewCmds, modules = sets:add_element(Module, State#state.modules)}]);
+		automatic ->
+			case file:consult(["modules/", Module, ".crl"]) of
+				{ok, [Data]} -> logging:log(info, Module, "Loaded.");
+				{ok, _} -> logging:log(error, Module, "Incorrect format."), Data = Module:default_data();
+				{error, T} -> logging:log(error, Module, "Error loading: ~p", [T]), Data = Module:default_data()
+			end,
+			State#state{commands = NewCmds, modules = sets:add_element(Module, State#state.modules), moduledata = orddict:store(Module, Data, State#state.moduledata)};
+		none ->
+			State#state{commands = NewCmds, modules = sets:add_element(Module, State#state.modules)}
+	end.
 
 unload_modules(Modules, State) -> lists:foldl(fun unload_module/2, State, Modules).
 
@@ -391,12 +465,25 @@ unload_module(Module, State) ->
 		end, State#state.commands),
 	Removed = orddict:filter(fun(_,V) -> V /= [] end, Cleaned),
 
-%	{Admin,User} = State#state.commands,
-%	A = orddict:filter(fun(_, {Mod, _}) -> Mod /= Module end, Admin),
-%	B = orddict:filter(fun(_, {Mod, _}) -> Mod /= Module end, User),
-
 	% Deinitialise
-	apply(Module, deinitialise, [State#state{commands = Removed, modules = sets:del_element(Module, State#state.modules)}]).
+	case case lists:member({data_persistence,0}, Module:module_info(exports)) of
+		true -> Module:data_persistence();
+		false -> manual
+	end of
+		manual -> apply(Module, deinitialise, [State#state{commands = Removed, modules = sets:del_element(Module, State#state.modules)}]);
+		automatic ->
+			case orddict:find(Module, State#state.moduledata) of
+				{ok, V} ->
+					Status = file:write_file(["modules/", Module, ".crl"], io_lib:format("~p.~n", [V])),
+					logging:log(info, Module, "Save status: ~p", [Status]);
+				error ->
+					file:delete(["modules/", Module, ".crl"]),
+					logging:log(info, Module, "Save found no data.")
+			end,
+			State#state{commands = Removed, modules=sets:del_element(Module, State#state.modules), moduledata=orddict:erase(Module, State#state.moduledata)};
+		none ->
+			State#state{commands = Removed, modules=sets:del_element(Module, State#state.modules), moduledata=orddict:erase(Module, State#state.moduledata)}
+	end.
 
 reload_modules(Modules, State) -> lists:foldl(fun reload_module/2, State, Modules).
 reload_module(Module, State) -> load_module(Module, unload_module(Module, State)).

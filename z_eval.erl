@@ -5,7 +5,8 @@ get_commands() ->
 	[
 		{"eval", gen_eval(fun eval/1), host},
 		{"evalstr", gen_eval_str(fun eval/1), host},
-		{"math", gen_eval(fun math/1), user}
+		{"math", gen_eval(fun math/1), user},
+		{"maths", gen_eval(fun math/1), user}
 	].
 
 initialise(T) -> T.

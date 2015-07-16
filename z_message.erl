@@ -12,26 +12,9 @@ get_commands() ->
 		{"dbg_msg", fun debug_messages/5, host}
 	].
 
-get_data(#state{moduledata=M}) ->
-	case orddict:find(z_message, M) of
-		{ok, Value} -> Value;
-		error -> orddict:new()
-	end.
-
-set_data(S=#state{moduledata=M}, Data) ->
-	S#state{moduledata=orddict:store(z_message, Data, M)}.
-
-store_data(Data) ->
-	bot ! {setkey, {z_message, Data}},
-	ok.
-
-initialise(T) ->
-	Messages=load_messages(),
-	set_data(T, Messages).
-
-deinitialise(T) ->
-	save_messages(get_data(T)),
-	T#state{moduledata=orddict:erase(z_message, T#state.moduledata)}.
+default_data() -> orddict:new().
+data_persistence() -> automatic.
+-include("basic_module.erl").
 
 handle_event(nick, {_, N}, S) -> check_messages_for(N, get_data(S));
 handle_event(join, {#user{nick=N}, _}, S) -> check_messages_for(N, get_data(S));
@@ -51,11 +34,11 @@ new_message(Origin, ReplyTo, Ping, Params, State=#state{}) ->
 	{irc, {msg, {ReplyTo, [Ping, create_message(Origin, hd(Params), string:join(tl(Params), " "), State#state.nick, get_data(State))]}}}.
 
 save_messages(_, ReplyTo, Ping, _, State=#state{}) ->
-	save_messages(get_data(State)),
+	save_data(get_data(State)),
 	{irc, {msg, {ReplyTo, [Ping, "Saved message data."]}}}.
 
 load_messages(_, ReplyTo, Ping, _, _) ->
-	store_data(load_messages()),
+	store_data(bot:modload_auto(?MODULE)),
 	{irc, {msg, {ReplyTo, [Ping, "Loaded message data."]}}}.
 
 debug_messages(_, ReplyTo, Ping, _, State=#state{}) ->
@@ -74,7 +57,7 @@ check_messages_for(NickR, Messages) ->
                                         core ! {irc, {msg, {Nick, [Message, " - From ", From, " at ", Date, " ", Time, " UTC (",DiffStr," ago)"]}}}
                                 end, M),
 			NewData = orddict:erase(Nick, Messages),
-			save_messages(NewData),
+			save_data(NewData),
                         store_data(NewData),
                         ok;
                 error -> nomessages
@@ -104,23 +87,12 @@ create_message(FromR, ToR, Msg, Self, Messages) ->
                                 toomany -> [ToR, " has too many pending messages!"];
                                 _ ->
 					NewData = orddict:store(To, NewValue, Messages),
-					save_messages(NewData),
+					save_data(NewData),
                                         store_data(NewData),
                                         ["Sending a message to ", ToR, " when they arrive."]
                         end
         end.
 
-load_messages() ->
-        case file:consult("messages.crl") of
-                {ok, [Term]} ->
-                        logging:log(info, "MSGS", "Loaded."),
-                        Term;
-                {error, T} ->
-                        logging:log(info, "MSGS", "Creating new (error is ~p)", [T]),
-                        orddict:new()
-        end.
-
-save_messages(Messages) ->
-        T = file:write_file("messages.crl", io_lib:format("~p.~n", [Messages])),
+save_data(Messages) ->
+        T = file:write_file("modules/z_message.crl", io_lib:format("~p.~n", [Messages])),
         logging:log(info, "MSGS", "Save status: ~p", [T]).
-

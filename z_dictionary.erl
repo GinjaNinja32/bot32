@@ -30,5 +30,5 @@ parse_reply(Text) ->
 		false ->
 			Definitions = lists:map(fun(T) -> re:replace(T, "^[ \t]*", "", [{return, list}]) end, tl(tl(Lines))),
 			FirstDef = lists:takewhile(fun(T) -> not lists:prefix("2: ", T) end, Definitions),
-			re:replace(string:join(FirstDef, " "), "^([a-z]+) ([a-z]+) 1:", "\\1 (\\2)", [{return, binary}])
+			re:replace(string:join(FirstDef, " "), "^([A-Za-z]+) ([A-Za-z]+) 1:", "\\1 (\\2)", [{return, binary}])
 	end.
