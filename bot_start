@@ -1,0 +1,62 @@
+#! /usr/bin/env escript
+
+main(Args) ->
+	case lists:foldl(fun(Arg, {S,P,T}) ->
+		case Arg of
+			"-s" ++ Server -> {Server, P, T};
+			"-p" ++ Port -> {S, list_to_integer(Port), T};
+			"-t" ++ Transport ->
+				case Transport of
+					"ssl" -> {S, P, ssl};
+					"gen_tcp" -> {S, P, gen_tcp};
+					X -> io:fwrite("Unsupported transport method ~s~n", [X]), {S, P, T}
+				end
+		end
+		end, rconfig(), Args) of
+
+		{none, _, _} -> io:fwrite("A server address is required.\n");
+		{_, none, _} -> io:fwrite("A server port is required.\n");
+		{S,P,T} -> connect(S,P,T)
+	end.
+
+rconfig() ->
+	case file:consult("core_config.crl") of
+		{ok, [{S,P}]} -> {S,P,gen_tcp};
+		_ -> {none, none, gen_tcp}
+	end.
+
+connect(Server, Port, Transport) ->
+	case find_erl(".") of
+		error -> io:fwrite("Failed to find Erlang files!\n");
+		Files ->
+			case lists:foldl(fun
+				(_, false) -> false;
+				(Filename, N) ->
+					case compile:file(Filename, [return_warnings, report_errors, report_warnings]) of
+						{ok,_} -> N;
+						{ok,_,Warn} -> N+length(Warn);
+						error -> false;
+						{error,_,_} -> false
+					end
+				end, 0, Files) of
+				false -> io:fwrite("Failed to compile some files; check errors and correct before running!\n");
+				N ->
+					io:fwrite("Compiled all files with ~b warnings.~n", [N]),
+					io:fwrite("trying connect to ~s:~b~n", [Server, Port]),
+					common:start_nospawn(Server, Port, Transport)
+			end
+	end.
+
+find_erl(Directory) ->
+	case file:list_dir(Directory) of
+		{ok, Files} -> find_erl(Files, []);
+		_ -> error
+	end.
+
+find_erl([], Proc) -> Proc;
+find_erl([F|Raw], Proc) ->
+	case re:run(F, "(.*/)?([a-zA-Z0-9_]+).erl", [{capture, all_but_first, list}]) of
+		{match, [_,File]} -> find_erl(Raw, [list_to_atom(File) | Proc]);
+		{match, [File]} -> find_erl(Raw, [list_to_atom(File) | Proc]);
+		nomatch -> find_erl(Raw, Proc)
+	end.

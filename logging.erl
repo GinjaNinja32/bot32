@@ -11,6 +11,7 @@ log(Level, What, Message, FormatParams) ->
 	ok.
 
 mklog(Name) ->
+	file:make_dir("logs"),
 	case file:open(["logs/",Name,".log"], [append]) of
 		{ok, Log} ->
 			file:write(Log, [10, lists:duplicate(25, $#), 10]),

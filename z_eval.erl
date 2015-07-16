@@ -20,14 +20,11 @@ gen_eval(Func) ->
 			$. -> Raw;
 			_ -> Raw ++ "."
 		end,
-		case Func(Str) of
+		case catch Func(Str) of
 			{ok, Value} -> {irc, {msg, {ReplyTo, [Ping, re:replace(io_lib:format("~w", [Value]), "[\r\n]", "")]}}};
-			{error, {errored, {badmatch, {error, {_,_,Err}}}}} ->
-				{irc, {msg, {ReplyTo, [Ping, "Error: ", re:replace(Err, "[\r\n]", "")]}}};
-			{error, {Type, Error}} ->
-				T = re:replace(io_lib:format("Uncaught ~w ~w", [Type, Error]), "[\r\n]", ""),
-				logging:log(info, "EVAL", "~s", [T]),
-				{irc, {msg, {ReplyTo, [Ping, T]}}}
+			{'EXIT', {Reason, Stack}} -> {irc, {msg, {ReplyTo, [Ping, format_reasonstack(Reason, Stack)]}}};
+			{'EXIT', Term} -> {irc, {msg, {ReplyTo, [Ping, io_lib:format("Code exited with ~p", [Term])]}}};
+			Term -> {irc, {msg, {ReplyTo, [Ping, io_lib:format("Code threw ~p", [Term])]}}}
 		end
 	end.
 
@@ -39,40 +36,28 @@ gen_eval_str(Func) ->
 			$. -> Raw;
 			_ -> Raw ++ "."
 		end,
-		case Func(Str) of
+		case catch Func(Str) of
 			{ok, Value} -> {irc, {msg, {ReplyTo, [Ping, re:replace(io_lib:format("~s", [Value]), "[\r\n]", "")]}}};
-			{error, {errored, {badmatch, {error, {_,_,Err}}}}} ->
-				{irc, {msg, {ReplyTo, [Ping, "Error: ", re:replace(io_lib:format("~s", [Err]), "[\r\n]", "")]}}};
-			{error, {Type, Error}} ->
-				T = re:replace(io_lib:format("Uncaught ~w ~w", [Type, Error]), "[\r\n]", ""),
-				logging:log(info, "EVAL", "~s", [T]),
-				{irc, {msg, {ReplyTo, [Ping, T]}}}
+			{'EXIT', {Reason, Stack}} -> {irc, {msg, {ReplyTo, [Ping, format_reasonstack(Reason, Stack)]}}};
+			{'EXIT', Term} -> {irc, {msg, {ReplyTo, [Ping, io_lib:format("Code exited with ~p", [Term])]}}};
+			Term -> {irc, {msg, {ReplyTo, [Ping, io_lib:format("Code threw ~p", [Term])]}}}
 		end
 	end.
 
+format_reasonstack(Reason, [TopFrame|_]) ->
+	io_lib:format("Error: ~p at ~p", [Reason, TopFrame]).
+
 eval(String) ->
-	try
-		{ok, Tokens, _} = erl_scan:string(String),
-		{ok, Forms} = erl_parse:parse_exprs(Tokens),
-		{value, Value, _} = erl_eval:exprs(Forms, []),
-		{ok, Value}
-	catch
-		throw:T -> {error, {thrown, T}};
-		exit:T -> {error, {exited, T}};
-		error:T -> {error, {errored, T}}
-	end.
+	{ok, Tokens, _} = erl_scan:string(String),
+	{ok, Forms} = erl_parse:parse_exprs(Tokens),
+	{value, Value, _} = erl_eval:exprs(Forms, []),
+	{ok, Value}.
 
 math(String) ->
-	try
-		{ok, Tokens, _} = erl_scan:string(String),
-		{ok, [Form]} = erl_parse:parse_exprs(Tokens),
-		{value, Value, _} = erl_eval:expr(Form, [{'C',299792458}, {'E',2.718281828459}, {'Pi', math:pi()}], {value, fun lmath/2}, {value, fun nlmath/2}),
-		{ok, Value}
-	catch
-		throw:T -> {error, {thrown, T}};
-		exit:T -> {error, {exited, T}};
-		error:T -> {error, {errored, T}}
-	end.
+	{ok, Tokens, _} = erl_scan:string(String),
+	{ok, [Form]} = erl_parse:parse_exprs(Tokens),
+	{value, Value, _} = erl_eval:expr(Form, [{'C',299792458}, {'E',2.718281828459}, {'Pi', math:pi()}], {value, fun lmath/2}, {value, fun nlmath/2}),
+	{ok, Value}.
 
 lmath(ipow, [B,P]) when is_integer(B) andalso is_integer(P) -> integer_pow(B,P,1);
 lmath(fact, [A]) when is_integer(A) -> factorial(A,1);

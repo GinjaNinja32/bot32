@@ -26,7 +26,7 @@ purge_call(Module, Function, Param) ->
 	code:load_file(Module),
 	Module:Function(Param).
 
-raw_send(Sock, Msg) ->
+raw_send(Sock, Transport, Msg) ->
 	try
 		Raw = re:replace(flatten(Msg), "[\r\n]", "", [global]),
 		if
@@ -36,26 +36,28 @@ raw_send(Sock, Msg) ->
 			true ->
 				Send = Raw
 		end,
-		?TRANSPORT:send(Sock, [Send, "\r\n"])
+		Transport:send(Sock, [Send, "\r\n"])
 	catch
 		throw:X -> logging:log(error, "RAW", "Thrown ~p (message ~p)", [X, Msg]);
 		error:X -> logging:log(error, "RAW", "Errored ~p (message ~p)", [X, Msg]);
 		exit:X ->  logging:log(error, "RAW", "Exited ~p (message ~p)", [X, Msg])
 	end.
 
-start() ->
-	spawn(core, init, []),
-	spawn(bot, init, []),
-	ok.
-start(Server, Port) ->
-	spawn(core, init, [Server, Port]),
-	spawn(bot, init, []),
-	ok.
+start() -> spawn(?MODULE, start_nospawn, []).
+start(Server, Transport, Port) -> spawn(?MODULE, start_nospawn, [Server, Transport, Port]).
 
-tcp_parse(S, M) ->
+start_nospawn() ->
+	spawn(bot, init, []),
+	core:init().
+
+start_nospawn(Server, Transport, Port) ->
+	spawn(bot, init, []),
+	core:init(Server, Transport, Port).
+
+tcp_parse(S, T, M) ->
 	Tokens = string:tokens(M, " "),
 	case hd(Tokens) of
-		"PING" -> tcp_send(S, {pong, string:join(tl(Tokens), " ")});
+		"PING" -> tcp_send(S, T, {pong, string:join(tl(Tokens), " ")});
 		":" ++ RawOrigin ->
 			Origin = parse_origin(RawOrigin),
 			case tl(Tokens) of
@@ -120,22 +122,22 @@ parse_notice(Origin, Channel, Message) ->
 		true -> {irc, {notice, {Origin, Channel, Message}}}
 	end.
 
-tcp_send(S, {pass, Pass}) ->					raw_send(S, ["PASS :", Pass]);
-tcp_send(S, {user, {User, Mode, Real}} ) ->		raw_send(S, ["USER ",User," ",Mode," * :",Real]);
-tcp_send(S, {nick, Nick}) ->					raw_send(S, ["NICK ",Nick]);
-tcp_send(S, {quit, Message}) ->					raw_send(S, ["QUIT :",Message]), core!quit;
-tcp_send(S, {pong, Params}) ->					raw_send(S, ["PONG ",Params]);
-tcp_send(S, {join, Channel}) ->					raw_send(S, ["JOIN ",Channel]);
-tcp_send(S, {part, {Channel, Reason}}) ->		raw_send(S, ["PART ",Channel," :",Reason]);
-tcp_send(S, {msg, {Recipient, Message}}) ->		raw_send(S, ["PRIVMSG ",Recipient," :",Message]);
-tcp_send(S, {ctcp, {version, R, V}}) ->			raw_send(S, ["PRIVMSG ",R," :\1VERSION ",V,1]);
-tcp_send(S, {ctcp, {action, R, V}}) ->			raw_send(S, ["PRIVMSG ",R," :\1ACTION ",V,1]);
-tcp_send(S, {ctcp, {unknown, R, V}}) ->			raw_send(S, ["PRIVMSG ",R," :\1",V,1]);
-tcp_send(S, {notice, {Recipient, Message}}) ->	raw_send(S, ["NOTICE ",Recipient," :",Message]);
-tcp_send(S, {ctcp_re, {version, R, V}}) ->		raw_send(S, ["NOTICE ",R," :\1VERSION ",V,1]);
-tcp_send(S, {ctcp_re, {action, R, V}}) ->              raw_send(S, ["NOTICE ",R," :\1ACTION ",V,1]);
-tcp_send(S, {ctcp_re, {unknown, R, V}}) ->              raw_send(S, ["NOTICE ",R," :\1",V,1]);
-tcp_send(_S, {T, X}) ->							logging:log(error, "SEND", "Unknown IRC message type or fomat {~p, ~p}", [T, X]).
+tcp_send(S, T, {pass, Pass}) ->				raw_send(S, T, ["PASS :", Pass]);
+tcp_send(S, T, {user, {User, Mode, Real}} ) ->		raw_send(S, T, ["USER ",User," ",Mode," * :",Real]);
+tcp_send(S, T, {nick, Nick}) ->				raw_send(S, T, ["NICK ",Nick]);
+tcp_send(S, T, {quit, Message}) ->			raw_send(S, T, ["QUIT :",Message]), core!quit;
+tcp_send(S, T, {pong, Params}) ->			raw_send(S, T, ["PONG ",Params]);
+tcp_send(S, T, {join, Channel}) ->			raw_send(S, T, ["JOIN ",Channel]);
+tcp_send(S, T, {part, {Channel, Reason}}) ->		raw_send(S, T, ["PART ",Channel," :",Reason]);
+tcp_send(S, T, {msg, {Recipient, Message}}) ->		raw_send(S, T, ["PRIVMSG ",Recipient," :",Message]);
+tcp_send(S, T, {ctcp, {version, R, V}}) ->		raw_send(S, T, ["PRIVMSG ",R," :\1VERSION ",V,1]);
+tcp_send(S, T, {ctcp, {action, R, V}}) ->		raw_send(S, T, ["PRIVMSG ",R," :\1ACTION ",V,1]);
+tcp_send(S, T, {ctcp, {unknown, R, V}}) ->		raw_send(S, T, ["PRIVMSG ",R," :\1",V,1]);
+tcp_send(S, T, {notice, {Recipient, Message}}) ->	raw_send(S, T, ["NOTICE ",Recipient," :",Message]);
+tcp_send(S, T, {ctcp_re, {version, R, V}}) ->		raw_send(S, T, ["NOTICE ",R," :\1VERSION ",V,1]);
+tcp_send(S, T, {ctcp_re, {action, R, V}}) ->		raw_send(S, T, ["NOTICE ",R," :\1ACTION ",V,1]);
+tcp_send(S, T, {ctcp_re, {unknown, R, V}}) ->		raw_send(S, T, ["NOTICE ",R," :\1",V,1]);
+tcp_send(_, _, {T, X}) ->				logging:log(error, "SEND", "Unknown IRC message type or fomat {~p, ~p}", [T, X]).
 
 parse_origin(O) ->
 	case re:run(O, "([^!@]+)(!([^!@]+)@([^!@]+))?", [{capture, all_but_first, list}]) of

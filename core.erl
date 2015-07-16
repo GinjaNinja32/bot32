@@ -6,23 +6,23 @@
 
 init() ->
 	case file:consult("core_config.crl") of
-		{ok, [{Server, Port}]} -> init(Server, Port);
+		{ok, [{Server, Port}]} -> init(Server, Port, gen_tcp);
 		{ok, Terms} -> logging:log(error, "CORE", "Wrong config file format: ~p", [Terms]);
 		{error, R} -> logging:log(error, "CORE", "Failed to read config file: ~p", [R])
 	end.
 
-init(Server, Port) ->
-	case ?TRANSPORT of
+init(Server, Port, Transport) ->
+	case Transport of
 		ssl -> ssl:start();
 		_ -> ok
 	end,
-	{ok, Sock} = ?TRANSPORT:connect(Server, Port, ?SOCK_OPTIONS),
+	{ok, Sock} = Transport:connect(Server, Port, ?SOCK_OPTIONS),
 	register(core, self()),
 	logging:log(info, "CORE", "starting"),
-	loop(Sock),
+	loop(Sock, Transport),
 	logging:log(info, "CORE", "quitting"),
-	?TRANSPORT:close(Sock),
-	case ?TRANSPORT of
+	Transport:close(Sock),
+	case Transport of
 		ssl -> ssl:stop();
 		_ -> ok
 	end,
@@ -31,14 +31,14 @@ init(Server, Port) ->
 		Pid -> Pid ! quit, ok
 	end.
 
-loop(Sock) ->
+loop(Sock, Transport) ->
 	case receive
 		{ssl, Sock, RawMessage} -> self() ! {tcp, Sock, RawMessage}, ok;
 		{ssl_closed, Sock} -> self() ! {tcp_closed, Sock}, ok;
 		{ssl_error, Sock, Reason} -> self() ! {tcp_error, Sock, Reason}, ok;
 		{tcp, Sock, RawMessage} ->
 			Message = lists:reverse(tl(tl(lists:reverse(RawMessage)))),
-			case common:tcp_parse(Sock, Message) of
+			case common:tcp_parse(Sock, Transport, Message) of
 				{irc, T} ->
 					case whereis(bot) of
 						undefined ->
@@ -53,34 +53,16 @@ loop(Sock) ->
 			end;
 		{tcp_closed, Sock} -> logging:log(error, "CORE", "Socket closed, quitting"), quit;
 		{tcp_error, Sock, Reason} -> logging:log(error, "CORE", "Socket error: ~p", [Reason]), quit;
-		{raw, Message} -> common:raw_send(Sock, Message), ok;
-		{irc, Message} -> common:tcp_send(Sock, Message), ok;
+		{raw, Message} -> common:raw_send(Sock, Transport, Message), ok;
+		{irc, Message} -> common:tcp_send(Sock, Transport, Message), ok;
 		T when is_atom(T) -> T;
 		X -> logging:log(error, "CORE", "Received unknown message ~p", [X])
 	end of
 		quit -> ok;
 		error -> error;
-		ok -> loop(Sock);
-		update -> core:loop(Sock);
+		ok -> loop(Sock, Transport);
+		update -> core:loop(Sock, Transport);
 		S ->
 			logging:log(error, "CORE", "unknown message ~p, continuing", [S]),
-			loop(Sock)
-	end.
-
-try_reconnect(OldSock) ->
-	case inet:peernames(OldSock) of
-		{error, P} -> {error, P};
-		{ok, [{Address, Port}]} -> try_reconnect(Address, Port, 5);
-		T -> logging:log(error, "CORE", "Reconnect failed to get address: ~p", [T])
-	end.
-
-try_reconnect(Ip, Port, Iterations) ->
-	if
-		Iterations == 0 -> {error, couldnotconnect};
-		true ->
-			case ?TRANSPORT:connect(Ip, Port, ?SOCK_OPTIONS) of
-				{ok, Sock} -> Sock;
-				{error, _} -> timer:sleep(2000), try_reconnect(Ip, Port, Iterations-1);
-				T -> logging:log(error, "CORE", "Reconnect received ~p, exiting", [T]), {error, {unexpected, T}}
-			end
+			loop(Sock, Transport)
 	end.

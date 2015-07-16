@@ -14,7 +14,7 @@ get_commands() ->
 
 default_data() -> orddict:new().
 data_persistence() -> automatic.
--include("basic_module.erl").
+-include("basic_module.hrl").
 
 handle_event(nick, {_, N}, S) -> check_messages_for(N, get_data(S));
 handle_event(join, {#user{nick=N}, _}, S) -> check_messages_for(N, get_data(S));
