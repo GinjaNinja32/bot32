@@ -60,12 +60,10 @@ loop(SvrSock, Channels) ->
 
 handle_sock(Socket, Channels) ->
 	case gen_tcp:recv(Socket, 0, 2000) of
-		{ok, {http_request, 'POST', URL, Version}} ->
-	%		common:debug("GITHUB", "HTTP request to '~p'; version: ~p", [URL, Version]),
+		{ok, {http_request, 'POST', _, _}} ->
 			inet:setopts(Socket, [{packet, httph}]),
 			Dict = read_headers(Socket),
-	%		common:debug("GITHUB", "~p", [Dict]),
-			Data = case case orddict:find('Content-Length', Dict) of
+			case case orddict:find('Content-Length', Dict) of
 				{ok, Value} ->
 					inet:setopts(Socket, [{packet, raw}]),
 					read_content(Socket, list_to_integer(Value));
@@ -75,7 +73,6 @@ handle_sock(Socket, Channels) ->
 				{error, T} -> logging:log(error, "GITHUB", "Error: ~p", [T]);
 				Content -> decode_content(Content, Channels)
 			end,
-	%		common:debug("GITHUB", "~p", [Data]),
 			gen_tcp:send(Socket, "HTTP/1.1 204 No Content\r\n\r\n"),
 			gen_tcp:close(Socket);
 		{ok, T} ->
@@ -106,9 +103,12 @@ read_content(Socket, Length) ->
 	end.
 
 decode_content(Content, Channels) ->
-	NewC = mochijson:decode(Content),
-	file:write_file("json.crl", io_lib:format("~p",[NewC])),
-	handle_decoded(NewC, Channels).
+	case catch mochijson:decode(Content) of
+		{'EXIT', T} -> logging:log(error, "GITHUB", "Error in mochijson: ~p", [T]);
+		NewC ->
+			file:write_file("json.crl", io_lib:format("~p",[NewC])),
+			handle_decoded(NewC, Channels)
+	end.
 
 handle_decoded(JSON, Channels) ->
 	Message = case traverse_json(JSON, [struct, "action"]) of
