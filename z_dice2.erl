@@ -3,6 +3,7 @@
 
 get_commands() ->
 	[
+		{"dicemode", fun dicemode/5, admin},
 		{"dice", fun dice/5, user},
 		{"roll", fun dice/5, user},
 		{"rtd",  fun dice/5, user},
@@ -14,8 +15,25 @@ get_commands() ->
 		{"exrtd",  fun edice/5, user}
 	].
 
+get_dicemode() ->
+	case get(dicemode) of
+		internal -> "internal RNG";
+		random -> "random.org";
+		undefined -> "undefined (using internal)";
+		_ -> "unknown"
+	end.
+
 initialise(T)->T.
 deinitialise(T)->T.
+
+dicemode(_, RT, P, [], _) -> {irc, {msg, {RT, [P, "Dicemode is ", get_dicemode()]}}};
+dicemode(_, RT, P, [Mode], _) ->
+	Reply = case Mode of
+		"random" -> put(dicemode, random), "Dicemode set to random.org.";
+		"internal" -> put(dicemode, internal), "Dicemode set to internal RNG";
+		_ -> ["Unknown dicemode '", Mode, $']
+	end,
+	{irc, {msg, {RT, [P, Reply]}}}.
 
 dice(_, RT, P, Params, _) -> {irc, {msg, {RT, [P, dice(string:join(Params, []), false)]}}}.
 edice(_, RT, P, Params, _) -> {irc, {msg, {RT, [P, dice(string:join(Params, []), true)]}}}.
@@ -156,19 +174,22 @@ roll(0, _, _) -> {0, "0"};
 roll(_, 0, _) -> {0, "0"};
 roll(X, _, _) when X > 1000000 -> {0, "X"};
 roll(_, X, _) when X > 1000000 -> {0, "X"};
-roll(N, M, false) ->
-	R = lists:foldl(fun(_,X) ->
-			X + random:uniform(M)
-		end, 0, lists:duplicate(N, x)),
-	{R, integer_to_list(R)};
-roll(N, M, true) when N =< 10 ->
-	{R,P} = lists:foldl(fun(_,{X,E}) ->
-			A = random:uniform(M),
-			{X + A, [A|E]}
-		end, {0,[]}, lists:duplicate(N, x)),
-	{R, io_lib:format("~w", [P])};
-roll(N, M, true) ->
-	R = lists:foldl(fun(_,X) ->
-			X + random:uniform(M)
-		end, 0, lists:duplicate(N, x)),
-	{R, ["\x034!\x03 ", integer_to_list(R)]}.
+roll(N, M, Expand) ->
+	{S, Rolls} = rollraw(N, M),
+	Total = lists:foldl(fun erlang:'+'/2, 0, Rolls),
+	Message = case Expand of
+		true when N =< 10 -> io_lib:format("~w", [Rolls]);
+		true -> ["\x034!\x03 " | integer_to_list(Total)];
+		false -> integer_to_list(Total)
+	end,
+	case S of
+		ok -> {Total, Message};
+		_ -> {Total, [S | Message]}
+	end.
+
+rollraw(N, M) ->
+	case get(dicemode) of
+		random when N =< 100 -> {ok, random_org:generate(N, 1, M)};
+		random -> {"\x038!\x03 ", lists:map(fun(_) -> random:uniform(M) end, lists:duplicate(N, x))};
+		_ ->      {ok,            lists:map(fun(_) -> random:uniform(M) end, lists:duplicate(N, x))}
+	end.
