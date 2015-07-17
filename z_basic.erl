@@ -9,11 +9,17 @@ get_commands() ->
 		{"pick", fun pick/5, user},
 		{"dance", fun dance/5, user},
 		{"rot13", fun rot_thirteen/5, user},
-		{"rot", fun rot_n/5, user}
+		{"rot", fun rot_n/5, user},
+		{"colors", fun colors/5, user}
 	].
 
 initialise(T) -> T.
 deinitialise(T) -> T.
+
+colors(_, ReplyTo, Ping, _, _) -> {irc, {msg, {ReplyTo, [Ping,
+		lists:map(fun(X) -> [3,integer_to_list(X),32,integer_to_list(X)] end, lists:seq(0,15)),
+		lists:map(fun(X) -> [3,$0,$,,integer_to_list(X),32,integer_to_list(X)] end, lists:seq(0,15))
+	]}}}.
 
 ping(_, ReplyTo, Ping, _, _) -> {irc, {msg, {ReplyTo, [Ping, "Pong!"]}}}.
 

@@ -3,7 +3,9 @@
 
 get_commands() ->
 	[
-		{"dictionary", fun dict/5, user}
+		{"dictionary", fun dict/5, user},
+		{"definition", fun dict/5, user},
+		{"define", fun dict/5, user}
 	].
 
 initialise(T) -> T.
