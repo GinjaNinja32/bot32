@@ -161,9 +161,14 @@ roll(N, M, false) ->
 			X + random:uniform(M)
 		end, 0, lists:duplicate(N, x)),
 	{R, integer_to_list(R)};
-roll(N, M, true) ->
+roll(N, M, true) when N =< 10 ->
 	{R,P} = lists:foldl(fun(_,{X,E}) ->
 			A = random:uniform(M),
 			{X + A, [A|E]}
 		end, {0,[]}, lists:duplicate(N, x)),
-	{R, io_lib:format("~w", [P])}.
+	{R, io_lib:format("~w", [P])};
+roll(N, M, true) ->
+	R = lists:foldl(fun(_,X) ->
+			X + random:uniform(M)
+		end, 0, lists:duplicate(N, x)),
+	{R, ["\x034!\x03 ", integer_to_list(R)]}.

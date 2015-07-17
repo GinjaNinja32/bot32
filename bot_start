@@ -43,7 +43,7 @@ connect(Server, Port, Transport) ->
 				N ->
 					io:fwrite("Compiled all files with ~b warnings.~n", [N]),
 					io:fwrite("trying connect to ~s:~b~n", [Server, Port]),
-					common:start_nospawn(Server, Port, Transport)
+					common:start_nospawn(Server, Transport, Port)
 			end
 	end.
 
