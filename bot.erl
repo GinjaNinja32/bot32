@@ -249,9 +249,10 @@ handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}, State=#state{ni
 						[] -> ok;
 						[URL|_] ->
 							os:putenv("url", URL),
-							case os:cmd("/home/bot32/urltitle.sh $url") of
+							case re:replace(os:cmd("/home/bot32/urltitle.sh $url"), "^[ \\t\\n]+(.*[^ \\t\\n])[ \\t\\n]+$", "\\1", [{return, binary}]) of
 								"" -> ok;
-								Show -> core ! {irc, {msg, {ReplyChannel, [ReplyPing, Show]}}}
+								Show ->
+									core ! {irc, {msg, {ReplyChannel, [ReplyPing, parse_htmlentities(Show)]}}}
 							end
 					end,
 					case lists:dropwhile(fun(X) -> re:run(X, "^(\\[[1-9][0-9]+\\]|#[1-9][0-9]+)$", [{capture, none}]) /= match end, Tokens) of
@@ -548,4 +549,44 @@ recompile_module(Module, State) ->
 		throw:X -> logging:log(error, "MODULE", "Recompile of ~p threw ~p", [Module, X]), State;
 		error:X -> logging:log(error, "MODULE", "Recompile of ~p errored ~p", [Module, X]), State;
 		exit:X -> logging:log(error, "MODULE", "Recompile of ~p exited ~p", [Module, X]), State
+	end.
+
+parse_htmlentities(Binary) ->
+	common:debug("debug", "~p", [Binary]),
+	New = parse_htmlentities(Binary, <<>>),
+	common:debug("debug", "new ~p", [New]),
+	New.
+
+parse_htmlentities(<<>>, X) -> X;
+parse_htmlentities(<<"&quot;", B/binary>>, X) -> parse_htmlentities(B, <<X/binary, "\"">>);
+parse_htmlentities(<<"&amp;",  B/binary>>, X) -> parse_htmlentities(B, <<X/binary, "&">>);
+parse_htmlentities(<<"&apos;", B/binary>>, X) -> parse_htmlentities(B, <<X/binary, "'">>);
+parse_htmlentities(<<"&lt;",   B/binary>>, X) -> parse_htmlentities(B, <<X/binary, "<">>);
+parse_htmlentities(<<"&gt;",   B/binary>>, X) -> parse_htmlentities(B, <<X/binary, ">">>);
+parse_htmlentities(<<"&#",     B/binary>>, X) ->
+	case read_integer(B, 0) of
+		{I, Rest} -> parse_htmlentities(Rest, <<X/binary, I/utf8>>);
+		false -> parse_htmlentities(B, <<X/binary, "&#">>)
+	end;
+parse_htmlentities(<<T/utf8, B/binary>>, X) -> parse_htmlentities(B, <<X/binary, T/utf8>>).
+
+
+
+read_integer(<<>>, _) -> false;
+read_integer(<<"x", Rest/binary>>, 0) -> read_hex(Rest, 0);
+read_integer(<<";", Rest/binary>>, N) -> {N,Rest};
+read_integer(<<A/utf8, B/binary>>, N) ->
+	if
+		$0 =< A andalso A =< $9 -> read_integer(B, N*10 + (A-$0));
+		true -> false
+	end.
+
+read_hex(<<>>, _) -> false;
+read_hex(<<";", Rest/binary>>, N) -> {N,Rest};
+read_hex(<<A/utf8, B/binary>>, N) ->
+	if
+		$0 =< A andalso A =< $9 -> read_hex(B, N*16 + (A-$0));
+		$a =< A andalso A =< $f -> read_hex(B, N*16 + (10+A-$a));
+		$A =< A andalso A =< $A -> read_hex(B, N*16 + (10+A-$A));
+		true -> false
 	end.
