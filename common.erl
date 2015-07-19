@@ -26,7 +26,22 @@ purge_call(Module, Function, Param) ->
 	code:load_file(Module),
 	Module:Function(Param).
 
+purge_call_report(Module, Function, Param, Channel) ->
+	code:purge(Module),
+	Reply = case compile:file(Module, [return]) of
+		{ok,_} -> "Update complete.";
+		{ok,_,[]} -> "Update complete.";
+		{ok,_,Warnings} -> io_lib:format("Update complete; ~b warning(s).",[length(Warnings)]);
+		error -> "Unable to update.";
+		{error,Errors,[]} -> io_lib:format("Update failed; ~b error(s).",[length(Errors)]);
+		{error,Errors,Warnings} -> io_lib:format("Update failed; ~b error(s) and ~b warning(s).",[length(Errors), length(Warnings)])
+	end,
+	code:load_file(Module),
+	self() ! {ircfwd, {msg, {Channel, Reply}}},
+	Module:Function(Param).
+
 raw_send(Sock, Transport, Msg) ->
+%	debug("send", "'~s'", [Msg]),
 	try
 		Raw = re:replace(flatten(Msg), "[\r\n]", "", [global]),
 		if
@@ -125,6 +140,7 @@ parse_notice(Origin, Channel, Message) ->
 tcp_send(S, T, {pass, Pass}) ->				raw_send(S, T, ["PASS :", Pass]);
 tcp_send(S, T, {user, {User, Mode, Real}} ) ->		raw_send(S, T, ["USER ",User," ",Mode," * :",Real]);
 tcp_send(S, T, {nick, Nick}) ->				raw_send(S, T, ["NICK ",Nick]);
+tcp_send(S, T, {mode, {Channel, Mode}}) ->		raw_send(S, T, ["MODE ", Channel, 32, Mode]);
 tcp_send(S, T, {quit, Message}) ->			raw_send(S, T, ["QUIT :",Message]), core!quit;
 tcp_send(S, T, {pong, Params}) ->			raw_send(S, T, ["PONG ",Params]);
 tcp_send(S, T, {join, Channel}) ->			raw_send(S, T, ["JOIN ",Channel]);

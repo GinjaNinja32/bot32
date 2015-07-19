@@ -12,6 +12,7 @@ get_commands() ->
 		{"whorank", fun whorank/5, admin},
 		{"editrank", fun editrank/5, host},
 		{"loadranks", fun loadranks/5, host},
+		{"getchanperm", fun gchanperm/5, admin},
 		{"chanperm", fun chanperm/5, host},
 		{"join", fun join/5, admin},
 		{"part", fun part/5, admin},
@@ -25,7 +26,9 @@ get_commands() ->
 		{"whoignore", fun whoignore/5, admin},
 		{"prefix", fun prefix/5, host},
 		{"addprefix", fun addprefix/5, host},
-		{"remprefix", fun remprefix/5, host}
+		{"remprefix", fun remprefix/5, host},
+		{"cmode", fun mode/5, admin},
+		{"raw", fun raw/5, host}
 	].
 
 initialise(T) -> T.
@@ -67,6 +70,9 @@ chanperm(_, ReplyTo, Ping, [Rank | Chans], State) ->
 	X = file:write_file("permissions.crl", io_lib:format("~p.~n", [NewState#state.permissions])),
 	logging:log(info, "BOT", "permissions save: ~p", [X]),
 	{state, NewState}.
+
+gchanperm(_, ReplyTo, Ping, [Channel], State) -> {irc, {msg, {ReplyTo, [Ping, Channel, io_lib:format(" has the default permissions: ~p", [bot:rankof_chan(Channel, State#state.permissions)])]}}};
+gchanperm(_, ReplyTo, Ping, _, _) -> {irc, {msg, {ReplyTo, [Ping, "Provide exactly one channel!"]}}}.
 
 editrank(_, ReplyTo, Ping, [], _) -> {irc, {msg, {ReplyTo, [Ping, "Provide a rank to edit and one or more nicks (+ users/masks)"]}}};
 editrank(_, ReplyTo, Ping, [_], _) -> {irc, {msg, {ReplyTo, [Ping, "Provide one or more nicks (+ users/masks)"]}}};
@@ -264,3 +270,10 @@ remprefix(_, ReplyTo, Ping, Params, State=#state{}) ->
 	{irc, {msg, {ReplyTo, [Ping, Reply]}}}.
 
 format_prefixes(List) -> lists:foldr(fun(T,B) -> <<T/utf8, B/binary>> end, <<>>, List).
+
+mode(ReplyTo, ReplyTo, Ping, _, _) -> {irc, {msg, {ReplyTo, [Ping, "Use this in a channel, not query."]}}};
+mode(_, ReplyTo, _, Params, _) -> {irc, {mode, {ReplyTo, string:join(Params, " ")}}}.
+	
+raw(_, _, _, Params, _) ->
+	core ! {raw, string:join(Params, " ")},
+	ok.

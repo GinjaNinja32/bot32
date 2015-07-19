@@ -68,13 +68,19 @@ format_time({{Y, M, D}, {H, Mi, S}}) ->
         io_lib:format("~2..0b:~2..0b:~2..0b", [H, Mi, S])}.
 
 create_message(FromR, ToR, Msg, Self, Messages) ->
-        To = string:to_lower(ToR),
+	FromL = string:to_lower(FromR),
         SelfL = string:to_lower(Self),
+
+	{RealTo, VisTo, Has, They} = case string:to_lower(ToR) of
+		"me" -> {FromL, "you", "have", "you"};
+		FromL -> {FromL, "you", "have", "you"};
+		To -> {To, ToR, "has", "they"}
+	end,
         if
-                To == SelfL -> "I'm right here, why do you want to send me a message?";
+                RealTo == SelfL -> "I'm right here, why do you want to send me a message?";
                 true ->
                         Timestamp = calendar:now_to_local_time(now()),
-                        NewValue = case orddict:find(To, Messages) of
+                        NewValue = case orddict:find(RealTo, Messages) of
                                 {ok, M} ->
                                         Pending = length(M),
                                         if
@@ -84,12 +90,12 @@ create_message(FromR, ToR, Msg, Self, Messages) ->
                                 error -> [{FromR, Timestamp, Msg}]
                         end,
                         case NewValue of
-                                toomany -> [ToR, " has too many pending messages!"];
+                                toomany -> [VisTo, 32, Has, " too many pending messages!"];
                                 _ ->
-					NewData = orddict:store(To, NewValue, Messages),
+					NewData = orddict:store(RealTo, NewValue, Messages),
 					save_data(NewData),
                                         store_data(NewData),
-                                        ["Sending a message to ", ToR, " when they arrive."]
+                                        ["Sending a message to ", VisTo, " when ", They, " arrive."]
                         end
         end.
 

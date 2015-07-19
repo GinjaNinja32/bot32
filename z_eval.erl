@@ -60,7 +60,7 @@ math(String) ->
 	{ok, Value}.
 
 lmath(ipow, [B,P]) when is_integer(B) andalso is_integer(P) -> integer_pow(B,P,1);
-lmath(fact, [A]) when is_integer(A) -> factorial(A,1);
+%lmath(fact, [A]) when is_integer(A) -> factorial(A,1);
 
 lmath(Name, []) -> math:Name();
 lmath(Name, [X]) -> math:Name(X);
@@ -71,6 +71,7 @@ nlmath({erlang,T},[A]) ->
 	case T of
 		'not' -> not A;
 		'bnot' -> bnot A;
+		'-' -> - A;
 		'length' -> length(A);
 		_ -> ufunc(erlang,T)
 	end;
@@ -109,8 +110,6 @@ ufunc(Func) -> throw(io_lib:format("Unknown function ~s",[Func])).
 
 % Extra math functions for &math
 
-integer_pow(_,0,A) -> A;
-integer_pow(B,P,A) -> integer_pow(B,P-1,A*B).
-
-factorial(1,A) -> A;
-factorial(K,A) -> factorial(K-1,A*K).
+integer_pow(_,N,_) when N > 1024 -> throw("Power too large.");
+integer_pow(_,0,Y) -> Y;
+integer_pow(X,N,Y) -> integer_pow(X*X, N bsr 1, if (N band 1) == 1 -> Y*X; true -> Y end).

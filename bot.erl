@@ -82,6 +82,10 @@ init() ->
 		end, UseConfig#config.on_join),
 	timer:sleep(50), % wait for server auth
 	lists:foreach(fun(T) -> core ! {irc, {join, T}} end, sets:to_list(UseConfig#config.channels)),
+	CallWhoWhat = case file:consult("call.crl") of
+		{ok, [Call]} -> Call;
+		_ -> []
+	end,
 	logging:log(info, "BOT", "starting"),
 	State = load_modules(UseConfig#config.modules,
 			    #state{
@@ -90,13 +94,15 @@ init() ->
 				permissions = UseConfig#config.permissions,
 				ignore   = UseConfig#config.ignore,
 				commands = orddict:new(),
-				moduledata  = orddict:new(),
+				moduledata  = [{callme, CallWhoWhat}],
 				modules = sets:new()
 			    }),
 	case loop(State) of
 		FinalState=#state{} ->
 			X = file:write_file("permissions.crl", io_lib:format("~p.~n", [FinalState#state.permissions])),
 			logging:log(info, "BOT", "permissions save: ~p", [X]),
+			Y = file:write_file("call.crl", io_lib:format("~p.~n", [case orddict:find(callme, FinalState#state.moduledata) of {ok,Z}->Z; error->[] end])),
+			logging:log(info, "BOT", "call save: ~p", [Y]),
 			lists:foreach(fun(Module) ->
 					apply(Module, deinitialise, [FinalState])
 				end, sets:to_list(FinalState#state.modules)),
@@ -122,6 +128,7 @@ notify_error(X, Y, _) -> logging:log(error, "BOT", "~p : ~p", [X,Y]).
 
 loop(State = #state{}) ->
 	case receive
+		{ircfwd, T} -> {irc, T};
 		{irc, {Type, Params}} ->
 			case catch handle_irc(Type, Params, State) of
 				{'EXIT', {Reason, Stack}} -> logging:log(error, "BOT", "handle_irc errored ~p (~p), continuing", [Reason, hd(Stack)]), notify_error(Type, Params, State);
@@ -139,7 +146,9 @@ loop(State = #state{}) ->
 		ok -> bot:loop(State);
 		{state, S = #state{}} -> bot:loop(S);
 		{setkey, {Key, Val}} -> bot:loop(State#state{moduledata = orddict:store(Key, Val, State#state.moduledata)});
-		update -> spawn(common,purge_call,[bot,reinit, State]), ok;
+		{update,Chan} ->
+			spawn(common,purge_call_report,[bot,reinit,State,Chan]),
+			ok;
 		S -> logging:log(error, "BOT", "unknown code ~p, continuing", [S]), bot:loop(State)
 	end.
 
@@ -201,7 +210,7 @@ parse_command(Params, Prefix, BotAliases) ->
 	case hd(Params) of
 		[Prefix | Command] -> {Command, tl(Params)};
 		X when length(Params) > 1 ->
-			case lists:any(fun(Alias) -> lists:prefix(string:to_lower(Alias), string:to_lower(X)) end, BotAliases) of
+			case lists:any(fun(Alias) -> R=util:regex_escape(Alias), re:run(X, <<"^", R/binary, "($|[^a-zA-Z0-9])">>, [caseless, {capture, none}]) == match end, BotAliases) of
 				true -> case tl(Params) of
 						[] -> {[], []};
 						_ -> {hd(tl(Params)), tl(tl(Params))}
@@ -233,9 +242,16 @@ handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}, State=#state{ni
 					end;
 				_ ->
 					ReplyChannel = Channel,
-					ReplyPing = Nick ++ ": "
+					ReplyPing = case orddict:find(callme, State#state.moduledata) of
+						{ok, Dict} ->
+							case orddict:find(string:to_lower(Nick), Dict) of
+								{ok, V} -> V ++ ": ";
+								error -> Nick ++ ": "
+							end;
+						error -> Nick ++ ": "
+					end
 			end,
-			logging:log(debug, "BOT", "Parsing command: ~p", [Tokens]),
+			logging:log(debug2, "BOT", "Parsing command: ~p", [Tokens]),
 			case parse_command(de_russian(Tokens), Prefix, [MyNick, "NT"]) of
 				{Command, Arguments} ->
 					logging:log(info, "BOT", "Command in ~s from ~s: ~s ~s", [Channel, User#user.nick, Command, string:join(Arguments, " ")]),
@@ -250,8 +266,9 @@ handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}, State=#state{ni
 						[URL|_] ->
 							os:putenv("url", URL),
 							case re:replace(os:cmd("/home/bot32/urltitle.sh $url"), "^[ \\t\\n]+(.*[^ \\t\\n])[ \\t\\n]+$", "\\1", [{return, binary}]) of
-								"" -> ok;
+								<<>> -> ok;
 								Show ->
+									logging:log(debug, "BOT", "showing URL '~p'", [Show]),
 									core ! {irc, {msg, {ReplyChannel, [ReplyPing, parse_htmlentities(Show)]}}}
 							end
 					end,
@@ -300,7 +317,7 @@ handle_irc(Type, Params, State) ->
 
 handle_host_command(Rank, Origin, ReplyTo, Ping, Cmd, Params, State=#state{}) ->
 	case string:to_lower(Cmd) of
-		"update" ->		update;
+		"update" ->		{update, ReplyTo};
 		"help" ->		core ! {irc, {msg, {Origin, ["builtin host commands: update, reload_all, drop_all, load_mod, drop_mod, reload_mod"]}}},
 					handle_command(Rank, Origin, ReplyTo, Ping, Cmd, Params, State);
 
@@ -357,7 +374,35 @@ handle_host_command(Rank, Origin, ReplyTo, Ping, Cmd, Params, State=#state{}) ->
 	end.
 
 handle_command(Ranks, Origin, ReplyTo, Ping, Cmd, Params, State=#state{commands=Commands}) ->
-	Result = lists:foldl(fun
+	Result = case string:to_lower(Cmd) of
+		"call" ->
+			case Params of
+				[] -> {irc, {msg, {ReplyTo, [Ping, "Supply either a nick, or the string 'me', and a name to use!"]}}};
+				[_] -> {irc, {msg, {ReplyTo, [Ping, "Supply a name to use!"]}}};
+				[Usr|Nick] ->
+					User = case Usr of
+						"me" -> string:to_lower(Origin);
+						_ -> string:to_lower(Usr)
+					end,
+					case case {lists:member(admin, Ranks), string:to_lower(Origin)} of
+						{true,_} -> ok;
+						{_,User} -> ok;
+						_ -> false
+					end of
+						false -> {irc, {msg, {ReplyTo, [Ping, "You are not authorised to do that!"]}}};
+						ok ->
+							OldDict = case orddict:find(callme, State#state.moduledata) of
+								{ok, V} -> V;
+								error -> orddict:new()
+							end,
+							NewDict = orddict:store(User, string:join(Nick, " "), OldDict),
+							core ! {irc, {msg, {ReplyTo, [Ping, "Done."]}}},
+							Y = file:write_file("call.crl", io_lib:format("~p.~n", [NewDict])),
+							logging:log(info, "BOT", "call save: ~p", [Y]),
+							{state, State#state{moduledata=orddict:store(callme, NewDict, State#state.moduledata)}}
+					end
+			end;
+		_ -> lists:foldl(fun
 			(Rank, unhandled) ->
 				case case orddict:find(Rank, Commands) of
 					{ok, X} -> X;
@@ -374,13 +419,14 @@ handle_command(Ranks, Origin, ReplyTo, Ping, Cmd, Params, State=#state{commands=
 						end
 				end;
 			(_, Result) -> Result
-		end, unhandled, Ranks),
+		end, unhandled, Ranks)
+	end,
 	case string:to_lower(Cmd) of
 		"help" -> ok;
 		_ ->
 			case Result of
 				unhandled ->
-					case alternate_commands([Cmd | Params]) of
+					case alternate_commands([Cmd | Params], State#state.modules) of
 						false -> ok; % {irc, {msg, {ReplyTo, [Ping, "Unknown command '",Cmd,"'!"]}}};
 						R -> {irc, {msg, {ReplyTo, [Ping, R]}}}
 					end;
@@ -388,8 +434,13 @@ handle_command(Ranks, Origin, ReplyTo, Ping, Cmd, Params, State=#state{commands=
 			end
 	end.
 
-alternate_commands(Tokens) ->
-	AltFunctions = [fun select_or_string/1, fun alternate_eightball/1],
+alternate_commands(Tokens, Modules) ->
+	AltFunctions = lists:foldl(fun(Mod,Alt) ->
+			case lists:member({alt_funcs, 0}, Mod:module_info(exports)) of
+				true -> Alt ++ Mod:alt_funcs();
+				false -> Alt
+			end
+		end, [fun select_or_string/1, fun alternate_eightball/1], sets:to_list(Modules)),
 	lists:foldl(fun
 			(Func, false) -> Func(Tokens);
 			(_,Re) -> Re
@@ -552,9 +603,9 @@ recompile_module(Module, State) ->
 	end.
 
 parse_htmlentities(Binary) ->
-	common:debug("debug", "~p", [Binary]),
+%	common:debug("debug", "~p", [Binary]),
 	New = parse_htmlentities(Binary, <<>>),
-	common:debug("debug", "new ~p", [New]),
+%	common:debug("debug", "new ~p", [New]),
 	New.
 
 parse_htmlentities(<<>>, X) -> X;

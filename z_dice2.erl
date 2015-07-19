@@ -43,6 +43,11 @@ get_real_tokens({A,B,_,[N,'<='|T]}) -> get_real_tokens({A,B,  N+1,T});
 get_real_tokens({A,_,_,[N,'=' |T]}) -> get_real_tokens({A,N-1,N+1,T});
 get_real_tokens({A,_,C,[N,'>' |T]}) -> get_real_tokens({A,N,  C,  T});
 get_real_tokens({A,_,C,[N,'>='|T]}) -> get_real_tokens({A,N-1,C,  T});
+get_real_tokens({A,B,_,['-',N,'<' |T]}) -> get_real_tokens({A, B,  -N,  T});
+get_real_tokens({A,B,_,['-',N,'<='|T]}) -> get_real_tokens({A, B,  -N+1,T});
+get_real_tokens({A,_,_,['-',N,'=' |T]}) -> get_real_tokens({A,-N-1,-N+1,T});
+get_real_tokens({A,_,C,['-',N,'>' |T]}) -> get_real_tokens({A,-N,   C,  T});
+get_real_tokens({A,_,C,['-',N,'>='|T]}) -> get_real_tokens({A,-N-1, C,  T});
 get_real_tokens({_,B,C,[N,'#' |T]}) -> get_real_tokens({N,B,  C,  T});
 get_real_tokens({A,B,C,X}) -> get_real_tokens2({A,B,C,lists:reverse(X)}).
 
@@ -51,6 +56,11 @@ get_real_tokens2({A,B,_,[N,'<='|T]}) -> get_real_tokens2({A,B,  N+1,T});
 get_real_tokens2({A,_,_,[N,'=' |T]}) -> get_real_tokens2({A,N-1,N+1,T});
 get_real_tokens2({A,_,C,[N,'>' |T]}) -> get_real_tokens2({A,N,  C,  T});
 get_real_tokens2({A,_,C,[N,'>='|T]}) -> get_real_tokens2({A,N-1,C,  T});
+get_real_tokens2({A,B,_,[N,'-','<' |T]}) -> get_real_tokens2({A, B,  -N,  T});
+get_real_tokens2({A,B,_,[N,'-','<='|T]}) -> get_real_tokens2({A, B,  -N+1,T});
+get_real_tokens2({A,_,_,[N,'-','=' |T]}) -> get_real_tokens2({A,-N-1,-N+1,T});
+get_real_tokens2({A,_,C,[N,'-','>' |T]}) -> get_real_tokens2({A,-N,   C,  T});
+get_real_tokens2({A,_,C,[N,'-','>='|T]}) -> get_real_tokens2({A,-N-1, C,  T});
 get_real_tokens2({_,B,C,[N,'#' |T]}) -> get_real_tokens2({N,B,  C,  T});
 get_real_tokens2({A,B,C,X}) -> {A,B,C,lists:reverse(X)}.
 
@@ -95,6 +105,8 @@ tokenise([$-|S],T) -> tokenise(S, ['-'|T]);
 tokenise([$*|S],T) -> tokenise(S, ['*'|T]);
 tokenise([$d|S],T) -> tokenise(S, ['d'|T]);
 tokenise([$D|S],T) -> tokenise(S, ['d'|T]);
+tokenise([$(|S],T) -> tokenise(S, ['('|T]);
+tokenise([$)|S],T) -> tokenise(S, [')'|T]);
 
 tokenise([X|S], T) ->
 	case lists:member(X, lists:seq($0, $9)) of
@@ -117,27 +129,42 @@ tokenise_num(S,T,X) -> {S, [X|T]}.
 % PARSING
 
 parse(Tokens) ->
-	lists:reverse(parse_add(
+	List = lists:reverse(parse_add(
 		lists:reverse(parse_mult(
 			lists:reverse(parse_d(Tokens, [])),
 		[])),
-	[])).
+	[])),
+	case lists:member('(', List) andalso lists:member(')', List) of
+		true -> case collapse_brackets(List, []) of
+				error -> error;
+				L -> parse(lists:reverse(L))
+			end;
+		false -> List
+	end.
 
 parse_d([         ], X) -> X;
-parse_d([N,'d',M|S], X) -> parse_d(S, [{'d',N,M}|X]);
+parse_d([N,'d',M|S], X) when not is_atom(N) andalso not is_atom(M)-> parse_d(S, [{'d',N,M}|X]);
+parse_d([N,'d'  |S], X) when not is_atom(N) -> parse_d(S, [{'d',N,6}|X]);
+parse_d([  'd',M|S], X) when not is_atom(M) -> parse_d(S, [{'d',1,M}|X]);
+parse_d([  'd'  |S], X) -> parse_d(S, [{'d',1,6}|X]);
 parse_d([T      |S], X) -> parse_d(S, [T        |X]).
 
 parse_mult([         ], X) -> X;
-parse_mult([N,'*',M|S], X) -> parse_mult(S, [{'*',   N, M}|   X ]);
-parse_mult(['*',N  |S], X) -> parse_mult(S, [{'*',hd(X),N}|tl(X)]);
+parse_mult([N,'*',M|S], X) when not is_atom(N) andalso not is_atom(   M ) -> parse_mult(S, [{'*',   N, M}|   X ]);
+parse_mult(['*',N  |S], X) when not is_atom(N) andalso not is_atom(hd(X)) -> parse_mult(S, [{'*',hd(X),N}|tl(X)]);
 parse_mult([T      |S], X) -> parse_mult(S, [          T  |   X ]).
 
 parse_add([         ], X) -> X;
-parse_add([N,'+',M|S], X) -> parse_add(S, [{'+',   N, M}|   X ]);
-parse_add(['+',N  |S], X) -> parse_add(S, [{'+',hd(X),N}|tl(X)]);
-parse_add([N,'-',M|S], X) -> parse_add(S, [{'-',   N, M}|   X ]);
-parse_add(['-',N  |S], X) -> parse_add(S, [{'-',hd(X),N}|tl(X)]);
+parse_add([N,'+',M|S], X) when not is_atom(N) andalso not is_atom(   M ) -> parse_add(S, [{'+',   N, M}|   X ]);
+parse_add(['+',N  |S], X) when not is_atom(N) andalso not is_atom(hd(X)) -> parse_add(S, [{'+',hd(X),N}|tl(X)]);
+parse_add([N,'-',M|S], X) when not is_atom(N) andalso not is_atom(   M ) -> parse_add(S, [{'-',   N, M}|   X ]);
+parse_add(['-',N  |S], X) when not is_atom(N) andalso not is_atom(hd(X)) -> parse_add(S, [{'-',hd(X),N}|tl(X)]);
 parse_add([T      |S], X) -> parse_add(S, [          T  |   X ]).
+
+collapse_brackets(['(',N,')'|S], X) when not is_atom(N) -> collapse_brackets(S, [{N}|X]);
+collapse_brackets(['(',N,')'|S], X) when is_atom(N) -> error;
+collapse_brackets([    N    |S], X) -> collapse_brackets(S, [N|X]);
+collapse_brackets([           ], X) -> X.
 
 % EVALUATION
 
@@ -147,13 +174,13 @@ evaluateMany(Expressions, Expand, Min, Max) ->
 evaluate(T, Expand, Min, Max) ->
 	{X,Y} = eval(T, Expand),
 	C = if
-		Min == no andalso Max == no -> $8;
-		Min == no andalso X < Max -> $9;
-		Max == no andalso X > Min -> $9;
-		Min < X andalso X < Max -> $9;
-		true -> $4
+		Min == no andalso Max == no -> $7;
+		Min == no andalso X < Max -> $3;
+		Max == no andalso X > Min -> $3;
+		Min < X andalso X < Max -> $3;
+		true -> $5
 	end,
-	[3,C,32,integer_to_list(X), "\x0315 : ", Y, "\x03"].
+	[2,3,C,32,integer_to_list(X), "\x02\x0315 : ", Y, "\x03"].
 
 eval({Op,N,M}, X) ->
 	{L,LT} = eval(N, X),
@@ -166,6 +193,7 @@ eval({Op,N,M}, X) ->
 			{Val,Exp} = roll(L, R, X),
 			{Val, [2,Exp,2]}
 	end;
+eval({E}, X) -> {A,B} = eval(E,X), {A, [$(,B,$)]};
 eval(E, _) -> {E, integer_to_list(E)}.
 
 % ROLLING
@@ -189,7 +217,39 @@ roll(N, M, Expand) ->
 
 rollraw(N, M) ->
 	case get(dicemode) of
-		random when N =< 100 -> {ok, random_org:generate(N, 1, M)};
-		random -> {"\x038!\x03 ", lists:map(fun(_) -> random:uniform(M) end, lists:duplicate(N, x))};
-		_ ->      {ok,            lists:map(fun(_) -> random:uniform(M) end, lists:duplicate(N, x))}
+		random when N > 100 -> {"\x038!\x03 ", lists:map(fun(_) -> random:uniform(M) end, lists:duplicate(N, x))};
+		random when M =< 100 -> {ok, get_n_m(N, M)};
+		_ -> {ok, lists:map(fun(_) -> random:uniform(M) end, lists:duplicate(N, x))}
+	end.
+
+get_n_m(N, M) ->
+	case get_avail(M) of
+		List when length(List) >= N ->
+			common:debug("dice-cache", "using ~b of ~b available d~bs", [N, length(List), M]),
+			{A,B} = lists:split(N, List),
+			set_avail(M, B),
+			A;
+		List when length(List) =< N ->
+			common:debug("dice-cache", "request for ~b of ~b available d~bs, fetching 100 more", [N, length(List), M]),
+			NewHundred = random_org:generate(100, 1, M),
+			NewList = List ++ NewHundred,
+			{A,B} = lists:split(N, NewList),
+			set_avail(M, B),
+			A
+	end.
+
+get_avail(M) ->
+	case get(dice_avail) of
+		undefined -> [];
+		Dict ->
+			case orddict:find(M, Dict) of
+				{ok, List} -> List;
+				error -> []
+			end
+	end.
+
+set_avail(M, List) ->
+	case get(dice_avail) of
+		undefined -> put(dice_avail, [{M, List}]);
+		Dict -> put(dice_avail, orddict:store(M, List, Dict))
 	end.

@@ -27,7 +27,7 @@ mkentry(Level, What, Message, FormatParams) ->
 datestr({Date,_}) -> datestr(Date);
 datestr({Yr,Mn,Dy}) -> io_lib:format("~b-~b-~b", [Yr,Mn,Dy]).
 
-init() -> init([debug]).
+init() -> init([debug, debug2]).
 init(Muted) ->
 	LogDate = datestr(calendar:now_to_universal_time(os:timestamp())),
 	case mklog(["main-", LogDate]) of

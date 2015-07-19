@@ -3,6 +3,11 @@
 
 %-include("definitions.hrl").
 
+alt_funcs() ->
+	[
+		fun units_alt/1
+	].
+
 get_commands() -> 
 	[
 		{"units", fun units/5, user}
@@ -27,6 +32,15 @@ units(_, RT, P, Params, _) ->
 		one -> {irc, {msg, {RT, [P, get_units_reply("units -t \"$units_src\"")]}}};
 		two -> {irc, {msg, {RT, [P, get_units_reply("units -t \"$units_src\" \"$units_dst\"")]}}};
 		T -> {irc, {msg, {RT, [P, T]}}}
+	end.
+
+units_alt(Params) ->
+	case lists:splitwith(fun(T) -> T /= "in" andalso T /= "to" andalso T /= "->" end, Params) of
+		{Src, [_|Dst]} ->
+			os:putenv("units_src", string:join(Src, " ")),
+			os:putenv("units_dst", string:join(Dst, " ")),
+			get_units_reply("units -t \"$units_src\" \"$units_dst\"");
+		_ -> false
 	end.
 
 get_units_reply(Cmd) ->
