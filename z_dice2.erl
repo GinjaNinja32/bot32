@@ -69,14 +69,17 @@ dice(String, Expand) ->
 		error -> "Error parsing dice string!";
 		Tokens ->
 			{N,Min,Max,Toks} = get_real_tokens({1,no,no,Tokens}),
-			Expressions = parse(Toks),
-			if
-				N =< 0 -> "You want me to roll what?";
-				N == 1 -> evaluateMany(Expressions, Expand, Min, Max);
-				N =< 20 ->
-					Rolls = lists:map(fun(_) -> evaluateMany(Expressions, Expand, Min, Max) end, lists:duplicate(N, x)),
-					[$[, string:join(Rolls, ", "),32,$]];
-				true -> "Too many sets, try less."
+			case parse(Toks) of
+				error -> "Error parsing dice string!";
+				Expressions ->
+					if
+						N =< 0 -> "You want me to roll what?";
+						N == 1 -> evaluateMany(Expressions, Expand, Min, Max);
+						N =< 20 ->
+							Rolls = lists:map(fun(_) -> evaluateMany(Expressions, Expand, Min, Max) end, lists:duplicate(N, x)),
+							[$[, string:join(Rolls, ", "),32,$]];
+						true -> "Too many sets, try less."
+					end
 			end
 	end.
 
@@ -134,18 +137,25 @@ parse(Tokens) ->
 			lists:reverse(parse_d(Tokens, [])),
 		[])),
 	[])),
+	logging:log(debug, "DICE2", "parse pass A: ~p", [List]),
 	case lists:member('(', List) andalso lists:member(')', List) of
 		true -> case collapse_brackets(List, []) of
 				error -> error;
-				L -> parse(lists:reverse(L))
+				L ->
+					case lists:reverse(L) of
+						Tokens -> error;
+						L2 ->
+							logging:log(debug, "DICE2", "parse pass B: ~p", [L2]),
+							parse(L2)
+					end
 			end;
 		false -> List
 	end.
 
 parse_d([         ], X) -> X;
-parse_d([N,'d',M|S], X) when not is_atom(N) andalso not is_atom(M)-> parse_d(S, [{'d',N,M}|X]);
-parse_d([N,'d'  |S], X) when not is_atom(N) -> parse_d(S, [{'d',N,6}|X]);
-parse_d([  'd',M|S], X) when not is_atom(M) -> parse_d(S, [{'d',1,M}|X]);
+parse_d([N,'d',M|S], X) when is_integer(N) andalso is_integer(M)-> parse_d(S, [{'d',N,M}|X]);
+parse_d([N,'d'  |S], X) when is_integer(N) -> parse_d(S, [{'d',N,6}|X]);
+parse_d([  'd',M|S], X) when is_integer(M) -> parse_d(S, [{'d',1,M}|X]);
 parse_d([  'd'  |S], X) -> parse_d(S, [{'d',1,6}|X]);
 parse_d([T      |S], X) -> parse_d(S, [T        |X]).
 
