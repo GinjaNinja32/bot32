@@ -172,7 +172,7 @@ parse_add(['-',N  |S], X) when not is_atom(N) andalso not is_atom(hd(X)) -> pars
 parse_add([T      |S], X) -> parse_add(S, [          T  |   X ]).
 
 collapse_brackets(['(',N,')'|S], X) when not is_atom(N) -> collapse_brackets(S, [{N}|X]);
-collapse_brackets(['(',N,')'|S], X) when is_atom(N) -> error;
+collapse_brackets(['(',N,')'|_], _) when is_atom(N) -> error;
 collapse_brackets([    N    |S], X) -> collapse_brackets(S, [N|X]);
 collapse_brackets([           ], X) -> X.
 
