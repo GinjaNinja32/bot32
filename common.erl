@@ -4,6 +4,12 @@
 -include("definitions.hrl").
 -define(MAX_LENGTH, 448).
 
+waitfor_gone(Ident) ->
+	case whereis(Ident) of
+		undefined -> ok;
+		_ -> timer:sleep(100), waitfor_gone(Ident)
+	end.
+
 debug(What, Msg) -> io:fwrite("[~s] ~s~n", [What, Msg]).
 debug(What, Format, List) ->
 	io:fwrite("[~s] ~s~n", [What, io_lib:format(Format, List)]).

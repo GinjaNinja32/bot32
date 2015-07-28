@@ -17,8 +17,8 @@ initialise(T) -> T.
 deinitialise(T) -> T.
 
 colors(_, ReplyTo, Ping, _, _) -> {irc, {msg, {ReplyTo, [Ping,
-		lists:map(fun(X) -> [3,integer_to_list(X),32,integer_to_list(X)] end, lists:seq(0,15)),
-		lists:map(fun(X) -> [3,$0,$,,integer_to_list(X),32,integer_to_list(X)] end, lists:seq(0,15))
+		lists:map(fun(X) -> [3,integer_to_list(X),32,integer_to_list(X)] end, lists:seq(0,16)),
+		lists:map(fun(X) -> [3,$0,$,,integer_to_list(X),32,integer_to_list(X)] end, lists:seq(0,16))
 	]}}}.
 
 ping(_, ReplyTo, Ping, _, _) -> {irc, {msg, {ReplyTo, [Ping, "Pong!"]}}}.

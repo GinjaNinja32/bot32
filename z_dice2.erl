@@ -35,8 +35,8 @@ dicemode(_, RT, P, [Mode], _) ->
 	end,
 	{irc, {msg, {RT, [P, Reply]}}}.
 
-dice(_, RT, P, Params, _) -> {irc, {msg, {RT, [P, dice(string:join(Params, []), false)]}}}.
-edice(_, RT, P, Params, _) -> {irc, {msg, {RT, [P, dice(string:join(Params, []), true)]}}}.
+dice(_, RT, P, Params, _) -> {irc, {msg, {RT, [P, dice(string:join(Params, " "), false)]}}}.
+edice(_, RT, P, Params, _) -> {irc, {msg, {RT, [P, dice(string:join(Params, " "), true)]}}}.
 
 get_real_tokens({A,B,_,[N,'<' |T]}) -> get_real_tokens({A,B,  N,  T});
 get_real_tokens({A,B,_,[N,'<='|T]}) -> get_real_tokens({A,B,  N+1,T});
@@ -225,6 +225,7 @@ roll(N, M, Expand) ->
 		_ -> {Total, [S | Message]}
 	end.
 
+rollraw(N, 1) -> {ok, lists:duplicate(N, 1)};
 rollraw(N, M) ->
 	case get(dicemode) of
 		random when N > 100 -> {"\x038!\x03 ", lists:map(fun(_) -> random:uniform(M) end, lists:duplicate(N, x))};
