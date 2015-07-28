@@ -104,7 +104,7 @@ init() ->
 			Y = file:write_file("call.crl", io_lib:format("~p.~n", [case orddict:find(callme, FinalState#state.moduledata) of {ok,Z}->Z; error->[] end])),
 			logging:log(info, "BOT", "call save: ~p", [Y]),
 			lists:foreach(fun(Module) ->
-					apply(Module, deinitialise, [FinalState])
+					lists:member({deinitialise,1}, Module:module_info(exports)) andalso apply(Module, deinitialise, [FinalState])
 				end, sets:to_list(FinalState#state.modules)),
 			logging:log(info, "BOT", "quitting");
 		T -> logging:log(info, "BOT", "quitting under condition ~p", [T])
@@ -116,7 +116,7 @@ reinit(State) ->
 	case loop(State) of
 		FinalState=#state{} ->
 			lists:foreach(fun(Module) ->
-					apply(Module, deinitialise, [FinalState])
+					lists:member({deinitialise,1}, Module:module_info(exports)) andalso apply(Module, deinitialise, [FinalState])
 				end, sets:to_list(FinalState#state.modules)),
 			logging:log(info, "BOT", "quitting");
 		T -> logging:log(info, "BOT", "quitting under condition ~p", [T])
@@ -285,7 +285,7 @@ handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}, State=#state{ni
 								match -> ShowURL = ["http://github.com/Baystation12/Baystation12/issues/", GH_NUM];
 								nomatch -> ShowURL = ["http://github.com/Baystation12/Baystation12/pull/", GH_NUM]
 							end,
-							core ! {irc, {msg, {ReplyChannel, [ReplyPing, ShowURL, " - ", URLTitle]}}}
+							core ! {irc, {msg, {ReplyChannel, [ReplyPing, ShowURL, " - ", parse_htmlentities(list_to_binary(URLTitle))]}}}
 					end,
 					do_russian(Tokens, ReplyChannel, ReplyPing),
 					lists:foreach(fun(Module) ->
@@ -603,10 +603,7 @@ recompile_module(Module, State) ->
 	end.
 
 parse_htmlentities(Binary) ->
-%	common:debug("debug", "~p", [Binary]),
-	New = parse_htmlentities(Binary, <<>>),
-%	common:debug("debug", "new ~p", [New]),
-	New.
+	parse_htmlentities(Binary, <<>>).
 
 parse_htmlentities(<<>>, X) -> X;
 parse_htmlentities(<<"&quot;", B/binary>>, X) -> parse_htmlentities(B, <<X/binary, "\"">>);

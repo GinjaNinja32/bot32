@@ -1,3 +1,3 @@
 *.beam
-messages.crl
-quotes.crl
+logs/
+modules/
