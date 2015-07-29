@@ -544,15 +544,19 @@ load_module(Module, State) ->
 	end of
 		manual -> apply(Module, initialise, [State#state{commands = NewCmds, modules = sets:add_element(Module, State#state.modules)}]);
 		automatic ->
-			case file:consult(["modules/", Module, ".crl"]) of
-				{ok, [Data]} -> logging:log(info, Module, "Loaded.");
-				{ok, _} -> logging:log(error, Module, "Incorrect format."), Data = Module:default_data();
-				{error, T} -> logging:log(error, Module, "Error loading: ~p", [T]), Data = Module:default_data()
-			end,
+			Data = modload_auto(Module),
 			State#state{commands = NewCmds, modules = sets:add_element(Module, State#state.modules), moduledata = orddict:store(Module, Data, State#state.moduledata)};
 		none ->
 			State#state{commands = NewCmds, modules = sets:add_element(Module, State#state.modules)}
 	end.
+
+modload_auto(Module) ->
+	case file:consult(["modules/", Module, ".crl"]) of
+		{ok, [Data]} -> logging:log(info, Module, "Loaded."), Data;
+		{ok, _} -> logging:log(error, Module, "Incorrect format."), Module:default_data();
+		{error, T} -> logging:log(error, Module, "Error loading: ~p", [T]), Module:default_data()
+	end.
+
 
 unload_modules(Modules, State) -> lists:foldl(fun unload_module/2, State, Modules).
 
