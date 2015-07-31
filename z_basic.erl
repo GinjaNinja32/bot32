@@ -10,7 +10,8 @@ get_commands() ->
 		{"dance", fun dance/5, user},
 		{"rot13", fun rot_thirteen/5, user},
 		{"rot", fun rot_n/5, user},
-		{"colors", fun colors/5, user}
+		{"colors", fun colors/5, user},
+		{"colours", fun colors/5, user}
 	].
 
 initialise(T) -> T.
@@ -43,12 +44,12 @@ pick(_, ReplyTo, Ping, Params, _) -> {irc, {msg, {ReplyTo, [Ping, lists:nth(rand
 dance(_, ReplyTo, Ping, _, _) ->
 	T = random:uniform(100),
 	if
-		T < 10 -> 	{multi, [
+		T < 20 -> 	{multi, [
 					{irc, {msg, {ReplyTo, ":D/--<"}}},
 					{irc, {msg, {ReplyTo, ":D|--<"}}},
 					{irc, {msg, {ReplyTo, ":D\\--<"}}}
 				]};
-		T < 40 -> {irc, {msg, {ReplyTo, [Ping, "No."]}}};
+		T < 60 -> {irc, {msg, {ReplyTo, [Ping, "No."]}}};
 		true -> {irc, {msg, {ReplyTo, [Ping, "What sort of bot do you think I am?!"]}}}
 	end.
 

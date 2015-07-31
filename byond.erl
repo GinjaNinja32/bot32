@@ -35,12 +35,6 @@ recv(Sock) ->
 parse(Str) ->
 	lists:foldl(fun(T, Dict) -> 
 			case string:tokens(T, "=") of
-				["players", V] -> orddict:store("players", vdecode(V), Dict);
-				[[$p,$l,$a,$y,$e,$r|_],V] ->
-					case orddict:find("playerlist", Dict) of
-						{ok, Players} -> orddict:store("playerlist", [vdecode(V)|Players], Dict);
-						error -> orddict:store("playerlist", [vdecode(V)], Dict)
-					end; 
 				[K,V] -> orddict:store(vdecode(K), vdecode(V), Dict);
 				[K] -> orddict:store(vdecode(K), "?", Dict)
 			end
