@@ -83,7 +83,7 @@ tcp_parse(S, T, M) ->
 			Origin = parse_origin(RawOrigin),
 			case tl(Tokens) of
 				% Setup & system
-				["PONG", Who | Comment] -> common:debug("pong", "~p : ~p", [Who, Comment]), ok;
+				["PONG", Who | Comment] -> ok; % common:debug("pong", "~p : ~p", [Who, Comment]), ok;
 				["NICK", Nick] -> {irc, {nick, {Origin, tl(Nick)}}};
 				["QUIT" | Reason] -> {irc, {quit, {Origin, [tl(hd(Reason)) | tl(Reason)]}}};
 				["MODE" | Params] -> {irc, {mode, {Origin, Params}}};
@@ -95,11 +95,11 @@ tcp_parse(S, T, M) ->
 				% Channel management
 				["JOIN", [_|Channel]] -> {irc, {join, {Origin, Channel}}};
 				["PART", Channel | Msg] -> {irc, {part, {Origin, Channel, Msg}}};
-				
+
 				% Messaging
 				["PRIVMSG", Channel, First | Rest] -> parse_privmsg(Origin, Channel, [tl(First) | Rest]);
 				["NOTICE", Channel, First | Rest] -> parse_notice(Origin, Channel, [tl(First) | Rest]);
-				
+
 				% Errors
 				[Cmd | Params] ->
 					case string:to_integer(Cmd) of

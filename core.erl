@@ -58,8 +58,8 @@ loop(Sock, Transport) ->
 		T when is_atom(T) -> T;
 		X -> logging:log(error, "CORE", "Received unknown message ~p", [X])
 	after
-		60 * 1000 -> % 60 seconds without a message
-			core ! common:raw_send(Sock, Transport, "PONG bot32"), ok
+		30 * 1000 -> % 30 seconds without a message
+			common:raw_send(Sock, Transport, "PING bot32"), ok
 	end of
 		quit -> ok;
 		error -> error;
