@@ -83,6 +83,7 @@ tcp_parse(S, T, M) ->
 			Origin = parse_origin(RawOrigin),
 			case tl(Tokens) of
 				% Setup & system
+				["PONG", Who | Comment] -> common:debug("pong", "~p : ~p", [Who, Comment]), ok;
 				["NICK", Nick] -> {irc, {nick, {Origin, tl(Nick)}}};
 				["QUIT" | Reason] -> {irc, {quit, {Origin, [tl(hd(Reason)) | tl(Reason)]}}};
 				["MODE" | Params] -> {irc, {mode, {Origin, Params}}};
