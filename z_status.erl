@@ -3,14 +3,17 @@
 
 get_commands() ->
 	[
+		{"address",     genaddr   ("baystation12.net", 8000      ), user},
 		{"status",      genstatus ("baystation12.net", 8000, true), user},
 		{"players",     genplayers("baystation12.net", 8000, true), user},
 		{"admins",      genadmins ("baystation12.net", 8000, true), user},
 		{"mode",        genmode   ("baystation12.net", 8000, true), user},
+		{"devaddress",  genaddr   ("baystation12.net", 8100      ), user},
 		{"devstatus",   genstatus ("baystation12.net", 8100, true), user},
 		{"devplayers",  genplayers("baystation12.net", 8100, true), user},
 		{"devadmins",   genadmins ("baystation12.net", 8100, true), user},
 		{"devmode",     genmode   ("baystation12.net", 8100, true), user},
+		{"testaddress", genaddr   ("gn32.mooo.com",    3210       ), user},
 		{"teststatus",  genstatus ("gn32.mooo.com",    3210, false), user},
 		{"testplayers", genplayers("gn32.mooo.com",    3210, false), user},
 		{"testadmins",  genadmins ("gn32.mooo.com",    3210, false), user},
@@ -20,6 +23,7 @@ get_commands() ->
 initialise(T) -> T.
 deinitialise(T) -> T.
 
+genaddr   (Server, Port     ) -> fun(_,RT,P,_,_) -> {irc, {msg, {RT, [P, io_lib:format("byond://~s:~b", [Server, Port])]}}} end.
 genstatus (Server, Port, New) -> fun(_,RT,_,_,_) -> spawn(z_status, status,  [RT,Server,Port,New]), ok end.
 genplayers(Server, Port, New) -> fun(_,RT,_,_,_) -> spawn(z_status, players, [RT,Server,Port,New]), ok end.
 genadmins (Server, Port, New) -> fun(_,RT,_,_,_) -> spawn(z_status, admins,  [RT,Server,Port,New]), ok end.

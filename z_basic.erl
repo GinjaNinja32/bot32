@@ -4,6 +4,7 @@
 get_commands() ->
 	[
 		{"ping", fun ping/5, user},
+		{"pong", fun pong/5, user},
 		{"8ball", fun eightball/5, user},
 		{"rand", fun rand/5, user},
 		{"pick", fun pick/5, user},
@@ -23,6 +24,7 @@ colors(_, ReplyTo, Ping, _, _) -> {irc, {msg, {ReplyTo, [Ping,
 	]}}}.
 
 ping(_, ReplyTo, Ping, _, _) -> {irc, {msg, {ReplyTo, [Ping, "Pong!"]}}}.
+pong(_, ReplyTo, Ping, _, _) -> {irc, {msg, {ReplyTo, [Ping, "Ping!"]}}}.
 
 eightball(_, ReplyTo, Ping, ["add"|Thing], _) ->
 	{irc, {msg, {ReplyTo, [Ping, util:addeightball(list_to_binary(string:join(Thing, " ")))]}}};

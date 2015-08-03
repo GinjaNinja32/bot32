@@ -97,3 +97,135 @@ addeightball(TRaw) ->
 		_ ->
 			"Error reading file."
 	end.
+
+parse_htmlentities(Binary) -> parse_htmlentities(Binary, <<>>).  
+
+parse_htmlentities(<<              >>, X) -> X;  
+%parse_htmlentities(<<"&quot;", B/binary>>, X) -> parse_htmlentities(B, <<X/binary, "\"">>);  
+%parse_htmlentities(<<"&amp;",  B/binary>>, X) -> parse_htmlentities(B, <<X/binary, "&">>);  
+%parse_htmlentities(<<"&apos;", B/binary>>, X) -> parse_htmlentities(B, <<X/binary, "'">>);  
+%parse_htmlentities(<<"&lt;",   B/binary>>, X) -> parse_htmlentities(B, <<X/binary, "<">>);  
+%parse_htmlentities(<<"&gt;",   B/binary>>, X) -> parse_htmlentities(B, <<X/binary, ">">>);  
+parse_htmlentities(<<"&#", B/binary>>, X) ->  
+	case read_integer(B, 0) of  
+		{I, Rest} -> parse_htmlentities(Rest, <<X/binary, I/utf8>>);  
+		false -> parse_htmlentities(B, <<X/binary, "&#">>)  
+	end;  
+parse_htmlentities(<<"&", B/binary>>, X) ->
+	case read_ident(B, <<"">>) of
+		{I, Rest} -> parse_htmlentities(Rest, <<X/binary, I/binary>>);
+		false -> parse_htmlentities(B, <<X/binary, "&">>)
+	end;
+parse_htmlentities(<<T/utf8, B/binary>>, X) -> parse_htmlentities(B, <<X/binary, T/utf8>>).  
+
+charents() ->
+	[
+		{<<"amp" >>, $&},
+		{<<"gt"  >>, $>},
+		{<<"lt"  >>, $<},
+		{<<"quot">>, $"},
+		{<<"apos">>, $'},
+		{<<"acute">>, 180},
+		{<<"cedil">>, 184},
+		{<<"circ">>, 710},
+		{<<"macr">>, 175},
+		{<<"middot">>, 183},
+		{<<"tilde">>, 732},
+		{<<"uml">>, 168},
+
+		{<<"Aacute">>, 193},
+		{<<"aacute">>, 225},
+		{<<"Acirc">>, 194},
+		{<<"AElig">>, 198},
+		{<<"aelig">>, 230},
+		{<<"Agrave">>, 192},
+		{<<"agrave">>, 224},
+		{<<"Aring">>, 197},
+		{<<"aring">>, 229},
+		{<<"Atilde">>, 195},
+		{<<"atilde">>, 227},
+		{<<"Auml">>, 196},
+		{<<"auml">>, 228},
+		{<<"Ccedil">>, 199},
+                {<<"ccedil">>, 231},
+                {<<"Eacute">>, 201},
+                {<<"eacute">>, 233},
+                {<<"Ecirc">>, 202},
+                {<<"ecirc">>, 234},
+                {<<"Egrave">>, 200},
+		{<<"egrave">>, 232},
+                {<<"ETH">>, 208},
+                {<<"eth">>, 240},
+                {<<"Euml">>, 203},
+                {<<"euml">>, 235},
+                {<<"Iacute">>, 205},
+                {<<"iacute">>, 237},
+                {<<"Icirc">>, 206},
+                {<<"icirc">>, 238},
+                {<<"Igrave">>, 204},
+                {<<"igrave">>, 236},
+                {<<"Iuml">>, 207},
+                {<<"iuml">>, 239},
+                {<<"Ntilde">>, 209},
+                {<<"ntilde">>, 241},
+                {<<"Oacute">>, 211},
+                {<<"oacute">>, 243},
+                {<<"Ocirc">>, 212},
+                {<<"ocirc">>, 244},
+                {<<"OElig">>, 338},
+                {<<"oelig">>, 339},
+                {<<"Ograve">>, 210},
+                {<<"ograve">>, 242},
+                {<<"Oslash">>, 216},
+                {<<"oslash">>, 248},
+                {<<"Otilde">>, 213},
+                {<<"otilde">>, 245},
+                {<<"Ouml">>, 214},
+                {<<"ouml">>, 246},
+                {<<"Scaron">>, 352},
+                {<<"scaron">>, 353},
+                {<<"szlig">>, 223},
+                {<<"THORN">>, 222},
+                {<<"thorn">>, 254},
+                {<<"Uacute">>, 218},
+                {<<"uacute">>, 250},
+                {<<"Ucirc">>, 219},
+                {<<"ucirc">>, 251},
+                {<<"Ugrave">>, 217},
+                {<<"ugrave">>, 249},
+                {<<"Uuml">>, 220},
+                {<<"uuml">>, 252},
+                {<<"Yacute">>, 221},
+                {<<"yacute">>, 253},
+                {<<"Yuml">>, 376},
+                {<<"yuml">>, 255}
+	].
+
+read_ident(<<>>, _) -> false;
+read_ident(<<";", Rest/binary>>, N) ->
+	case lists:keyfind(N, 1, charents()) of
+		{N, V} when is_integer(V) -> {<<V/utf8>>, Rest};
+		{N, V} when is_binary(V) -> {V, Rest};
+		false -> false
+	end;
+read_ident(<<A/utf8, B/binary>>, N) -> read_ident(B, <<N/binary, A/utf8>>).
+
+read_integer(<<>>, _) -> false;  
+read_integer(<<"x", Rest/binary>>, 0) -> read_hex(Rest, 0);  
+read_integer(<<";", Rest/binary>>, N) -> {N,Rest};  
+read_integer(<<A/utf8, B/binary>>, N) ->  
+	if  
+		$0 =< A andalso A =< $9 -> read_integer(B, N*10 + (A-$0));
+		true -> false
+	end.   
+       
+read_hex(<<>>, _) -> false;
+read_hex(<<";", Rest/binary>>, N) -> {N,Rest};
+read_hex(<<A/utf8, B/binary>>, N) ->
+	if
+		$0 =< A andalso A =< $9 -> read_hex(B, N*16 + (A-$0));
+		$a =< A andalso A =< $f -> read_hex(B, N*16 + (10+A-$a));
+		$A =< A andalso A =< $A -> read_hex(B, N*16 + (10+A-$A));
+		true -> false
+	end.   
+

@@ -1,16 +1,58 @@
 -module(z_eval).
 -compile(export_all).
 
+-include("definitions.hrl").
+
 get_commands() ->
 	[
 		{"eval", gen_eval(fun eval/1), host},
 		{"evalstr", gen_eval_str(fun eval/1), host},
+		{"s", fun shl/5, host},
+		{"sdrop", fun sdrop/5, host},
+		{"sshow", fun sshow/5, host},
 		{"math", gen_eval(fun math/1), user},
 		{"maths", gen_eval(fun math/1), user}
 	].
 
-initialise(T) -> T.
-deinitialise(T) -> T.
+initialise(T) -> T#state{moduledata=orddict:store(?MODULE, [], T#state.moduledata)}.
+deinitialise(T) -> T#state{moduledata=orddict:erase(?MODULE, T#state.moduledata)}.
+
+shl(_, RT, P, Params, State) ->
+	PStr = lists:flatten(string:join(Params, " ")),
+	String = case lists:last(PStr) of
+		$. -> PStr;
+		_ -> PStr ++ "."
+	end,
+	case orddict:find(?MODULE, State#state.moduledata) of
+		{ok, Bindings} -> ok;
+		_ -> Bindings = []
+	end,
+	case erl_scan:string(String) of
+		{ok, Tokens, _} ->
+			case erl_parse:parse_exprs(Tokens) of
+				{ok, Forms} ->
+					case catch erl_eval:exprs(Forms, Bindings) of
+						{value, Value, NewBinds} ->
+							core ! {irc, {msg, {RT, [P, io_lib:format("~p", [Value])]}}},
+							{setkey, {?MODULE, NewBinds}};
+						{'EXIT', {Reason, Stack}} -> {irc, {msg, {RT, [P, format_reasonstack(Reason, Stack)]}}};
+						{'EXIT', Term} -> {irc, {msg, {RT, [P, io_lib:format("Code exited with ~p", [Term])]}}};
+						Term -> {irc, {msg, {RT, [P, io_lib:format("Code threw ~p", [Term])]}}}
+					end;
+				T -> {irc, {msg, {RT, [P, io_lib:format("~p", [T])]}}}
+			end;
+		T -> {irc, {msg, {RT, [P, io_lib:format("~p", [T])]}}}
+	end.
+
+sshow(_, RT, P, _, State) ->
+	case orddict:find(?MODULE, State#state.moduledata) of
+		{ok, V} -> {irc, {msg, {RT, [P, io_lib:format("~p", [V])]}}};
+		error -> {irc, {msg, {RT, [P, "No state found."]}}}
+	end.
+
+sdrop(_, RT, P, _, _) ->
+	core ! {irc, {msg, {RT, [P, "State dropped."]}}},
+	{setkey, {?MODULE, []}}.
 
 gen_eval(Func) ->
 	fun(_,ReplyTo,Ping,[    ],_) -> {irc, {msg, {ReplyTo, [Ping, "Provide a string to evaluate!"]}}};
