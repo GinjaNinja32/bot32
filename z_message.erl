@@ -7,6 +7,7 @@ get_commands() ->
 	[
 		{"cm", fun check_messages/5, user},
 		{"tell", fun new_message/5, user},
+		{"sent", fun sent/5, user},
 		{"save_msg", fun save_messages/5, host},
 		{"load_msg", fun load_messages/5, host},
 		{"dbg_msg", fun debug_messages/5, host}
@@ -49,19 +50,39 @@ check_messages_for(NickR, Messages) ->
         Nick = string:to_lower(NickR),
         case orddict:find(Nick, Messages) of
                 {ok, M} ->
-                        lists:foreach(fun({From, Timestamp, Message}) ->
+                        lists:foldr(fun({From, Timestamp, Message},_) ->
                                         {Date, Time} = format_time(Timestamp),
 					ThenSecs = calendar:datetime_to_gregorian_seconds(Timestamp),
 					Secs = calendar:datetime_to_gregorian_seconds(calendar:now_to_universal_time(os:timestamp())),
 					DiffStr = common:format_time_difference(Secs - ThenSecs),
-                                        core ! {irc, {msg, {Nick, [Message, " - From ", From, " at ", Date, " ", Time, " UTC (",DiffStr," ago)"]}}}
-                                end, M),
+                                        core ! {irc, {msg, {Nick, [Message, " - From ", From, " at ", Date, " ", Time, " UTC (",DiffStr," ago)"]}}},
+					x
+                                end, x, M),
 			NewData = orddict:erase(Nick, Messages),
 			save_data(NewData),
                         store_data(NewData),
                         ok;
                 error -> nomessages
         end.
+
+sent(O, RT, P, _, State) ->
+	Data = get_data(State),
+	case lists:flatmap(fun({To,List}) ->
+				lists:filtermap(fun
+						({F,T,S}) when F == O ->
+							{Date, Time} = format_time(T),
+							ThenSecs = calendar:datetime_to_gregorian_seconds(T),
+							Secs = calendar:datetime_to_gregorian_seconds(calendar:now_to_universal_time(os:timestamp())),
+							Diff = common:format_time_difference(Secs - ThenSecs),
+							{true, io_lib:format("~s - To ~s at ~s ~s UTC (~s ago)", [S, To, Date, Time, Diff])};
+						(_) -> false
+					end, List)
+			end, Data) of
+		[] -> {irc, {msg, {RT, [P, "You have no sent messages."]}}};
+		Lst ->
+			lists:foldr(fun(T,_) -> core ! {irc, {msg, {O, T}}}, x end, x, Lst),
+			ok
+	end.
 
 format_time({{Y, M, D}, {H, Mi, S}}) ->
     {io_lib:format("~b-~2..0b-~2..0b", [Y, M, D]),

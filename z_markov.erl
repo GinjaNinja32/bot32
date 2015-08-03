@@ -8,7 +8,11 @@ get_commands() ->
 	[
 		{"dumpmarkov", fun dmarkov/5, markov},
 		{"markov", fun repmarkov/5, user},
-		{"rmarkov", fun rawmarkov/5, user}
+		{"rmarkov", fun rawmarkov/5, user},
+		{"check", fun check/5, admin},
+		{"forget", fun forget/5, admin},
+		{"rcheck", fun rcheck/5, admin},
+		{"rforget", fun rforget/5, admin}
 	].
 
 dmarkov(_, RT, P, _, S) ->
@@ -18,7 +22,6 @@ dmarkov(_, RT, P, _, S) ->
 	{irc, {msg, {RT, [P, "Markov dumped."]}}}.
 
 repmarkov(_, RT, P, [], _) -> {irc, {msg, {RT, [P, "Words!"]}}};
-repmarkov(_, RT, P, [_], _) -> {irc, {msg, {RT, [P, "Words!"]}}};
 repmarkov(_, RT, P, W, S) ->
 	Data = get_data(S),
 	Reply = reply_to_markov(W, Data),
@@ -30,6 +33,47 @@ rawmarkov(_, RT, P, W, S) ->
 	BinWords = lists:map(fun filter_word/1, W),
 	Reply = build_from(BinWords, Data#mdata.pairs),
 	{irc, {msg, {RT, [P, util:binary_join(Reply, <<" ">>)]}}}.
+
+
+check(_, RT, P, W, _) when length(W) /= 1 -> {irc, {msg, {RT, [P, "One word to check."]}}};
+check(_, RT, P, [LW], S) ->
+	W = list_to_binary(LW),
+	Data = get_data(S),
+	Pairs = Data#mdata.pairs,
+	NewPairs = orddict:filter(fun({A,B},_) -> A/=W andalso B/=W end, Pairs),
+	{irc, {msg, {RT, [P, io_lib:format("~b contexts match.", [length(Pairs) - length(NewPairs)])]}}}.
+
+forget(_, RT, P, W, _) when length(W) /= 1 -> {irc, {msg, {RT, [P, "One word to forget."]}}};
+forget(_, RT, P, [LW], S) ->
+	W = list_to_binary(LW),
+	Data = get_data(S),
+	Pairs = Data#mdata.pairs,
+	NewPairs = orddict:filter(fun({A,B},_) -> A/=W andalso B/=W end, Pairs),
+	core ! {irc, {msg, {RT, [P, io_lib:format("~b contexts forgotten.", [length(Pairs) - length(NewPairs)])]}}},
+	{setkey, {?MODULE, Data#mdata{pairs=NewPairs}}}.
+
+
+rcheck(_, RT, P, W, _) when length(W) /= 1 -> {irc, {msg, {RT, [P, "One regex to check."]}}};
+rcheck(_, RT, P, [R], S) ->
+	Data = get_data(S),
+	Pairs = Data#mdata.pairs,
+	NewPairs = orddict:filter(fun({A,B},_) ->
+			(A == none orelse re:run(A, R, [{capture, none}]) /= match) andalso
+			(B == none orelse re:run(B, R, [{capture, none}]) /= match)
+		end, Pairs),
+	{irc, {msg, {RT, [P, io_lib:format("~b contexts match.", [length(Pairs) - length(NewPairs)])]}}}.
+
+rforget(_, RT, P, W, _) when length(W) /= 1 -> {irc, {msg, {RT, [P, "One regex to forget."]}}};
+rforget(_, RT, P, [R], S) ->
+	Data = get_data(S),
+	Pairs = Data#mdata.pairs,
+	NewPairs = orddict:filter(fun({A,B},_) ->
+			(A == none orelse re:run(A, R, [{capture, none}]) /= match) andalso
+			(B == none orelse re:run(B, R, [{capture, none}]) /= match)
+		end, Pairs),
+	core ! {irc, {msg, {RT, [P, io_lib:format("~b contexts forgotten.", [length(Pairs) - length(NewPairs)])]}}},
+	{setkey, {?MODULE, Data#mdata{pairs=NewPairs}}}.
+
 
 initialise(T) ->
 	Data = load_data(),
@@ -97,9 +141,9 @@ learn_from_markov(Msg, Data) ->
 reply_to_markov(Msg, Data) ->
 	TrueMsg = lists:map(fun filter_word/1, Msg),
 %	common:debug("markov", "replying to ~s", [util:binary_join(TrueMsg, <<" ">>)]),
-	MsgPairs = lists:zip(lists:reverse(tl(lists:reverse(TrueMsg))), tl(TrueMsg)),
+%	MsgPairs = lists:zip(lists:reverse(tl(lists:reverse(TrueMsg))), tl(TrueMsg)),
 
-	case orddict:filter(fun(K, _) -> lists:member(K, MsgPairs) end, Data#mdata.pairs) of
+	case orddict:filter(fun({A,B}, _) -> lists:member(A, TrueMsg) orelse lists:member(B, TrueMsg) end, Data#mdata.pairs) of
 		[] -> [<<"???">>];
 		MatchingPairs ->
 			{_,RarePairs} = orddict:fold(fun
@@ -107,8 +151,13 @@ reply_to_markov(Msg, Data) ->
 					(Pr, Frq, {MinFrq, PrList}) when Frq == MinFrq -> {MinFrq, [Pr | PrList]};
 					(Pr, Frq, {MinFrq, ______}) when Frq <  MinFrq -> {   Frq, [Pr]}
 				end, {large, []}, MatchingPairs),
-			PairToUse = lists:nth(random:uniform(length(RarePairs)), RarePairs),
-			build_from(tuple_to_list(PairToUse), Data#mdata.pairs)
+			[PUA, PUB] = tuple_to_list(lists:nth(random:uniform(length(RarePairs)), RarePairs)),
+			case lists:map(fun(T) -> lists:member(T, TrueMsg) end, [PUA, PUB]) of
+				[true, true] -> build_from([lists:nth(random:uniform(2), [PUA, PUB])], Data#mdata.pairs);
+				[true, false] -> build_from([PUA], Data#mdata.pairs);
+				[false, true] -> build_from([PUB], Data#mdata.pairs);
+				_ -> <<"??? (err)">>
+			end
 	end.
 
 build_from(Words, P) ->
@@ -171,4 +220,4 @@ filter_word(Word) ->
 			R = util:regex_escape(Filter),
 			re:replace(Wd, R, <<"">>, [{return, binary}, global])
 		end, Word,
-			[<<"[">>,<<"]">>,<<"{">>,<<"}">>,<<"(">>,<<")">>,<<"<">>,<<">">>,<<"\"">>,<<"'">>,<<"*">>]).
+			[<<"[">>,<<"]">>,<<"{">>,<<"}">>,<<"(">>,<<")">>,<<"<">>,<<">">>,<<"\"">>,<<"'">>,<<"*">>,<<"\t">>]).

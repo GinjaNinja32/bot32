@@ -13,11 +13,11 @@ get_commands() ->
 		{"devplayers",  genplayers("baystation12.net", 8100, true), user},
 		{"devadmins",   genadmins ("baystation12.net", 8100, true), user},
 		{"devmode",     genmode   ("baystation12.net", 8100, true), user},
-		{"testaddress", genaddr   ("gn32.mooo.com",    3210       ), user},
-		{"teststatus",  genstatus ("gn32.mooo.com",    3210, false), user},
-		{"testplayers", genplayers("gn32.mooo.com",    3210, false), user},
-		{"testadmins",  genadmins ("gn32.mooo.com",    3210, false), user},
-		{"testmode",    genmode   ("gn32.mooo.com",    3210, false), user}
+		{"testaddress", genaddr   ("gn32.mooo.com",    3210      ), user},
+		{"teststatus",  genstatus ("gn32.mooo.com",    3210, true), user},
+		{"testplayers", genplayers("gn32.mooo.com",    3210, true), user},
+		{"testadmins",  genadmins ("gn32.mooo.com",    3210, true), user},
+		{"testmode",    genmode   ("gn32.mooo.com",    3210, true), user}
 	].
 
 initialise(T) -> T.
