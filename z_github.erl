@@ -111,9 +111,9 @@ decode_content(Content, Channels) ->
 	end.
 
 handle_decoded(JSON, Channels) ->
-	Message = case traverse_json(JSON, [struct, "action"]) of
+	Messages = case traverse_json(JSON, [struct, "action"]) of
 		"opened" ->
-			create_message(JSON, "[~s] ~s opened pull request #~b: ~s (~s...~s) ~s", [
+			[create_message(JSON, "[~s] ~s opened pull request #~b: ~s (~s...~s) ~s", [
 					[struct, "pull_request", struct, "base", struct, "repo", struct, "name"],
 					[struct, "sender", struct, "login"],
 					[struct, "pull_request", struct, "number"],
@@ -121,9 +121,9 @@ handle_decoded(JSON, Channels) ->
 					[struct, "pull_request", struct, "base", struct, "label"],
 					[struct, "pull_request", struct, "head", struct, "label"],
 					[struct, "pull_request", struct, "html_url"]
-				]);
+				])];
 		"reopened" ->
-			create_message(JSON, "[~s] ~s reopened pull request #~b: ~s (~s...~s) ~s", [
+			[create_message(JSON, "[~s] ~s reopened pull request #~b: ~s (~s...~s) ~s", [
 					[struct, "pull_request", struct, "base", struct, "repo", struct, "name"],
 					[struct, "sender", struct, "login"],
 					[struct, "pull_request", struct, "number"],
@@ -131,9 +131,9 @@ handle_decoded(JSON, Channels) ->
 					[struct, "pull_request", struct, "base", struct, "label"],
 					[struct, "pull_request", struct, "head", struct, "label"],
 					[struct, "pull_request", struct, "html_url"]
-				]);
+				])];
 		"closed" ->
-			create_message(JSON, "[~s] ~s closed pull request #~b: ~s (~s...~s) ~s", [
+			[create_message(JSON, "[~s] ~s closed pull request #~b: ~s (~s...~s) ~s", [
 					[struct, "pull_request", struct, "base", struct, "repo", struct, "name"],
 					[struct, "sender", struct, "login"],
 					[struct, "pull_request", struct, "number"],
@@ -141,55 +141,72 @@ handle_decoded(JSON, Channels) ->
 					[struct, "pull_request", struct, "base", struct, "label"],
 					[struct, "pull_request", struct, "head", struct, "label"],
 					[struct, "pull_request", struct, "html_url"]
-				]);
+				])];
 		error ->
 			case lists:map(fun(T) -> traverse_json(JSON, [struct, T]) end, ["created", "deleted", "forced"]) of
 				[true, false, _] ->
-					create_message(JSON, "[~s] ~s created ~s at ~s: ~s", [
+					[create_message(JSON, "[~s] ~s created ~s at ~s: ~s", [
 							[struct, "repository", struct, "name"],
 							[struct, "sender", struct, "login"],
-							[struct, "ref"],
+							{ref, [struct, "ref"]},
 							{hash, [struct, "after"]},
 							[struct, "compare"]
-						]);
+						])];
 				[false, true, _] ->
-					create_message(JSON, "[~s] ~s deleted ~s at ~s", [
+					[create_message(JSON, "[~s] ~s deleted ~s at ~s", [
 							[struct, "repository", struct, "name"],
 							[struct, "sender", struct, "login"],
-							[struct, "ref"],
+							{ref, [struct, "ref"]},
 							{hash, [struct, "before"]}
-						]);
+						])];
 				[false, false, Force] ->
 					Pushed = if Force -> "force-pushed"; true -> "pushed" end,
-					create_message(JSON, "[~s] ~s ~s ~b commits to ~s (from ~s to ~s): ~s", [
+					PushMsg = create_message(JSON, "[~s] ~s ~s ~b commits to ~s (from ~s to ~s): ~s", [
 							[struct, "repository", struct, "name"],
 							[struct, "sender", struct, "login"],
 							{Pushed},
 							{length, [struct, "commits", array]},
-							[struct, "ref"],
+							{ref, [struct, "ref"]},
 							{hash, [struct, "before"]},
 							{hash, [struct, "after"]},
 							[struct, "compare"]
-						]);
-				[error, error, error] -> "";
-				[_, _, _] -> "???"
+						]),
+					CommitList = traverse_json(JSON, [struct, "commits", struct]),
+					ShowList = lists:sublist(CommitList, 3),
+					Repo = traverse_json(JSON, [struct, "repository", struct, "name"]),
+					Branch = traverse_json(JSON, {ref, [struct, "ref"]}),
+					ShowMsgs = lists:map(fun(MJSON) ->
+						create_message(MJSON, "~s/~s ~s ~s", [
+							{Repo},
+							{Branch},
+							[struct, "author", struct, "username"],
+							[struct, "message"]
+						]) end, ShowList),
+					[PushMsg | ShowMsgs];
+				[error, error, error] -> [];
+				[_, _, _] -> ["???"]
 			end;
-		_ -> "???"
+		_ -> ["???"]
 	end,
-	case case Message of
-		"" -> false;
-		"???" -> file:write_file("json_err.crl", io_lib:format("~p", [JSON])), true;
+	case case Messages of
+		[] -> false;
+		["???"] -> file:write_file("json_err.crl", io_lib:format("~p", [JSON])), true;
 		_ -> true
 	end of
-		true -> lists:foreach(fun(T) -> core ! {irc, {msg, {T, Message}}} end, Channels);
+		true -> lists:foreach(fun(M) -> lists:foreach(fun(T) -> core ! {irc, {msg, {T, M}}} end, Channels) end, Messages);
 		false -> ok
 	end.
 
 create_message(JSON, String, FormatJsonPaths) ->
 	io_lib:format(String, lists:map(fun
 			({T}) -> T;
-			({hash,T}) -> {X,_} = lists:split(12, traverse_json(JSON, T)), X;
+			({hash,T}) -> {X,_} = lists:split(8, traverse_json(JSON, T)), X;
 			({length,T}) -> length(traverse_json(JSON, T));
+			({ref,T}) ->
+				case traverse_json(JSON, T) of
+					"refs/heads/" ++ Branch -> Branch;
+					X -> X
+				end;
 			(T) -> traverse_json(JSON, T)
 		end, FormatJsonPaths)).
 
