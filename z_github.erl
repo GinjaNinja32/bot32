@@ -80,20 +80,20 @@ handle_sock(Socket, Channels, Secret) ->
 						ok ->
 							gen_tcp:send(Socket, "HTTP/1.1 204 No Content\r\n\r\n");
 						error ->
-							common:debug("GITHUB", "HTTP request with incorrect signature ~p ~p ~p", [A, B, Dict]),
+							logging:log(info, "GITHUB", "HTTP request with incorrect signature ~p ~p ~p", [A, B, Dict]),
 							gen_tcp:send(Socket, "HTTP/1.1 403 Forbidden\r\n\r\n")
 					end;
 				error -> 
-					common:debug("GITHUB", "HTTP request with no signature ~p ~p ~p", [A, B, Dict]),
+					logging:log(info, "GITHUB", "HTTP request with no signature ~p ~p ~p", [A, B, Dict]),
 					gen_tcp:send(Socket, "HTTP/1.1 403 Forbidden\r\n\r\n")
 			end,
 			gen_tcp:close(Socket);
 		{ok, T} ->
-			common:debug("GITHUB", "HTTP request ~p", [T]),
+			logging:log(info, "GITHUB", "HTTP request ~p", [T]),
 			gen_tcp:send(Socket, "HTTP/1.1 204 No Content\r\n\r\n"),
 			gen_tcp:close(Socket);
 		{error, T} ->
-			common:debug("GITHUB", "HTTP error: ~p", [T])
+			logging:log(info, "GITHUB", "HTTP error: ~p", [T])
 	end.
 
 read_headers(Socket) -> read_headers(Socket, orddict:new()).
