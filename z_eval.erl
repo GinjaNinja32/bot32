@@ -9,13 +9,15 @@ get_commands() ->
 		{"evalstr", gen_eval_str(fun eval/1), host},
 		{"s", fun shl/5, host},
 		{"sdrop", fun sdrop/5, host},
+		{"serase", fun serase/5, host},
 		{"sshow", fun sshow/5, host},
 		{"math", gen_eval(fun math/1), user},
 		{"maths", gen_eval(fun math/1), user}
 	].
 
-initialise(T) -> T#state{moduledata=orddict:store(?MODULE, [], T#state.moduledata)}.
-deinitialise(T) -> T#state{moduledata=orddict:erase(?MODULE, T#state.moduledata)}.
+default_data() -> [].
+data_persistence() -> automatic.
+-include("basic_module.hrl").
 
 shl(_, RT, P, Params, State) ->
 	PStr = lists:flatten(string:join(Params, " ")),
@@ -49,6 +51,20 @@ sshow(_, RT, P, _, State) ->
 		{ok, V} -> {irc, {msg, {RT, [P, io_lib:format("~p", [V])]}}};
 		error -> {irc, {msg, {RT, [P, "No state found."]}}}
 	end.
+
+serase(_, RT, P, A, _) when length(A) /= 1 -> {irc, {msg, {RT, [P, "Provide a single var name."]}}};
+serase(_, RT, P, [Var], S) ->
+	{Msg, NewDict} = case orddict:find(?MODULE, S#state.moduledata) of
+		{ok, Vars} ->
+			Atom = list_to_atom(Var),
+			case orddict:find(Atom, Vars) of
+				{ok, Val} -> {io_lib:format("Dropped value ~p.", [Val]), orddict:erase(Atom, Vars)};
+				error -> {io_lib:format("No variable ~s found.", [Var]), Vars}
+			end;
+		error -> {"No vars found.", []}
+	end,
+	core ! {irc, {msg, {RT, [P, Msg]}}},
+	{setkey, {?MODULE, NewDict}}.
 
 sdrop(_, RT, P, _, _) ->
 	core ! {irc, {msg, {RT, [P, "State dropped."]}}},
