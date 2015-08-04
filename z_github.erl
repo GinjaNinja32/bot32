@@ -114,7 +114,7 @@ handle_decoded(JSON, Channels) ->
 	Messages = case traverse_json(JSON, [struct, "action"]) of
 		"opened" ->
 			[create_message(JSON, "[~s] ~s opened pull request #~b: ~s (~s...~s) ~s", [
-					[struct, "pull_request", struct, "base", struct, "repo", struct, "name"],
+					{reponame, [struct, "pull_request", struct, "base", struct, "repo"]},
 					[struct, "sender", struct, "login"],
 					[struct, "pull_request", struct, "number"],
 					[struct, "pull_request", struct, "title"],
@@ -124,7 +124,7 @@ handle_decoded(JSON, Channels) ->
 				])];
 		"reopened" ->
 			[create_message(JSON, "[~s] ~s reopened pull request #~b: ~s (~s...~s) ~s", [
-					[struct, "pull_request", struct, "base", struct, "repo", struct, "name"],
+					{reponame, [struct, "pull_request", struct, "base", struct, "repo"]},
 					[struct, "sender", struct, "login"],
 					[struct, "pull_request", struct, "number"],
 					[struct, "pull_request", struct, "title"],
@@ -134,7 +134,7 @@ handle_decoded(JSON, Channels) ->
 				])];
 		"closed" ->
 			[create_message(JSON, "[~s] ~s closed pull request #~b: ~s (~s...~s) ~s", [
-					[struct, "pull_request", struct, "base", struct, "repo", struct, "name"],
+					{reponame, [struct, "pull_request", struct, "base", struct, "repo"]},
 					[struct, "sender", struct, "login"],
 					[struct, "pull_request", struct, "number"],
 					[struct, "pull_request", struct, "title"],
@@ -146,7 +146,7 @@ handle_decoded(JSON, Channels) ->
 			case lists:map(fun(T) -> traverse_json(JSON, [struct, T]) end, ["created", "deleted", "forced"]) of
 				[true, false, _] ->
 					[create_message(JSON, "[~s] ~s created ~s at ~s: ~s", [
-							[struct, "repository", struct, "name"],
+							{reponame, [struct, "repository"]},
 							[struct, "sender", struct, "login"],
 							{ref, [struct, "ref"]},
 							{hash, [struct, "after"]},
@@ -154,7 +154,7 @@ handle_decoded(JSON, Channels) ->
 						])];
 				[false, true, _] ->
 					[create_message(JSON, "[~s] ~s deleted ~s at ~s", [
-							[struct, "repository", struct, "name"],
+							{reponame, [struct, "repository"]},
 							[struct, "sender", struct, "login"],
 							{ref, [struct, "ref"]},
 							{hash, [struct, "before"]}
@@ -162,7 +162,7 @@ handle_decoded(JSON, Channels) ->
 				[false, false, Force] ->
 					Pushed = if Force -> "force-pushed"; true -> "pushed" end,
 					PushMsg = create_message(JSON, "[~s] ~s ~s ~b commits to ~s (from ~s to ~s): ~s", [
-							[struct, "repository", struct, "name"],
+							{reponame, [struct, "repository"]},
 							[struct, "sender", struct, "login"],
 							{Pushed},
 							{length, [struct, "commits", array]},
@@ -171,16 +171,18 @@ handle_decoded(JSON, Channels) ->
 							{hash, [struct, "after"]},
 							[struct, "compare"]
 						]),
-					CommitList = traverse_json(JSON, [struct, "commits", struct]),
+					CommitList = traverse_json(JSON, [struct, "commits", array]),
 					ShowList = lists:sublist(CommitList, 3),
-					Repo = traverse_json(JSON, [struct, "repository", struct, "name"]),
-					Branch = traverse_json(JSON, {ref, [struct, "ref"]}),
+					RepoBranch = create_message(JSON, "~s:~s", [
+							{reponame, [struct, "repository"]},
+							{ref, [struct, "ref"]}
+						]),
 					ShowMsgs = lists:map(fun(MJSON) ->
-						create_message(MJSON, "~s/~s ~s ~s", [
-							{Repo},
-							{Branch},
+						create_message(MJSON, "[~s] ~s ~s: ~s", [
+							{RepoBranch},
+							{hash, [struct, "id"]},
 							[struct, "author", struct, "username"],
-							[struct, "message"]
+							{trunc_newline, [struct, "message"]}
 						]) end, ShowList),
 					[PushMsg | ShowMsgs];
 				[error, error, error] -> [];
@@ -200,12 +202,22 @@ handle_decoded(JSON, Channels) ->
 create_message(JSON, String, FormatJsonPaths) ->
 	io_lib:format(String, lists:map(fun
 			({T}) -> T;
-			({hash,T}) -> {X,_} = lists:split(8, traverse_json(JSON, T)), X;
+			({hash,T}) -> lists:sublist(8, traverse_json(JSON, T));
 			({length,T}) -> length(traverse_json(JSON, T));
 			({ref,T}) ->
 				case traverse_json(JSON, T) of
 					"refs/heads/" ++ Branch -> Branch;
 					X -> X
+				end;
+			({trunc_newline,T}) ->
+				case traverse_json(JSON, T) of
+					error -> error;
+					Lst -> lists:takewhile(fun(X) -> X /= 10 end, Lst)
+				end;
+			({reponame, RepoStruct}) ->
+				case traverse_json(JSON, RepoStruct ++ [struct, "fork"]) of
+					false -> traverse_json(JSON, RepoStruct ++ [struct, "name"]);
+					_ -> traverse_json(JSON, RepoStruct ++ [struct, "full_name"])
 				end;
 			(T) -> traverse_json(JSON, T)
 		end, FormatJsonPaths)).
