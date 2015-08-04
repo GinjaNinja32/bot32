@@ -202,7 +202,7 @@ handle_decoded(JSON, Channels) ->
 create_message(JSON, String, FormatJsonPaths) ->
 	io_lib:format(String, lists:map(fun
 			({T}) -> T;
-			({hash,T}) -> lists:sublist(8, traverse_json(JSON, T));
+			({hash,T}) -> lists:sublist(traverse_json(JSON, T), 8);
 			({length,T}) -> length(traverse_json(JSON, T));
 			({ref,T}) ->
 				case traverse_json(JSON, T) of
