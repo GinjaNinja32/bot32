@@ -15,12 +15,13 @@ initialise(T) ->
 		undefined -> ok;
 		Pid -> Pid ! stop, waitfor_gone(?MODULE)
 	end,
-	Channels = case file:consult("github_announce.crl") of
-		{ok, Terms} -> Terms;
-		{error, T} -> ["#bot32-test"];
-		_ -> ["#bot32-test"]
+	case file:consult("github_announce.crl") of
+		{ok, [Secret,Channels]} -> ok;
+		_ ->
+			Secret = '*',
+			Channels = [{'*', '*', "#bot32-test"}]
 	end,
-	spawn(?MODULE, init, [Channels]),
+	spawn(?MODULE, init, [Channels, Secret]),
 	T.
 
 deinitialise(T) ->
@@ -30,50 +31,62 @@ deinitialise(T) ->
 	end,
 	T.
 
-init(Channels) ->
+init(Channels, Secret) ->
 	case gen_tcp:listen(8080, [binary, {packet, http}, {active, false}, {reuseaddr, true}]) of
 		{ok, SvrSock} ->
 			logging:log(info, "GITHUB", "Starting loop."),
 			register(?MODULE, self()),
-			loop(SvrSock, Channels),
+			loop(SvrSock, Channels, Secret),
 			gen_tcp:close(SvrSock),
 			logging:log(info, "GITHUB", "Ending loop.");
 		{error, Reason} ->
 			logging:log(error, "GITHUB", "Failed to open listen socket: ~p", [Reason])
 	end.
 
-loop(SvrSock, Channels) ->
+loop(SvrSock, Channels, Secret) ->
 	case receive
 		stop -> stop
 	after ?Timer ->
 		case gen_tcp:accept(SvrSock, ?Timer) of
-			{ok, Socket} -> handle_sock(Socket, Channels), ok;
+			{ok, Socket} -> handle_sock(Socket, Channels, Secret), ok;
 			{error, timeout} -> ok;
 			{error, X} -> {error, X}
 		end
 	end of
-		ok -> loop(SvrSock, Channels);
+		ok -> loop(SvrSock, Channels, Secret);
 		stop -> ok;
 		{error, E} -> logging:log(error, "GITHUB", "error: ~p", [E]);
 		E -> logging:log(error, "GITHUB", "Unknown status ~p", [E])
 	end.
 
-handle_sock(Socket, Channels) ->
+handle_sock(Socket, Channels, Secret) ->
 	case gen_tcp:recv(Socket, 0, 2000) of
-		{ok, {http_request, 'POST', _, _}} ->
+		{ok, {http_request, 'POST', A, B}} ->
 			inet:setopts(Socket, [{packet, httph}]),
 			Dict = read_headers(Socket),
-			case case orddict:find('Content-Length', Dict) of
-				{ok, Value} ->
-					inet:setopts(Socket, [{packet, raw}]),
-					read_content(Socket, list_to_integer(Value));
-				error -> <<"">>
-			end of
-				<<"">> -> [];
-				{error, T} -> logging:log(error, "GITHUB", "Error: ~p", [T]);
-				Content -> decode_content(Content, Channels)
+			case orddict:find("X-Hub-Signature", Dict) of
+				{ok, Signature} ->
+					case case case orddict:find('Content-Length', Dict) of
+						{ok, Value} ->
+							inet:setopts(Socket, [{packet, raw}]),
+							read_content(Socket, list_to_integer(Value), Signature, Secret);
+						error -> <<"">>
+					end of
+						sigerr -> error;
+						<<"">> -> ok;
+						{error, T} -> logging:log(error, "GITHUB", "Error: ~p", [T]);
+						Content -> decode_content(Content, Channels), ok
+					end of
+						ok ->
+							gen_tcp:send(Socket, "HTTP/1.1 204 No Content\r\n\r\n");
+						error ->
+							common:debug("GITHUB", "HTTP request with incorrect signature ~p ~p ~p", [A, B, Dict]),
+							gen_tcp:send(Socket, "HTTP/1.1 403 Forbidden\r\n\r\n")
+					end;
+				error -> 
+					common:debug("GITHUB", "HTTP request with no signature ~p ~p ~p", [A, B, Dict]),
+					gen_tcp:send(Socket, "HTTP/1.1 403 Forbidden\r\n\r\n")
 			end,
-			gen_tcp:send(Socket, "HTTP/1.1 204 No Content\r\n\r\n"),
 			gen_tcp:close(Socket);
 		{ok, T} ->
 			common:debug("GITHUB", "HTTP request ~p", [T]),
@@ -96,11 +109,32 @@ read_headers(Socket, Dict) ->
 			{error, T}
 	end.
 
-read_content(Socket, Length) ->
+read_content(Socket, Length, Signature, Secret) ->
 	case gen_tcp:recv(Socket, Length, 10000) of
-		{ok, Data} -> Data;
+		{ok, Data} ->
+			case Secret of
+				'*' -> Data;
+				_ ->
+					% crypto:hmac returns a binary
+					% github inserts 'sha1=' in front of the signature
+					RealSignature = list_to_binary(tl(tl(tl(tl(tl(Signature)))))),
+					case hexit(crypto:hmac(sha, Secret, Data), <<>>) of
+						RealSignature -> Data;
+						X ->
+							io:fwrite("got ~p, expected ~p~n", [X, RealSignature]),
+							sigerr
+					end
+			end;
 		{error, T} -> {error, T}
 	end.
+
+hexit(<<>>, Out) -> Out;
+hexit(<<A,In/binary>>, Out) ->
+	case io_lib:format("~.16b",[A]) of
+		[X] when length(X) == 2 -> Bin = list_to_binary(X);
+		[X] -> Bin = list_to_binary("0" ++ X)
+	end,
+	hexit(In, <<Out/binary, Bin/binary>>).
 
 decode_content(Content, Channels) ->
 	case catch mochijson:decode(Content) of
@@ -111,8 +145,13 @@ decode_content(Content, Channels) ->
 	end.
 
 handle_decoded(JSON, Channels) ->
-	Messages = case traverse_json(JSON, [struct, "action"]) of
-		"opened" ->
+	Messages = case {
+				traverse_json(JSON, [struct, "action"]),
+				traverse_json(JSON, [struct, "pull_request"]),
+				traverse_json(JSON, [struct, "issue"])
+			} of
+		{"opened", _, error} ->
+			RepoStruct = traverse_json(JSON, [struct, "pull_request", struct, "base", struct, "repo"]),
 			[create_message(JSON, "[~s] ~s opened pull request #~b: ~s (~s...~s) ~s", [
 					{reponame, [struct, "pull_request", struct, "base", struct, "repo"]},
 					[struct, "sender", struct, "login"],
@@ -122,7 +161,8 @@ handle_decoded(JSON, Channels) ->
 					[struct, "pull_request", struct, "head", struct, "label"],
 					[struct, "pull_request", struct, "html_url"]
 				])];
-		"reopened" ->
+		{"reopened", _, error} ->
+			RepoStruct = traverse_json(JSON, [struct, "pull_request", struct, "base", struct, "repo"]),
 			[create_message(JSON, "[~s] ~s reopened pull request #~b: ~s (~s...~s) ~s", [
 					{reponame, [struct, "pull_request", struct, "base", struct, "repo"]},
 					[struct, "sender", struct, "login"],
@@ -132,7 +172,8 @@ handle_decoded(JSON, Channels) ->
 					[struct, "pull_request", struct, "head", struct, "label"],
 					[struct, "pull_request", struct, "html_url"]
 				])];
-		"closed" ->
+		{"closed", _, error} ->
+			RepoStruct = traverse_json(JSON, [struct, "pull_request", struct, "base", struct, "repo"]),
 			[create_message(JSON, "[~s] ~s closed pull request #~b: ~s (~s...~s) ~s", [
 					{reponame, [struct, "pull_request", struct, "base", struct, "repo"]},
 					[struct, "sender", struct, "login"],
@@ -142,7 +183,35 @@ handle_decoded(JSON, Channels) ->
 					[struct, "pull_request", struct, "head", struct, "label"],
 					[struct, "pull_request", struct, "html_url"]
 				])];
-		error ->
+		{"opened", error, _} ->
+			RepoStruct = traverse_json(JSON, [struct, "issue", struct, "repository"]),
+			[create_message(JSON, "[~s] ~s opened issue #~b: ~s ~s", [
+					{reponame, [struct, "repository"]},
+					[struct, "sender", struct, "login"],
+					[struct, "issue", struct, "number"],
+					[struct, "issue", struct, "title"],
+					[struct, "issue", struct, "html_url"]
+				])];
+		{"reopened", error, _} ->
+			RepoStruct = traverse_json(JSON, [struct, "issue", struct, "repository"]),
+			[create_message(JSON, "[~s] ~s reopened issue #~b: ~s ~s", [
+					{reponame, [struct, "repository"]},
+					[struct, "sender", struct, "login"],
+					[struct, "issue", struct, "number"],
+					[struct, "issue", struct, "title"],
+					[struct, "issue", struct, "html_url"]
+				])];
+		{"closed", error, _} ->
+			RepoStruct = traverse_json(JSON, [struct, "issue", struct, "repository"]),
+			[create_message(JSON, "[~s] ~s closed issue #~b: ~s ~s", [
+					{reponame, [struct, "repository"]},
+					[struct, "sender", struct, "login"],
+					[struct, "issue", struct, "number"],
+					[struct, "issue", struct, "title"],
+					[struct, "issue", struct, "html_url"]
+				])];
+		{error, _, _} ->
+			RepoStruct = traverse_json(JSON, [struct, "repository"]),
 			case lists:map(fun(T) -> traverse_json(JSON, [struct, T]) end, ["created", "deleted", "forced"]) of
 				[true, false, _] ->
 					[create_message(JSON, "[~s] ~s created ~s at ~s: ~s", [
@@ -188,14 +257,24 @@ handle_decoded(JSON, Channels) ->
 				[error, error, error] -> [];
 				[_, _, _] -> ["???"]
 			end;
-		_ -> ["???"]
+		_ -> RepoStruct = ["???"]
 	end,
 	case case Messages of
 		[] -> false;
-		["???"] -> file:write_file("json_err.crl", io_lib:format("~p", [JSON])), true;
+		["???"] -> file:write_file("json_err.crl", io_lib:format("~p", [JSON])), false;
 		_ -> true
 	end of
-		true -> lists:foreach(fun(M) -> lists:foreach(fun(T) -> core ! {irc, {msg, {T, M}}} end, Channels) end, Messages);
+		true ->
+			UU = traverse_json(RepoStruct, [struct, "owner", struct, "name"]),
+			NN = traverse_json(RepoStruct, [struct, "name"]),
+			SendChannels = lists:flatmap(fun({U,N,L}) ->
+					if
+						U == '*' orelse U == UU andalso
+						N == '*' orelse N == NN ->
+							L;
+						true -> []
+					end end, Channels),
+			lists:foreach(fun(M) -> lists:foreach(fun(T) -> core ! {irc, {msg, {T, M}}} end, SendChannels) end, Messages);
 		false -> ok
 	end.
 
