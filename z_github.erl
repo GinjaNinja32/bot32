@@ -230,11 +230,12 @@ handle_decoded(JSON, Channels) ->
 						])];
 				[false, false, Force] ->
 					Pushed = if Force -> "force-pushed"; true -> "pushed" end,
-					PushMsg = create_message(JSON, "[~s] ~s ~s ~b commits to ~s (from ~s to ~s): ~s", [
+					PushMsg = create_message(JSON, "[~s] ~s ~s ~b commit~s to ~s (from ~s to ~s): ~s", [
 							{reponame, [struct, "repository"]},
 							[struct, "sender", struct, "login"],
 							{Pushed},
 							{length, [struct, "commits", array]},
+							{s, [struct, "commits", array]},
 							{ref, [struct, "ref"]},
 							{hash, [struct, "before"]},
 							{hash, [struct, "after"]},
@@ -283,6 +284,8 @@ create_message(JSON, String, FormatJsonPaths) ->
 			({T}) -> T;
 			({hash,T}) -> lists:sublist(traverse_json(JSON, T), 8);
 			({length,T}) -> length(traverse_json(JSON, T));
+			({s,Str,T}) -> util:s(length(traverse_json(JSON, T)), Str);
+			({s,T}) -> util:s(length(traverse_json(JSON, T)));
 			({ref,T}) ->
 				case traverse_json(JSON, T) of
 					"refs/heads/" ++ Branch -> Branch;
