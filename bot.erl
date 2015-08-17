@@ -549,18 +549,22 @@ utf8(B) -> lists:reverse(utf8(B,[])).
 utf8(<<>>, L) -> L;
 utf8(<<A/utf8, B/binary>>, L) -> utf8(B, [A | L]).
 
+default_user_repo("#yonaguni") -> {"Yonaguni", "Baystation12"};
+default_user_repo("#bot32-test") -> {"GinjaNinja32", "bot32"};
+default_user_repo(_) -> {"Baystation12", "Baystation12"}.
 
 do_pr_linking(Tokens, Channel, Ping) ->
 	lists:foreach(fun(T) -> do_pr_link_token(T, Channel, Ping) end, Tokens).
 
 do_pr_link_token(Token, Channel, Ping) ->
+	{DefU, DefR} = default_user_repo(Channel),
 	case case re:run(Token, "^(?:([a-zA-Z0-9_\-]+)(?:/([a-zA-Z0-9_\-]+))?)?(?:\\[([0-9]{1,5})\\]|#([0-9]{2,5}))(?:$|[^0-9])", [{capture, all_but_first, list}]) of
-		{match, ["", "", "",  N]} -> {"Baystation12", "Baystation12", N};
-		{match, [ U, "", "",  N]} -> {U, "Baystation12", N};
-		{match, [ U,  R, "",  N]} -> {U, R, N};
-		{match, ["", "",  N]} -> {"Baystation12", "Baystation12", N};
-		{match, [ U, "",  N]} -> {U, "Baystation12", N};
-		{match, [ U,  R,  N]} -> {U, R, N};
+		{match, ["", "", "",  N]} -> {DefU, DefR, N};
+		{match, [ U, "", "",  N]} -> {   U, DefR, N};
+		{match, [ U,  R, "",  N]} -> {   U,    R, N};
+		{match, ["", "",      N]} -> {DefU, DefR, N};
+		{match, [ U, "",      N]} -> {   U, DefR, N};
+		{match, [ U,  R,      N]} -> {   U,    R, N};
 		nomatch -> false
 	end of
 		{User, Repo, Num} ->

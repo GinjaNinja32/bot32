@@ -309,7 +309,12 @@ create_message(JSON, String, FormatJsonPaths) ->
 			({reponame, RepoStruct}) ->
 				case traverse_json(JSON, RepoStruct ++ [struct, "fork"]) of
 					false -> ?REPO ++ traverse_json(JSON, RepoStruct ++ [struct, "name"]) ++ ?RESET;
-					_ -> ?USER ++ traverse_json(JSON, RepoStruct ++ [struct, "owner", struct, "login"]) ++ ?RESET ++ "/" ++ ?REPO ++ traverse_json(JSON, RepoStruct ++ [struct, "name"]) ++ ?RESET
+					_ ->
+						User = case traverse_json(JSON, RepoStruct ++ [struct, "owner", struct, "login"]) of
+							error -> traverse_json(JSON, RepoStruct ++ [struct, "owner", struct, "name"]);
+							T -> T
+						end,
+						?USER ++ User ++ ?RESET ++ "/" ++ ?REPO ++ traverse_json(JSON, RepoStruct ++ [struct, "name"]) ++ ?RESET
 				end;
 			(T) -> traverse_json(JSON, T)
 		end, FormatJsonPaths)).
