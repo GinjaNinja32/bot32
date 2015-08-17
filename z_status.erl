@@ -1,104 +1,88 @@
 -module(z_status).
 -compile(export_all).
 
+defaultserver("#yonaguni") -> "europa";
+defaultserver(_) -> "main".
+
+servers() ->
+	[
+		{"dev", {"baystation12.net", 8100, "(dev) "}},
+		{"europa", {"server.wetskrell.org", 8080, "(europa) "}},
+		{"main", {"baystation12.net", 8000, ""}},
+		{"test", {"gn32.mooo.com", 3210, "(test) "}}
+	].
+
 get_commands() ->
 	[
-		{"address",     genaddr   ("baystation12.net", 8000      ), user},
-		{"status",      genstatus ("baystation12.net", 8000, true), user},
-		{"players",     genplayers("baystation12.net", 8000, true), user},
-		{"admins",      genadmins ("baystation12.net", 8000, true), user},
-		{"mode",        genmode   ("baystation12.net", 8000, true), user},
-		{"devaddress",  genaddr   ("baystation12.net", 8100      ), user},
-		{"devstatus",   genstatus ("baystation12.net", 8100, true), user},
-		{"devplayers",  genplayers("baystation12.net", 8100, true), user},
-		{"devadmins",   genadmins ("baystation12.net", 8100, true), user},
-		{"devmode",     genmode   ("baystation12.net", 8100, true), user},
-		{"testaddress", genaddr   ("gn32.mooo.com",    3210      ), user},
-		{"teststatus",  genstatus ("gn32.mooo.com",    3210, true), user},
-		{"testplayers", genplayers("gn32.mooo.com",    3210, true), user},
-		{"testadmins",  genadmins ("gn32.mooo.com",    3210, true), user},
-		{"testmode",    genmode   ("gn32.mooo.com",    3210, true), user}
+		{"address", generic(address), user},
+		{"status",  generic(status), user},
+		{"players", generic(players), user},
+		{"admins",  generic(admins), user},
+		{"mode",    generic(mode), user}
 	].
 
 initialise(T) -> T.
 deinitialise(T) -> T.
 
-genaddr   (Server, Port     ) -> fun(_,RT,P,_,_) -> {irc, {msg, {RT, [P, io_lib:format("byond://~s:~b", [Server, Port])]}}} end.
-genstatus (Server, Port, New) -> fun(_,RT,_,_,_) -> spawn(z_status, status,  [RT,Server,Port,New]), ok end.
-genplayers(Server, Port, New) -> fun(_,RT,_,_,_) -> spawn(z_status, players, [RT,Server,Port,New]), ok end.
-genadmins (Server, Port, New) -> fun(_,RT,_,_,_) -> spawn(z_status, admins,  [RT,Server,Port,New]), ok end.
-genmode   (Server, Port, New) -> fun(_,RT,_,_,_) -> spawn(z_status, mode,    [RT,Server,Port,New]), ok end.
+generic(Func) ->
+	fun(_,RT,P,[],_) ->
+		case orddict:find(defaultserver(RT), servers()) of
+			{ok, {Addr,Port,Name}} -> spawn(z_status, Func, [RT, P, Addr, Port, Name]), ok;
+			error -> {irc, {msg, {RT, [P, "Failed to find default server for this channel!"]}}}
+		end;
+	   (_,RT,P,[ServerID],_) ->
+		case orddict:find(ServerID, servers()) of
+			{ok, {Addr,Port,Name}} -> spawn(z_status, Func, [RT, P, Addr, Port, Name]), ok;
+			error -> {irc, {msg, {RT, [P, "Illegal argument!"]}}}
+		end
+	end.
 
-status(RT, S, P, N) ->
-        case byond:send(S, P, if N -> "status=2"; true -> "status" end) of
-                {error, X} -> core ! {irc, {msg, {RT, io_lib:format("Error: ~p", [X])}}};
+address(RT, Ping, S, P, Name) ->
+	core ! {irc, {msg, {RT, [Ping, Name, io_lib:format("byond://~s:~b", [S, P])]}}}.
+
+status(RT, _, S, P, Name) ->
+        case byond:send(S, P, "status=2") of
+                {error, X} -> core ! {irc, {msg, {RT, io_lib:format("~sError: ~p", [Name, X])}}};
                 Dict ->
                         Players = safeget(Dict, "players"),
                         Mode = safeget(Dict, "mode"),
                         Time = safeget(Dict, "stationtime"),
-                        core ! {irc, {msg, {RT, ["Players: ", Players, "; Mode: ", Mode, "; Station Time: ", Time]}}}
+                        core ! {irc, {msg, {RT, [Name, "Players: ", Players, "; Mode: ", Mode, "; Station Time: ", Time]}}}
 	end.
 
-admins(RT, S, P, N) ->
-	if N ->
-		case byond:send(S, P, "status=2") of
-			{error, X} -> core ! {irc, {msg, {RT, io_lib:format("Error: ~p", [X])}}};
-			Dict ->
-				Msg = case byond:params2dict(safeget(Dict, "adminlist")) of
-					[{"?",none}] -> "No admins online.";
-					Admins ->
-						BinMins = lists:map(fun({A,B}) -> {re:replace(A, <<32>>, <<160/utf8>>, [{return, binary}, global]),
-						                                   re:replace(B, <<32>>, <<160/utf8>>, [{return, binary}, global])} end, Admins),
-						AdminStr = util:binary_join(lists:map(fun({<<A/utf8,B/binary>>,C}) -> <<A/utf8, 160/utf8, B/binary, " is a ", C/binary>> end, BinMins), <<"; ">>),
-						[io_lib:format("Admins (~b): ", [length(Admins)]), AdminStr]
-				end,
-				core ! {irc, {msg, {RT, Msg}}}
-		end;
-	true ->
-		case byond:send(S, P, "status") of
-	                {error, X} -> core ! {irc, {msg, {RT, io_lib:format("Error: ~p", [X])}}};
-	                Dict ->
-	                        Admins = safeget(Dict, "admins"),
-	                        core ! {irc, {msg, {RT, ["Admins: ", Admins]}}}
-		end
-        end.
+admins(RT, _, S, P, Name) ->
+	case byond:send(S, P, "status=2") of
+		{error, X} -> core ! {irc, {msg, {RT, io_lib:format("~sError: ~p", [Name,X])}}};
+		Dict ->
+			Msg = case byond:params2dict(safeget(Dict, "adminlist")) of
+				[{"?",none}] -> [Name,"No admins online."];
+				Admins ->
+					BinMins = lists:map(fun({A,B}) -> {re:replace(A, <<32>>, <<160/utf8>>, [{return, binary}, global]),
+					                                   re:replace(B, <<32>>, <<160/utf8>>, [{return, binary}, global])} end, Admins),
+					AdminStr = util:binary_join(lists:map(fun({<<A/utf8,B/binary>>,C}) -> <<A/utf8, 160/utf8, B/binary, " is a ", C/binary>> end, BinMins), <<"; ">>),
+					[io_lib:format("~sAdmins (~b): ", [Name,length(Admins)]), AdminStr]
+			end,
+			core ! {irc, {msg, {RT, Msg}}}
+	end.
 
-mode(RT, S, P, N) ->
-        case byond:send(S, P, if N -> "status=2"; true -> "status" end) of
-                {error, X} -> core ! {irc, {msg, {RT, io_lib:format("Error: ~p", [X])}}};
+mode(RT, _, S, P, Name) ->
+        case byond:send(S, P, "status=2") of
+                {error, X} -> core ! {irc, {msg, {RT, io_lib:format("~sError: ~p", [Name,X])}}};
                 Dict ->
                         Mode = safeget(Dict, "mode"),
-                        core ! {irc, {msg, {RT, ["Mode: ", Mode]}}}
+                        core ! {irc, {msg, {RT, [Name, "Mode: ", Mode]}}}
         end.
 
-players(RT, S, P, N) ->
-	if N ->
-		case byond:send(S, P, "status=2") of
-			{error, X} -> core ! {irc, {msg, {RT, io_lib:format("Error: ~p", [X])}}};
-			Dict ->
-				Players = byond:params2dict(safeget(Dict, "playerlist")),
-				Ordered = lists:sort(lists:map(fun({X,_}) -> re:replace(X, [32], <<160/utf8>>, [{return, binary}, global]) end, Players)),
-				Binaried = lists:map(fun(<<A/utf8, B/binary>>) -> <<A/utf8, 160/utf8, B/binary>> end, Ordered),
-				{_, Str, _} = lists:foldl(fun acc_players/2, {0, hd(Binaried), RT}, tl(Binaried)),
-				core ! {irc, {msg, {RT, ["Players: ", Str]}}}
-		end;
-	true ->
-	        case byond:send(S, P, "status") of
-			{error, X} -> core ! {irc, {msg, {RT, io_lib:format("Error: ~p", [X])}}};
-			Dict ->
-				Message = case safeget(Dict, "players") of
-					"???" -> "Players: Unknown!";
-					"0" -> "No players present.";
-					Num ->
-						PlayerList = lists:map(fun(T) -> safeget(Dict, "player" ++ integer_to_list(T)) end, lists:seq(0, list_to_integer(Num)-1)),
-						Ordered = lists:sort(lists:map(fun(X) -> re:replace(X, [32], <<160/utf8>>, [{return, binary}, global]) end, PlayerList)),
-						Binaried = lists:map(fun(<<A/utf8, B/binary>>) -> <<A/utf8, 160/utf8, B/binary>> end, Ordered),
-						{_, Str, _} = lists:foldl(fun acc_players/2, {0, hd(Binaried), RT}, tl(Binaried)),
-						["Players: ", Str]
-				end,
-				core ! {irc, {msg, {RT, Message}}}
-		end
-        end.
+players(RT, _, S, P, Name) ->
+	case byond:send(S, P, "status=2") of
+		{error, X} -> core ! {irc, {msg, {RT, io_lib:format("~sError: ~p", [Name, X])}}};
+		Dict ->
+			Players = byond:params2dict(safeget(Dict, "playerlist")),
+			Ordered = lists:sort(lists:map(fun({X,_}) -> re:replace(X, [32], <<160/utf8>>, [{return, binary}, global]) end, Players)),
+			Binaried = lists:map(fun(<<A/utf8, B/binary>>) -> <<A/utf8, 160/utf8, B/binary>> end, Ordered),
+			{_, Str, _, _} = lists:foldl(fun acc_players/2, {0, hd(Binaried), RT, Name}, tl(Binaried)),
+			core ! {irc, {msg, {RT, [Name, "Players: ", Str]}}}
+	end.
 
 safeget(Dict, Key) ->
         case orddict:find(Key, Dict) of
@@ -106,9 +90,9 @@ safeget(Dict, Key) ->
                 error -> "???"
         end.
 
-acc_players(Name, {20, Acc, RT}) ->
-        core ! {irc, {msg, {RT, ["Players: ", Acc]}}},
-        {0, Name, RT};
-acc_players(Name, {Num, Acc, RT}) -> {Num+1, <<Acc/binary, ", ", Name/binary>>, RT}.
+acc_players(Name, {20, Acc, RT, SName}) ->
+        core ! {irc, {msg, {RT, [SName, "Players: ", Acc]}}},
+        {0, Name, RT, SName};
+acc_players(Name, {Num, Acc, RT, SName}) -> {Num+1, <<Acc/binary, ", ", Name/binary>>, RT, SName}.
 
 

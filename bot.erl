@@ -4,7 +4,7 @@
 
 -include("definitions.hrl").
 
--record(config, {nick, prefix, permissions, ignore, user, mode, real, channels, on_join, modules, pass}).
+-record(config, {nick, prefix, permissions, unused=false, user, mode, real, channels, on_join, modules, pass}).
 
 waitfor(Ident) ->
 	case whereis(Ident) of
@@ -22,13 +22,13 @@ init() ->
 		{ok, [Perms]} -> Perms;
 		_ -> orddict:new()
 	end,
-	BaseConfig = #config{nick="Bot32", prefix=$!, permissions=BasePerms, user="Bot32", mode="0", real="Bot32", channels=sets:new(), ignore=sets:new(), on_join=[], modules=[z_basic], pass=none},
+	BaseConfig = #config{nick="Bot32", prefix=$!, permissions=BasePerms, user="Bot32", mode="0", real="Bot32", channels=sets:new(), on_join=[], modules=[z_basic], pass=none},
 	case file:consult("bot_config.crl") of
 		{error, Reason} ->
 			logging:log(error, "BOT", "Failed to load config file: ~p.", [Reason]),
 			UseConfig = BaseConfig;
 		{ok, Terms} ->
-			UseConfig = lists:foldl(fun(Option, Config=#config{permissions=Perms, on_join=OJ, channels=C, ignore=I, modules=M}) ->
+			UseConfig = lists:foldl(fun(Option, Config=#config{permissions=Perms, on_join=OJ, channels=C, modules=M}) ->
 					case Option of
 						{nick, Nick}		when is_list(Nick) orelse is_binary(Nick)	-> Config#config{nick=Nick};
 						{user, User}		when is_list(User) orelse is_binary(User)	-> Config#config{user=User};
@@ -52,9 +52,6 @@ init() ->
 
 						{channel, Channel}	when is_list(Channel) orelse is_binary(Channel)	-> Config#config{channels=sets:add_element(Channel, C)};
 						{channels, Channels}	when is_list(Channels)				-> Config#config{channels=lists:foldl(fun sets:add_element/2, C, Channels)};
-
-						{ignore, Ignore}	when is_list(Ignore) orelse is_binary(Ignore)	-> Config#config{ignore=sets:add_element(string:to_lower(Ignore), I)};
-						{ignores, Ignores}	when is_list(Ignores)				-> Config#config{ignore=lists:foldl(fun sets:add_element/2, I, lists:map(fun string:to_lower/1, Ignores))};
 
 						{module, Mod}		when is_atom(Mod)				-> Config#config{modules = [Mod | M]};
 						{modules, Mods}		when is_list(Mods)				-> Config#config{modules=lists:foldl(
@@ -92,7 +89,7 @@ init() ->
 				nick     = UseConfig#config.nick,
 				prefix   = UseConfig#config.prefix,
 				permissions = UseConfig#config.permissions,
-				ignore   = UseConfig#config.ignore,
+				aliases = orddict:new(),
 				commands = orddict:new(),
 				moduledata  = [{callme, CallWhoWhat}],
 				modules = sets:new()
@@ -131,7 +128,7 @@ loop(State = #state{}) ->
 		{ircfwd, T} -> {irc, T};
 		{irc, {Type, Params}} ->
 			case catch handle_irc(Type, Params, State) of
-				{'EXIT', {Reason, Stack}} -> logging:log(error, "BOT", "handle_irc errored ~p (~p), continuing", [Reason, hd(Stack)]), notify_error(Type, Params, State);
+				{'EXIT', {Reason, Stack}} -> logging:log(error, "BOT", "handle_irc errored ~p (~p), continuing", [Reason, Stack]), notify_error(Type, Params, State);
 				{'EXIT', Term} ->  logging:log(error, "BOT", "handle_irc exited ~p, continuing",  [Term]), notify_error(Type, Params, State);
 				T -> T
 			end;
@@ -167,9 +164,6 @@ message_all_rank(Category, Msg, Rank, Permissions) ->
 	lists:foreach(fun({N,_U,_H}) ->
 			core ! {irc, {msg, {N, [Category, ": ", Msg]}}}
 		end, orddict:fetch_keys(orddict:filter(fun(_,V) -> lists:member(Rank,V) end, Permissions))).
-
-is_ignored(#user{nick=N}, Ignored) ->
-	sets:is_element(string:to_lower(N), Ignored).
 
 rankof(Usr=#user{}, Permissions) -> rankof(Usr, Permissions, none).
 rankof(#user{nick=N,username=U,host=H}, Permissions, Channel) ->
@@ -224,7 +218,7 @@ parse_command(Params, Prefix, BotAliases) ->
 	end.
 
 %handle_irc(msg, {_,T,_}, _) when T /= "#bot32-test" -> ok;
-handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}, State=#state{nick=MyNick, prefix=Prefix, permissions=Permissions, ignore=Ignored, modules=M}) ->
+handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}, State=#state{nick=MyNick, prefix=Prefix, permissions=Permissions, modules=M}) ->
 	case sets:is_element(z_seen, M) of
 		true -> if
 				Channel /= MyNick -> z_seen:on_privmsg(Nick, Channel, State);
@@ -232,7 +226,7 @@ handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}, State=#state{ni
 			end;
 		_ -> ok
 	end,
-	case is_ignored(User, Ignored) of
+	case hasperm(User, ignore, Permissions) of
 		true -> ok;
 		false ->
 			case Channel of
@@ -256,8 +250,9 @@ handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}, State=#state{ni
 			end,
 			logging:log(debug2, "BOT", "Parsing command: ~p", [Tokens]),
 			case parse_command(de_russian(Tokens), Prefix, [MyNick, "NT"]) of
-				{Command, Arguments} ->
-					logging:log(info, "BOT", "Command in ~s from ~s: ~s ~s", [Channel, User#user.nick, Command, string:join(Arguments, " ")]),
+				{RCommand, RArguments} ->
+					logging:log(info, "BOT", "Command in ~s from ~s: ~s ~s", [Channel, User#user.nick, RCommand, string:join(RArguments, " ")]),
+					{Command, Arguments} = decode_alias(RCommand, State#state.aliases, RArguments),
 					Rank = rankof(User, Permissions, ReplyChannel),
 					case hasperm(User, host, Permissions) of
 						true -> handle_host_command(Rank, Nick, ReplyChannel, ReplyPing, Command, Arguments, State);
@@ -266,30 +261,15 @@ handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}, State=#state{ni
 				notcommand ->
 					case lists:dropwhile(fun(X) -> re:run(X, "^https?://.*$", [{capture, none}]) /= match end, Tokens) of
 						[] -> ok;
-						[URL|_] ->
-							os:putenv("url", URL),
-							case re:replace(os:cmd("/home/bot32/urltitle.sh $url"), "^[ \\t\\n]+(.*[^ \\t\\n])[ \\t\\n]+$", "\\1", [{return, binary}]) of
-								<<>> -> ok;
-								Show ->
-									logging:log(debug, "BOT", "showing URL '~p'", [Show]),
-									core ! {irc, {msg, {ReplyChannel, [ReplyPing, util:parse_htmlentities(Show)]}}}
-							end
+						[URL|_] -> showurl(ReplyChannel, ReplyPing, URL, "~s")
 					end,
-					case lists:dropwhile(fun(X) -> re:run(X, "^(\\[[1-9][0-9]+\\]|#[1-9][0-9]+)$", [{capture, none}]) /= match end, Tokens) of
-						[] -> ok;
-						[PRNum|_] ->
-							case PRNum of
-								[$# | Num] -> GH_NUM = Num;
-								[$[ | Num] -> GH_NUM = lists:reverse(tl(lists:reverse(Num)))
-							end,
-							os:putenv("url", ["http://github.com/Baystation12/Baystation12/issues/", GH_NUM]),
-							URLTitle = string:strip(re:replace(os:cmd("/home/bot32/urltitle.sh $url"), "([^·]*·[^·]*) · .*", "\\1", [{return, list}])),
-							case re:run(URLTitle, "Issue #[0-9]+$", [{capture, none}]) of
-								match -> ShowURL = ["http://github.com/Baystation12/Baystation12/issues/", GH_NUM];
-								nomatch -> ShowURL = ["http://github.com/Baystation12/Baystation12/pull/", GH_NUM]
-							end,
-							core ! {irc, {msg, {ReplyChannel, [ReplyPing, ShowURL, " - ", util:parse_htmlentities(list_to_binary(URLTitle))]}}}
+					case re:run(string:join(Tokens, " "), "\\[\\[([^ ][^\]]+[^ ])\\]\\]", [{capture, all_but_first, binary}]) of
+						{match, [Page]} ->
+							UR = "http://wiki.baystation12.net/" ++ re:replace(Page, " ", "_", [{return, list}, global]),
+							showurl(ReplyChannel, ReplyPing, UR, UR ++ " - ~s", "Page not found!");
+						_ -> ok
 					end,
+					do_pr_linking(Tokens, ReplyChannel, ReplyPing),
 					do_russian(Tokens, ReplyChannel, ReplyPing),
 					lists:foreach(fun(Module) ->
 							lists:member({handle_event,3}, Module:module_info(exports))
@@ -351,8 +331,8 @@ handle_host_command(Rank, Origin, ReplyTo, Ping, Cmd, Params, State=#state{}) ->
 				[] -> {irc, {msg, {ReplyTo, [Ping, "Provide a module to unload."]}}};
 				ModuleStrings ->
 					Modules = lists:map(fun erlang:list_to_atom/1, ModuleStrings),
-					self() ! {state, unload_modules(Modules, State)},
-					{irc, {msg, {ReplyTo, [Ping, "Unloaded."]}}}
+					core ! {irc, {msg, {ReplyTo, [Ping, "Unloaded."]}}},
+					{state, unload_modules(Modules, State)}
 			end;
 
 		"reload_mod" ->
@@ -360,8 +340,8 @@ handle_host_command(Rank, Origin, ReplyTo, Ping, Cmd, Params, State=#state{}) ->
 				[] -> {irc, {msg, {ReplyTo, [Ping, "Provide a module to reload."]}}};
 				ModuleStrings ->
 					Modules = lists:map(fun erlang:list_to_atom/1, ModuleStrings),
-					self() ! {state, reload_modules(Modules, State)},
-					{irc, {msg, {ReplyTo, [Ping, "Reloaded."]}}}
+					core ! {irc, {msg, {ReplyTo, [Ping, "Reloaded."]}}},
+					{state, reload_modules(Modules, State)}
 			end;
 
 		"recompile_mod" ->
@@ -369,8 +349,47 @@ handle_host_command(Rank, Origin, ReplyTo, Ping, Cmd, Params, State=#state{}) ->
 				[] -> {irc, {msg, {ReplyTo, [Ping, "Provide a module to recompile."]}}};
 				ModuleStrings ->
 					Modules = lists:map(fun erlang:list_to_atom/1, ModuleStrings),
-					self () ! {state, recompile_modules(Modules, State)},
-					{irc, {msg, {ReplyTo, [Ping, "Done."]}}}
+					core ! {irc, {msg, {ReplyTo, [Ping, "Done."]}}},
+					{state, recompile_modules(Modules, State)}
+			end;
+
+		"isalias" ->
+			case Params of
+				[New] ->
+					Msg = case orddict:find(New, State#state.aliases) of
+						{ok, {Real, Spec}} -> io_lib:format("~s is an alias for ~s with argspec ~p.", [New, Real, Spec]);
+						{ok, Real} -> io_lib:format("~s is an alias for ~s.", [New, Real]);
+						error -> io_lib:format("~s is not an alias.", [New])
+					end,
+					{irc, {msg, {ReplyTo, [Ping, Msg]}}};
+				_ -> {irc, {msg, {ReplyTo, [Ping, "Provide a command to check alias status!"]}}}
+			end;
+
+		"unalias" ->
+			case Params of
+				[New] ->
+					{NewA, Msg} = case orddict:find(New, State#state.aliases) of
+						{ok, _} -> {orddict:erase(New, State#state.aliases), "Removed."};
+						error -> {State#state.aliases, "Could not find alias."}
+					end,
+					core ! {irc, {msg, {ReplyTo, [Ping, Msg]}}},
+					{state, State#state{aliases=NewA}};
+				_ -> {irc, {msg, {ReplyTo, [Ping, "Provide an alias to clear!"]}}}
+			end;
+
+		"alias" ->
+			case Params of
+%				[New, Real, "*"] ->
+%					core ! {irc, {msg, {ReplyTo, [Ping, "Done."]}}},
+%					{state, State#state{aliases=orddict:store(New, Real, State#state.aliases)}};
+				[New, Real | ArgSpec] ->
+					case parse_argspec(ArgSpec) of
+						{ok,Spec} ->
+							core ! {irc, {msg, {ReplyTo, [Ping, "Done."]}}},
+							{state, State#state{aliases=orddict:store(New, {Real, Spec}, State#state.aliases)}};
+						error -> {irc, {msg, {ReplyTo, [Ping, "Illegal argspec."]}}}
+					end;
+				_ -> {irc, {msg, {ReplyTo, [Ping, "Provide a command and an alias!"]}}}
 			end;
 
 		_ -> handle_command(Rank, Origin, ReplyTo, Ping, Cmd, Params, State)
@@ -414,7 +433,10 @@ handle_command(Ranks, Origin, ReplyTo, Ping, Cmd, Params, State=#state{commands=
 					[] -> unhandled;
 					RankCmds ->
 						case string:to_lower(Cmd) of
-							"help" -> core ! {irc, {msg, {Origin, [io_lib:format("~s commands: ",[Rank]), string:join(orddict:fetch_keys(RankCmds), ", "), "."]}}}, unhandled;
+							"help" ->
+								do_help_for(Origin, Rank, orddict:fetch_keys(RankCmds)),
+								unhandled;
+								%core ! {irc, {msg, {Origin, [io_lib:format("~s commands: ",[Rank]), string:join(orddict:fetch_keys(RankCmds), ", "), "."]}}}, unhandled;
 							T -> case orddict:find(T, RankCmds) of
 								{ok, {_,Result}} -> apply(Result, [Origin, ReplyTo, Ping, Params, State]);
 								error -> unhandled
@@ -436,6 +458,14 @@ handle_command(Ranks, Origin, ReplyTo, Ping, Cmd, Params, State=#state{commands=
 				_ -> Result
 			end
 	end.
+
+do_help_for(_, _, []) -> ok;
+do_help_for(Origin, Rank, Cmds) when length(Cmds) < 35 -> core ! {irc, {msg, {Origin, [io_lib:format("~s commands: ",[Rank]), string:join(Cmds, ", "), "."]}}};
+do_help_for(Origin, Rank, Cmds) ->
+	{A,B} = lists:split(35, Cmds),
+	core ! {irc, {msg, {Origin, [io_lib:format("~s commands: ",[Rank]), string:join(A, ", "), "."]}}},
+	do_help_for(Origin, Rank, B).
+	
 
 alternate_commands(Tokens, Modules) ->
 	AltFunctions = lists:foldl(fun(Mod,Alt) ->
@@ -519,6 +549,31 @@ utf8(B) -> lists:reverse(utf8(B,[])).
 utf8(<<>>, L) -> L;
 utf8(<<A/utf8, B/binary>>, L) -> utf8(B, [A | L]).
 
+
+do_pr_linking(Tokens, Channel, Ping) ->
+	lists:foreach(fun(T) -> do_pr_link_token(T, Channel, Ping) end, Tokens).
+
+do_pr_link_token(Token, Channel, Ping) ->
+	case case re:run(Token, "^(?:([a-zA-Z0-9_\-]+)(?:/([a-zA-Z0-9_\-]+))?)?(?:\\[([0-9]{1,5})\\]|#([0-9]{2,5}))(?:$|[^0-9])", [{capture, all_but_first, list}]) of
+		{match, ["", "", "",  N]} -> {"Baystation12", "Baystation12", N};
+		{match, [ U, "", "",  N]} -> {U, "Baystation12", N};
+		{match, [ U,  R, "",  N]} -> {U, R, N};
+		{match, ["", "",  N]} -> {"Baystation12", "Baystation12", N};
+		{match, [ U, "",  N]} -> {U, "Baystation12", N};
+		{match, [ U,  R,  N]} -> {U, R, N};
+		nomatch -> false
+	end of
+		{User, Repo, Num} ->
+			os:putenv("url", ["http://github.com/", User, $/, Repo, "/issues/", Num]),
+			URLTitle = string:strip(re:replace(os:cmd("/home/bot32/urltitle.sh $url"), "([^·]*·[^·]*) · .*", "\\1", [{return, list}])),
+			case re:run(URLTitle, "Issue #[0-9]+$", [{capture, none}]) of
+				match -> ShowURL = ["http://github.com/", User, $/, Repo, "/issues/", Num];
+				nomatch -> ShowURL = ["http://github.com/", User, $/, Repo, "/pull/", Num]
+			end,
+			core ! {irc, {msg, {Channel, [Ping, ShowURL, " - ", util:parse_htmlentities(list_to_binary(URLTitle))]}}};
+		false -> ok
+	end.
+
 load_modules(Modules, State) -> lists:foldl(fun load_module/2, State, Modules).
 
 load_module(Module, State) ->
@@ -538,19 +593,29 @@ load_module(Module, State) ->
 						{ok, CmdList} -> orddict:store(Cmd, {Module, Fun}, CmdList);
 						error ->         orddict:store(Cmd, {Module, Fun}, orddict:new())
 					end, Commands)
-	end, State#state.commands, apply(Module, get_commands, [])),
+	end, State#state.commands, Module:get_commands()),
+
+	% Load aliases
+	NewAliases = lists:foldl(
+		fun
+			({Real, Aliases}, AllAliases) ->
+				lists:foldl(fun(A, Al) -> orddict:store(A,Real,Al) end, AllAliases, Aliases)
+		end, State#state.aliases, call_or(Module, get_aliases, [], [])),
 
 	% Initialise
-	case case lists:member({data_persistence,0}, Module:module_info(exports)) of
-		true -> Module:data_persistence();
-		false -> manual
-	end of
-		manual -> apply(Module, initialise, [State#state{commands = NewCmds, modules = sets:add_element(Module, State#state.modules)}]);
+	case call_or(Module, data_persistence, [], manual) of
+		manual -> apply(Module, initialise, [State#state{commands = NewCmds, aliases = NewAliases, modules = sets:add_element(Module, State#state.modules)}]);
 		automatic ->
 			Data = modload_auto(Module),
-			State#state{commands = NewCmds, modules = sets:add_element(Module, State#state.modules), moduledata = orddict:store(Module, Data, State#state.moduledata)};
+			State#state{commands = NewCmds, aliases = NewAliases, modules = sets:add_element(Module, State#state.modules), moduledata = orddict:store(Module, Data, State#state.moduledata)};
 		none ->
-			State#state{commands = NewCmds, modules = sets:add_element(Module, State#state.modules)}
+			State#state{commands = NewCmds, aliases = NewAliases, modules = sets:add_element(Module, State#state.modules)}
+	end.
+
+call_or(Mod, Func, Args, Or) ->
+	case lists:member({Func,length(Args)}, Mod:module_info(exports)) of
+		true -> apply(Mod,Func,Args);
+		false -> Or
 	end.
 
 modload_auto(Module) ->
@@ -572,12 +637,17 @@ unload_module(Module, State) ->
 		end, State#state.commands),
 	Removed = orddict:filter(fun(_,V) -> V /= [] end, Cleaned),
 
+	% Remove aliases
+	NewAliases = lists:foldl(fun({Real,Aliases}, AllAliases) ->
+			orddict:filter(fun(K,V) -> not lists:member(K, Aliases) andalso V /= Real end, AllAliases)
+		end, State#state.aliases, call_or(Module, get_aliases, [], [])),
+
 	% Deinitialise
 	case case lists:member({data_persistence,0}, Module:module_info(exports)) of
 		true -> Module:data_persistence();
 		false -> manual
 	end of
-		manual -> apply(Module, deinitialise, [State#state{commands = Removed, modules = sets:del_element(Module, State#state.modules)}]);
+		manual -> apply(Module, deinitialise, [State#state{commands = Removed, aliases=NewAliases, modules = sets:del_element(Module, State#state.modules)}]);
 		automatic ->
 			case orddict:find(Module, State#state.moduledata) of
 				{ok, V} ->
@@ -587,9 +657,9 @@ unload_module(Module, State) ->
 					file:delete(["modules/", Module, ".crl"]),
 					logging:log(info, Module, "Save found no data.")
 			end,
-			State#state{commands = Removed, modules=sets:del_element(Module, State#state.modules), moduledata=orddict:erase(Module, State#state.moduledata)};
+			State#state{commands = Removed, aliases=NewAliases, modules=sets:del_element(Module, State#state.modules), moduledata=orddict:erase(Module, State#state.moduledata)};
 		none ->
-			State#state{commands = Removed, modules=sets:del_element(Module, State#state.modules), moduledata=orddict:erase(Module, State#state.moduledata)}
+			State#state{commands = Removed, aliases=NewAliases, modules=sets:del_element(Module, State#state.modules), moduledata=orddict:erase(Module, State#state.moduledata)}
 	end.
 
 reload_modules(Modules, State) -> lists:foldl(fun reload_module/2, State, Modules).
@@ -608,3 +678,38 @@ recompile_module(Module, State) ->
 		error:X -> logging:log(error, "MODULE", "Recompile of ~p errored ~p", [Module, X]), State;
 		exit:X -> logging:log(error, "MODULE", "Recompile of ~p exited ~p", [Module, X]), State
 	end.
+
+showurl(Channel, Ping, URL, Format) -> spawn(bot, showurl_raw, [Channel, Ping, URL, Format, false]).
+showurl(Channel, Ping, URL, Format, NotFound) -> spawn(bot, showurl_raw, [Channel, Ping, URL, Format, NotFound]).
+
+showurl_raw(Channel, Ping, URL, Format, NotFound) ->
+	os:putenv("url", URL),
+	case re:replace(os:cmd("/home/bot32/urltitle.sh $url"), "^[ \\t\\n]+(.*[^ \\t\\n])[ \\t\\n]+$", "\\1", [{return, binary}]) of
+		<<>> when NotFound /= false -> core ! {irc, {msg, {Channel, [Ping, NotFound]}}};
+		<<>> -> ok;
+		Sh -> core ! {irc, {msg, {Channel, [Ping, io_lib:format(Format, [util:parse_htmlentities(Sh)])]}}}
+	end.
+
+decode_alias(Command, Aliases, Arguments) ->
+	case orddict:find(Command, Aliases) of
+		{ok, {V,Spec}} -> {V, apply_argspec(Spec, Arguments)};
+		{ok, V} -> {V, Arguments};
+		error -> {Command, Arguments}
+	end.
+
+apply_argspec(Spec, Arguments) ->
+	lists:flatmap(fun
+			({T}) when is_integer(T) -> lists:nthtail(T-1, Arguments);
+			(T) when is_integer(T) -> [lists:nth(T, Arguments)];
+			(T) -> [T]
+		end, Spec).
+
+parse_argspec(Params) ->
+	{ok, lists:map(fun(T) ->
+			case re:run(T, <<"(\\\\|\\*)([0-9]+)">>, [{capture, all_but_first, binary}]) of
+				{match, [<< "*">>, SNum]} -> {binary_to_integer(SNum)};
+				{match, [<<"\\">>, SNum]} -> binary_to_integer(SNum);
+				nomatch -> T
+			end
+		end, Params)}.
+	

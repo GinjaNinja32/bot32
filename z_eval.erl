@@ -5,12 +5,12 @@
 
 get_commands() ->
 	[
-		{"eval", gen_eval(fun eval/1), host},
-		{"evalstr", gen_eval_str(fun eval/1), host},
-		{"s", fun shl/5, host},
-		{"sdrop", fun sdrop/5, host},
-		{"serase", fun serase/5, host},
-		{"sshow", fun sshow/5, host},
+		{"eval", gen_eval(fun eval/1), eval},
+		{"evalstr", gen_eval_str(fun eval/1), eval},
+		{"s", fun shl/5, eval},
+		{"sdrop", fun sdrop/5, eval},
+		{"serase", fun serase/5, eval},
+		{"sshow", fun sshow/5, eval},
 		{"math", gen_eval(fun math/1), user},
 		{"maths", gen_eval(fun math/1), user}
 	].

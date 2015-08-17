@@ -47,7 +47,7 @@ defined(_, RT, P, Params, S) ->
 	end.
 
 make_defs() ->
-	os:cmd("cd /home/nyx/github/baystation12; git fetch upstream"),
+	os:cmd("cd /home/bot32/Baystation12; git fetch upstream"),
 	Dev = get_defs("dev"),
 	DevFreeze = get_defs("dev-freeze"),
 	Kunpeng = get_defs("kunpeng"),
@@ -57,8 +57,8 @@ make_defs() ->
 get_defs(String) ->
 	T = extract_defs(os:cmd(
 		[
-			"cd /home/nyx/github/baystation12; ",
-			string:join(lists:map(fun(T) -> ["git show upstream/",String,":",T] end, ?DefinitionFiles), "; ")
+			"cd /home/bot32/Baystation12; ",
+			string:join(lists:map(fun(T) -> ["git show origin/",String,":",T] end, ?DefinitionFiles), "; ")
 		])),
 	logging:log(info, "DEFINES", "Extracted ~b defines from branch '~s'", [length(T), String]),
 	T.

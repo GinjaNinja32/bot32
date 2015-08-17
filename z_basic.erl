@@ -12,7 +12,8 @@ get_commands() ->
 		{"rot13", fun rot_thirteen/5, user},
 		{"rot", fun rot_n/5, user},
 		{"colors", fun colors/5, user},
-		{"colours", fun colors/5, user}
+		{"colours", fun colors/5, user},
+		{"coin", fun coin/5, user}
 	].
 
 initialise(T) -> T.
@@ -88,3 +89,6 @@ rot_n(_, ReplyTo, Ping, Params, _) ->
 			{irc, {msg, {ReplyTo, [Ping, Rotated]}}};
 		_ -> {irc, {msg, {ReplyTo, [Ping, "Supply a valid number!"]}}}
 	end.
+
+coin(_, RT, P, _, _) ->
+	{irc, {msg, {RT, [P, lists:nth(random:uniform(2), ["Heads!", "Tails!"])]}}}.

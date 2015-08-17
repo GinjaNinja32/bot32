@@ -49,7 +49,7 @@ purge_call_report(Module, Function, Param, Channel) ->
 raw_send(Sock, Transport, Msg) ->
 %	debug("send", "'~s'", [Msg]),
 	try
-		Raw = re:replace(flatten(Msg), "[\r\n]", "", [global]),
+		Raw = re:replace(flatten(Msg), "[\r\n]", "", [global, {return, list}]),
 		if
 			length(Raw) > ?MAX_LENGTH ->
 				{T,_} = lists:split(?MAX_LENGTH-3, Raw),
@@ -113,11 +113,11 @@ tcp_parse(S, T, M) ->
 		_ -> logging:log(error, "PARSE", "Expected :, saw '~s'.", [M])
 	end.
 
-parse_ctcp(Origin, Tokens) ->
+parse_ctcp(Origin, Channel, Tokens) ->
 	case hd(Tokens) of
-		"ACTION" -> {action, Origin, tl(Tokens)};
-		"VERSION" -> {version, Origin, tl(Tokens)};
-		_ -> {unknown, Origin, Tokens}
+		"ACTION" -> {action, Channel, Origin, tl(Tokens)};
+		"VERSION" -> {version, Channel, Origin, tl(Tokens)};
+		_ -> {unknown, Channel, Origin, Tokens}
 	end.
 
 parse_privmsg(Origin, Channel, Message) ->
@@ -129,7 +129,7 @@ parse_privmsg(Origin, Channel, Message) ->
 			if
 				FirstFirst == 1 andalso LastLast == 1 -> 
 						StrippedMessage = string:tokens(lists:reverse(tl(lists:reverse(tl(string:join(Message, " "))))), " "),
-						{irc, {ctcp, parse_ctcp(Origin, StrippedMessage)}};
+						{irc, {ctcp, parse_ctcp(Origin, Channel, StrippedMessage)}};
 				true -> {irc, {msg, {Origin, Channel, Message}}}
 			end
 	end.
@@ -140,7 +140,7 @@ parse_notice(Origin, Channel, Message) ->
 	if
 		FirstFirst == 1 andalso LastLast == 1 -> 
 				StrippedMessage = string:tokens(lists:reverse(tl(lists:reverse(tl(string:join(Message, " "))))), " "),
-				{irc, {ctcp_re, parse_ctcp(Origin, StrippedMessage)}};
+				{irc, {ctcp_re, parse_ctcp(Origin, Channel, StrippedMessage)}};
 		true -> {irc, {notice, {Origin, Channel, Message}}}
 	end.
 

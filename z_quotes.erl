@@ -3,24 +3,27 @@
 
 -include("definitions.hrl").
 
+get_aliases() ->
+	[
+		{"delquote", ["remquote"]},
+		{"delquote_c", ["remquote_c"]},
+		{"delquote_e", ["remquote_e"]},
+		{"delquote_ce", ["remquote_ce"]},
+		{"addquote", ["makequote"]}
+	].
+
 get_commands() ->
 	[
 		{"quote", fun quote/5, user},
 		{"quotename", fun quotename/5, user},
 		{"quoteword", fun quoteword/5, user},
 		{"addquote",  fun addquote/5, user},
-		{"makequote", fun addquote/5, user},
 		{"save_quote", fun savequote/5, host},
 		{"load_quote", fun loadquote/5, host},
 		{"delquote",    gen_delquote(fun gen_genmatch/1  ), admin},
 		{"delquote_c",  gen_delquote(fun gen_catmatch/1  ), admin},
 		{"delquote_e",  gen_delquote(fun gen_exmatch/1   ), admin},
-		{"delquote_ce", gen_delquote(fun gen_excatmatch/1), admin},
-		{"remquote",    gen_delquote(fun gen_genmatch/1  ), admin},
-		{"remquote_c",  gen_delquote(fun gen_catmatch/1  ), admin},
-		{"remquote_e",  gen_delquote(fun gen_exmatch/1   ), admin},
-		{"remquote_ce", gen_delquote(fun gen_excatmatch/1), admin}
-
+		{"delquote_ce", gen_delquote(fun gen_excatmatch/1), admin}
 	].
 
 get_data(#state{moduledata=M}) ->

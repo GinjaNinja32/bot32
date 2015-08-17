@@ -56,7 +56,7 @@ lasttail([_|TT]) -> lasttail(TT).
 eightball() ->
 	case file:read_file("eightball.txt") of
 		{ok, B} ->
-			R = binary:split(B, <<"\n">>, [global]);
+			R = lists:filter(fun(<<>>)->false; (_)->true end, binary:split(B, <<"\n">>, [global]));
 		_ ->
 			R = [
 				"It is certain",
@@ -229,3 +229,15 @@ read_hex(<<A/utf8, B/binary>>, N) ->
 		true -> false
 	end.   
 
+count(Func, List) ->
+	lists:foldl(fun(T, N) ->
+			case Func(T) of
+				true -> N+1;
+				_ -> N
+			end
+		end, 0, List).
+
+s(N) -> s(N, "s").
+
+s(1,_) -> "";
+s(_,T) -> T.

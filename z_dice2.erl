@@ -1,19 +1,70 @@
 -module(z_dice2).
 -compile(export_all).
 
-get_commands() ->
+get_aliases() ->
 	[
+		{"dice", ["roll", "rtd"]},
+		{"edice", ["eroll", "ertd", "exdice", "exroll", "exrtd"]}
+	].
+
+get_commands() ->
+	lists:map(fun({K,F}) ->
+			{K, fun(_, RT, P, Params, _) -> {irc, {msg, {RT, [P, F(Params)]}}} end, user}
+		end, special_dice())
+	++ [
 		{"dicemode", fun dicemode/5, admin},
 		{"dice", fun dice/5, user},
-		{"roll", fun dice/5, user},
-		{"rtd",  fun dice/5, user},
 		{"edice",  fun edice/5, user},
-		{"eroll",  fun edice/5, user},
-		{"ertd",   fun edice/5, user},
-		{"exdice", fun edice/5, user},
-		{"exroll", fun edice/5, user},
-		{"exrtd",  fun edice/5, user}
+		{"dicehelp", fun dicehelp/5, user}
 	].
+
+special_dice() ->
+	[
+		{"gurps", fun([]) -> dice("3d6", true);
+		             ([StrT | _]) ->
+				T = list_to_integer(StrT),
+				{S,F,B} = if
+					T >= 16 -> {6, 18, 16};
+					T == 15 -> {5, 17, 15};
+					T =< 6 -> {4, T+10, T};
+					true -> {4, 17, T}
+				end,
+				dice(lists:flatten(io_lib:format("~bc>= ~bf<= 3d6<=~b", [S, F, B])), true)
+			end},
+		{"srun", fun([StrT | _]) ->
+				T = list_to_integer(StrT),
+				{_, Dice} = rollraw(T, 6),
+				{One,FivePlus} = lists:foldl(fun(1, {O,F}) -> {O+1,F}; (N, {O,F}) when N >= 5 -> {O, F+1}; (_, D) -> D end, {0,0}, Dice),
+				Summary = io_lib:format("~b failure~s, ~b hit~s", [One, util:s(One), FivePlus, util:s(FivePlus)]),
+				if
+					2*One >= T andalso FivePlus == 0 -> [Summary | ": Critical Glitch!"];
+					2*One >= T -> [Summary | ": Glitch!"];
+					true -> Summary
+				end
+			end},
+		{"sredge", fun([StrT | _]) ->
+				T = list_to_integer(StrT),
+				{ExtraDice, Dice} = get_sr_edge(T, 0, []),
+				{One,FivePlus} = lists:foldl(fun(1, {O,F}) -> {O+1,F}; (N, {O,F}) when N >= 5 -> {O, F+1}; (_, D) -> D end, {0,0}, Dice),
+				Summary = io_lib:format("~b failure~s, ~b hit~s (rolled ~b six~s)", [One, util:s(One), FivePlus, util:s(FivePlus), ExtraDice, util:s(ExtraDice, "es")]),
+				if
+					2*One >= T andalso FivePlus == 0 -> [Summary | ": Critical Glitch!"];
+					2*One >= T -> [Summary | ": Glitch!"];
+					true -> Summary
+				end
+			end}
+	].
+
+get_sr_edge(0, Sixes, D) -> {Sixes, D};
+get_sr_edge(N, Sixes, D) ->
+	{_, NewDice} = rollraw(N, 6),
+	S = util:count(fun(T) -> T == 6 end, NewDice),
+	get_sr_edge(S, S+Sixes, NewDice ++ D).
+
+dicehelp(_, RT, P, _, _) ->
+	{irc, {msg, {RT, [P,
+		"use XdY to roll dice - if X or Y are not given, they default to 1 and 6. Use +/-/* to modify the value. >, >=, <, <= and = to set success/failure bounds. Prepend a 'c' or an 'f' to these five to set critical-success and/or critical-failure bounds. Add an 's' to show a summary rather than the rolls."
+	]}}}.
 
 get_dicemode() ->
 	case get(dicemode) of
@@ -38,46 +89,115 @@ dicemode(_, RT, P, [Mode], _) ->
 dice(_, RT, P, Params, _) -> {irc, {msg, {RT, [P, dice(string:join(Params, " "), false)]}}}.
 edice(_, RT, P, Params, _) -> {irc, {msg, {RT, [P, dice(string:join(Params, " "), true)]}}}.
 
-get_real_tokens({A,B,_,[N,'<' |T]}) -> get_real_tokens({A,B,  N,  T});
-get_real_tokens({A,B,_,[N,'<='|T]}) -> get_real_tokens({A,B,  N+1,T});
-get_real_tokens({A,_,_,[N,'=' |T]}) -> get_real_tokens({A,N-1,N+1,T});
-get_real_tokens({A,_,C,[N,'>' |T]}) -> get_real_tokens({A,N,  C,  T});
-get_real_tokens({A,_,C,[N,'>='|T]}) -> get_real_tokens({A,N-1,C,  T});
-get_real_tokens({A,B,_,['-',N,'<' |T]}) -> get_real_tokens({A, B,  -N,  T});
-get_real_tokens({A,B,_,['-',N,'<='|T]}) -> get_real_tokens({A, B,  -N+1,T});
-get_real_tokens({A,_,_,['-',N,'=' |T]}) -> get_real_tokens({A,-N-1,-N+1,T});
-get_real_tokens({A,_,C,['-',N,'>' |T]}) -> get_real_tokens({A,-N,   C,  T});
-get_real_tokens({A,_,C,['-',N,'>='|T]}) -> get_real_tokens({A,-N-1, C,  T});
-get_real_tokens({_,B,C,[N,'#' |T]}) -> get_real_tokens({N,B,  C,  T});
-get_real_tokens({A,B,C,X}) -> get_real_tokens2({A,B,C,lists:reverse(X)}).
+-record(dp, {n=1, min=no, max=no, csl=no, csm=no, cfl=no, cfm=no, show=false}).
 
-get_real_tokens2({A,B,_,[N,'<' |T]}) -> get_real_tokens2({A,B,  N,  T});
-get_real_tokens2({A,B,_,[N,'<='|T]}) -> get_real_tokens2({A,B,  N+1,T});
-get_real_tokens2({A,_,_,[N,'=' |T]}) -> get_real_tokens2({A,N-1,N+1,T});
-get_real_tokens2({A,_,C,[N,'>' |T]}) -> get_real_tokens2({A,N,  C,  T});
-get_real_tokens2({A,_,C,[N,'>='|T]}) -> get_real_tokens2({A,N-1,C,  T});
-get_real_tokens2({A,B,_,[N,'-','<' |T]}) -> get_real_tokens2({A, B,  -N,  T});
-get_real_tokens2({A,B,_,[N,'-','<='|T]}) -> get_real_tokens2({A, B,  -N+1,T});
-get_real_tokens2({A,_,_,[N,'-','=' |T]}) -> get_real_tokens2({A,-N-1,-N+1,T});
-get_real_tokens2({A,_,C,[N,'-','>' |T]}) -> get_real_tokens2({A,-N,   C,  T});
-get_real_tokens2({A,_,C,[N,'-','>='|T]}) -> get_real_tokens2({A,-N-1, C,  T});
-get_real_tokens2({_,B,C,[N,'#' |T]}) -> get_real_tokens2({N,B,  C,  T});
-get_real_tokens2({A,B,C,X}) -> {A,B,C,lists:reverse(X)}.
+get_real_tokens(D,[    N,'>' |T]) -> get_real_tokens(D#dp{max= N            }, T);
+get_real_tokens(D,[    N,'>='|T]) -> get_real_tokens(D#dp{max= N+1          }, T);
+get_real_tokens(D,[    N,'=' |T]) -> get_real_tokens(D#dp{max= N+1, min= N-1}, T);
+get_real_tokens(D,[    N,'<='|T]) -> get_real_tokens(D#dp{          min= N-1}, T);
+get_real_tokens(D,[    N,'<' |T]) -> get_real_tokens(D#dp{          min= N  }, T);
+get_real_tokens(D,['-',N,'>' |T]) -> get_real_tokens(D#dp{max=-N            }, T);
+get_real_tokens(D,['-',N,'>='|T]) -> get_real_tokens(D#dp{max=-N-1          }, T);
+get_real_tokens(D,['-',N,'=' |T]) -> get_real_tokens(D#dp{max=-N-1, min=-N+1}, T);
+get_real_tokens(D,['-',N,'<='|T]) -> get_real_tokens(D#dp{          min=-N+1}, T);
+get_real_tokens(D,['-',N,'<' |T]) -> get_real_tokens(D#dp{          min=-N  }, T);
+
+get_real_tokens(D,[    N,'c>' |T]) -> get_real_tokens(D#dp{csl= N            }, T);
+get_real_tokens(D,[    N,'c>='|T]) -> get_real_tokens(D#dp{csl= N+1          }, T);
+get_real_tokens(D,[    N,'c=' |T]) -> get_real_tokens(D#dp{csl= N+1, csm= N-1}, T);
+get_real_tokens(D,[    N,'c<='|T]) -> get_real_tokens(D#dp{          csm= N-1}, T);
+get_real_tokens(D,[    N,'c<' |T]) -> get_real_tokens(D#dp{          csm= N  }, T);
+get_real_tokens(D,['-',N,'c>' |T]) -> get_real_tokens(D#dp{csl=-N            }, T);
+get_real_tokens(D,['-',N,'c>='|T]) -> get_real_tokens(D#dp{csl=-N-1          }, T);
+get_real_tokens(D,['-',N,'c=' |T]) -> get_real_tokens(D#dp{csl=-N-1, csm=-N+1}, T);
+get_real_tokens(D,['-',N,'c<='|T]) -> get_real_tokens(D#dp{          csm=-N+1}, T);
+get_real_tokens(D,['-',N,'c<' |T]) -> get_real_tokens(D#dp{          csm=-N  }, T);
+
+get_real_tokens(D,[    N,'f>' |T]) -> get_real_tokens(D#dp{cfl= N            }, T);
+get_real_tokens(D,[    N,'f>='|T]) -> get_real_tokens(D#dp{cfl= N+1          }, T);
+get_real_tokens(D,[    N,'f=' |T]) -> get_real_tokens(D#dp{cfl= N+1, cfm= N-1}, T);
+get_real_tokens(D,[    N,'f<='|T]) -> get_real_tokens(D#dp{          cfm= N-1}, T);
+get_real_tokens(D,[    N,'f<' |T]) -> get_real_tokens(D#dp{          cfm= N  }, T);
+get_real_tokens(D,['-',N,'f>' |T]) -> get_real_tokens(D#dp{cfl=-N            }, T);
+get_real_tokens(D,['-',N,'f>='|T]) -> get_real_tokens(D#dp{cfl=-N-1          }, T);
+get_real_tokens(D,['-',N,'f=' |T]) -> get_real_tokens(D#dp{cfl=-N-1, cfm=-N+1}, T);
+get_real_tokens(D,['-',N,'f<='|T]) -> get_real_tokens(D#dp{          cfm=-N+1}, T);
+get_real_tokens(D,['-',N,'f<' |T]) -> get_real_tokens(D#dp{          cfm=-N  }, T);
+
+get_real_tokens(D,[    N,'#' |T]) -> get_real_tokens(D#dp{n=N}, T);
+get_real_tokens(D,[      's' |T]) -> get_real_tokens(D#dp{show=true}, T);
+
+get_real_tokens(D,X) -> get_real_tokens2(D, lists:reverse(X)).
+
+get_real_tokens2(D,[N,    '<' |T]) -> get_real_tokens2(D#dp{max= N            }, T);
+get_real_tokens2(D,[N,    '<='|T]) -> get_real_tokens2(D#dp{max= N+1          }, T);
+get_real_tokens2(D,[N,    '=' |T]) -> get_real_tokens2(D#dp{max= N+1, min= N-1}, T);
+get_real_tokens2(D,[N,    '>='|T]) -> get_real_tokens2(D#dp{          min= N-1}, T);
+get_real_tokens2(D,[N,    '>' |T]) -> get_real_tokens2(D#dp{          min= N  }, T);
+get_real_tokens2(D,[N,'-','<' |T]) -> get_real_tokens2(D#dp{max=-N            }, T);
+get_real_tokens2(D,[N,'-','<='|T]) -> get_real_tokens2(D#dp{max=-N-1          }, T);
+get_real_tokens2(D,[N,'-','=' |T]) -> get_real_tokens2(D#dp{max=-N-1, min=-N+1}, T);
+get_real_tokens2(D,[N,'-','>='|T]) -> get_real_tokens2(D#dp{          min=-N+1}, T);
+get_real_tokens2(D,[N,'-','>' |T]) -> get_real_tokens2(D#dp{          min=-N  }, T);
+
+get_real_tokens2(D,[N,    'c<' |T]) -> get_real_tokens2(D#dp{csl= N            }, T);
+get_real_tokens2(D,[N,    'c<='|T]) -> get_real_tokens2(D#dp{csl= N+1          }, T);
+get_real_tokens2(D,[N,    'c=' |T]) -> get_real_tokens2(D#dp{csl= N+1, csm= N-1}, T);
+get_real_tokens2(D,[N,    'c>='|T]) -> get_real_tokens2(D#dp{          csm= N-1}, T);
+get_real_tokens2(D,[N,    'c>' |T]) -> get_real_tokens2(D#dp{          csm= N  }, T);
+get_real_tokens2(D,[N,'-','c<' |T]) -> get_real_tokens2(D#dp{csl=-N            }, T);
+get_real_tokens2(D,[N,'-','c<='|T]) -> get_real_tokens2(D#dp{csl=-N-1          }, T);
+get_real_tokens2(D,[N,'-','c=' |T]) -> get_real_tokens2(D#dp{csl=-N-1, csm=-N+1}, T);
+get_real_tokens2(D,[N,'-','c>='|T]) -> get_real_tokens2(D#dp{          csm=-N+1}, T);
+get_real_tokens2(D,[N,'-','c>' |T]) -> get_real_tokens2(D#dp{          csm=-N  }, T);
+
+get_real_tokens2(D,[N,    'f<' |T]) -> get_real_tokens2(D#dp{cfl= N            }, T);
+get_real_tokens2(D,[N,    'f<='|T]) -> get_real_tokens2(D#dp{cfl= N+1          }, T);
+get_real_tokens2(D,[N,    'f=' |T]) -> get_real_tokens2(D#dp{cfl= N+1, cfm= N-1}, T);
+get_real_tokens2(D,[N,    'f>='|T]) -> get_real_tokens2(D#dp{          cfm= N-1}, T);
+get_real_tokens2(D,[N,    'f>' |T]) -> get_real_tokens2(D#dp{          cfm= N  }, T);
+get_real_tokens2(D,[N,'-','f<' |T]) -> get_real_tokens2(D#dp{cfl=-N            }, T);
+get_real_tokens2(D,[N,'-','f<='|T]) -> get_real_tokens2(D#dp{cfl=-N-1          }, T);
+get_real_tokens2(D,[N,'-','f=' |T]) -> get_real_tokens2(D#dp{cfl=-N-1, cfm=-N+1}, T);
+get_real_tokens2(D,[N,'-','f>='|T]) -> get_real_tokens2(D#dp{          cfm=-N+1}, T);
+get_real_tokens2(D,[N,'-','f>' |T]) -> get_real_tokens2(D#dp{          cfm=-N  }, T);
+
+get_real_tokens2(D,[N,    '#' |T]) -> get_real_tokens2(D#dp{n=N}, T);
+get_real_tokens2(D,[      's' |T]) -> get_real_tokens2(D#dp{show=true}, T);
+get_real_tokens2(D,X) -> {D, lists:reverse(X)}.
 
 dice(String, Expand) ->
+%	common:debug("dice", "~p | ~p", [String, Expand]),
 	case tokenise(String) of
 		error -> "Error parsing dice string!";
 		Tokens ->
-			{N,Min,Max,Toks} = get_real_tokens({1,no,no,Tokens}),
+%			common:debug("dice", "~p", [Tokens]),
+			{DP, Toks} = get_real_tokens(#dp{}, Tokens),
 			case parse(Toks) of
 				error -> "Error parsing dice string!";
 				Expressions ->
 					if
-						N =< 0 -> "You want me to roll what?";
-						N == 1 -> evaluateMany(Expressions, Expand, Min, Max);
-						N =< 20 ->
-							Rolls = lists:map(fun(_) -> evaluateMany(Expressions, Expand, Min, Max) end, lists:duplicate(N, x)),
-							[$[, string:join(Rolls, ", "),32,$]];
+						DP#dp.n =< 0 -> "You want me to roll what?";
+						DP#dp.n == 1 ->
+							{_,A} = evaluateMany(Expressions, Expand, DP),
+							A;
+						DP#dp.n =< 20 ->
+							Rolls = lists:map(fun(_) -> evaluateMany(Expressions, Expand, DP) end, lists:duplicate(DP#dp.n, x)),
+							if
+								DP#dp.show ->
+									What = lists:map(fun({T,_}) -> T end, Rolls),
+									X = lists:foldl(fun(A, B) ->
+											orddict:fold(fun(K, V, Ac) ->
+													case orddict:find(K, Ac) of
+														{ok, Val} -> orddict:store(K, Val+V, Ac);
+														error -> orddict:store(K, V, Ac)
+													end
+												end, A, B)
+										end, hd(What), tl(What)),
+									string:join(lists:map(fun({A,B}) -> io_lib:format("~s: ~b", [describe(A),B]) end, X), "; ");
+								true ->
+									[$[, string:join(lists:map(fun({_,T})->T end, Rolls), ", "),32,$]]
+							end;
 						true -> "Too many sets, try less."
 					end
 			end
@@ -86,7 +206,7 @@ dice(String, Expand) ->
 % TOKENISATION
 
 tokenise(String) ->
-	case tokenise(String, []) of
+	case tokenise(string:to_lower(String), []) of
 		error -> error;
 		T -> lists:reverse(T)
 	end.
@@ -95,6 +215,20 @@ tokenise([], T) -> T;
 
 tokenise([$ |S],T) -> tokenise(S, T);
 tokenise([$	|S],T) -> tokenise(S, T);
+
+tokenise([$c,$>,$=|S],T) -> tokenise(S, ['c>='|T]);
+tokenise([$c,$<,$=|S],T) -> tokenise(S, ['c<='|T]);
+tokenise([$c,$=,$<|S],T) -> tokenise(S, ['c<='|T]);
+tokenise([$c,$=|S],T) -> tokenise(S, ['c='|T]);
+tokenise([$c,$>|S],T) -> tokenise(S, ['c>'|T]);
+tokenise([$c,$<|S],T) -> tokenise(S, ['c<'|T]);
+
+tokenise([$f,$>,$=|S],T) -> tokenise(S, ['f>='|T]);
+tokenise([$f,$<,$=|S],T) -> tokenise(S, ['f<='|T]);
+tokenise([$f,$=,$<|S],T) -> tokenise(S, ['f<='|T]);
+tokenise([$f,$=|S],T) -> tokenise(S, ['f='|T]);
+tokenise([$f,$>|S],T) -> tokenise(S, ['f>'|T]);
+tokenise([$f,$<|S],T) -> tokenise(S, ['f<'|T]);
 
 tokenise([$>,$=|S],T) -> tokenise(S, ['>='|T]);
 tokenise([$<,$=|S],T) -> tokenise(S, ['<='|T]);
@@ -107,9 +241,9 @@ tokenise([$+|S],T) -> tokenise(S, ['+'|T]);
 tokenise([$-|S],T) -> tokenise(S, ['-'|T]);
 tokenise([$*|S],T) -> tokenise(S, ['*'|T]);
 tokenise([$d|S],T) -> tokenise(S, ['d'|T]);
-tokenise([$D|S],T) -> tokenise(S, ['d'|T]);
 tokenise([$(|S],T) -> tokenise(S, ['('|T]);
 tokenise([$)|S],T) -> tokenise(S, [')'|T]);
+tokenise([$s|S],T) -> tokenise(S, ['s'|T]);
 
 tokenise([X|S], T) ->
 	case lists:member(X, lists:seq($0, $9)) of
@@ -178,19 +312,50 @@ collapse_brackets([           ], X) -> X.
 
 % EVALUATION
 
-evaluateMany(Expressions, Expand, Min, Max) ->
-	string:join(lists:map(fun(Expr) -> evaluate(Expr, Expand, Min, Max) end, Expressions), "; ").
+evaluateMany(Expressions, Expand, DP) ->
+	Rolls = lists:map(fun(Expr) -> evaluate(Expr, Expand, DP) end, Expressions),
 
-evaluate(T, Expand, Min, Max) ->
+	Results = lists:foldl(fun({What, _}, Dict) ->
+		case orddict:find(What, Dict) of
+			{ok, Value} -> orddict:store(What, Value+1, Dict);
+			error -> orddict:store(What, 1, Dict)
+		end
+	end, [], Rolls),
+	{Results, string:join(lists:map(fun({_, R}) -> R end, Rolls), " ")}.
+
+evaluate(T, Expand, DP) ->
 	{X,Y} = eval(T, Expand),
-	C = if
-		Min == no andalso Max == no -> $7;
-		Min == no andalso X < Max -> $3;
-		Max == no andalso X > Min -> $3;
-		Min < X andalso X < Max -> $3;
-		true -> $5
-	end,
-	[2,3,C,32,integer_to_list(X), "\x02\x0315 : ", Y, "\x03"].
+%	common:debug("rolling", "~p (~p) -> ~p : ~p", [T, Expand, X, Y]),
+	C = rolltype(X, DP),
+	Color = orddict:fetch(C, [
+			{cf, "6"},
+			{cs, "11"},
+			{f, "5"},
+			{n, "8"},
+			{s, "3"}
+		]),
+%	C = if
+%		DP#dp.min == no andalso no == DP#dp.max -> $7;
+%		DP#dp.min == no andalso  X  < DP#dp.max -> $3;
+%		DP#dp.min  <  X andalso no == DP#dp.max -> $3;
+%		DP#dp.min  <  X andalso  X  < DP#dp.max -> $3;
+%		true -> $5
+%	end,
+	{C, [2,3,Color,32,integer_to_list(X), "\x02\x0315 : ", Y, "\x03"]}.
+
+-define(bt(Min, N, Max), (Min /= no orelse Max /= no) andalso ((Min == no orelse Min < N) andalso (Max == no orelse N < Max))).
+
+rolltype(Roll, D=#dp{min=Min, max=Max, csl=CSL, csm=CSM, cfl=CFL, cfm=CFM}) ->
+%	common:debug("checking rolltype", "~p, ~p", [Roll, D]),
+	if
+		?bt(CSM, Roll, CSL) -> cs;
+		?bt(CFM, Roll, CFL) -> cf;
+		?bt(Min, Roll, Max) -> s;
+		true -> case lists:all(fun(T) -> T == no end, [D#dp.min, D#dp.max, D#dp.csl, D#dp.csm, D#dp.cfl, D#dp.cfm]) of
+				true -> n;
+				false -> f
+			end
+	end.
 
 eval({Op,N,M}, X) ->
 	{L,LT} = eval(N, X),
@@ -264,3 +429,10 @@ set_avail(M, List) ->
 		undefined -> put(dice_avail, [{M, List}]);
 		Dict -> put(dice_avail, orddict:store(M, List, Dict))
 	end.
+
+describe(f) -> "failures";
+describe(s) -> "successes";
+describe(cf) -> "critical failures";
+describe(cs) -> "critical successes";
+describe(n) -> "neutral";
+describe(_) -> "???".

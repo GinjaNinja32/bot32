@@ -38,6 +38,7 @@ handle_event(part, {#user{nick=N}, Channel, Reason}, S) -> on_part(N, Channel, R
 handle_event(kick, {#user{nick=N}, WhoKicked, Channel, Reason}, S) -> on_kick(WhoKicked, Channel, Reason, N, S);
 handle_event(join, {#user{nick=N}, Channel}, S) -> on_join(N, Channel, S);
 handle_event(nick, {#user{nick=Old}, N}, S) -> on_nick(Old, N, S);
+handle_event(ctcp, {action, Ch, #user{nick=N}, _}, S) -> on_privmsg(N, Ch, S);
 handle_event(_,_,_) -> ok.
 
 %

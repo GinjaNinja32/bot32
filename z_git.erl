@@ -71,7 +71,7 @@ load_trees() ->
 	{Master, DevFreeze, Dev, Kunpeng}.
 
 load_tree(Branch) ->
-	string:tokens(os:cmd(["cd /home/nyx/github/baystation12; git ls-files --with-tree upstream/", Branch]), "\r\n").
+	string:tokens(os:cmd(["cd /home/bot32/Baystation12; git ls-files --with-tree origin/", Branch]), "\r\n").
 
 search_tree(Tree, String, Branch) ->
 	case lists:filter(fun(T) ->
@@ -93,5 +93,5 @@ join_list_max_len(List, Separator, Length, []) -> join_list_max_len(tl(List), Se
 join_list_max_len(List, Separator, Length, Complete) -> join_list_max_len(tl(List), Separator, Length-length(Separator)-length(hd(List)), [Complete, Separator, hd(List)]).
 
 update() -> os:cmd([
-	"cd /home/nyx/github/baystation12;",
-	"git fetch upstream"]).
+	"cd /home/bot32/Baystation12;",
+	"git fetch origin"]).
