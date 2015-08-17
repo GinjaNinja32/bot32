@@ -286,6 +286,7 @@ create_message(JSON, String, FormatJsonPaths) ->
 			({ref,T}) ->
 				case traverse_json(JSON, T) of
 					"refs/heads/" ++ Branch -> Branch;
+					"refs/tags/" ++ Tag -> "tag " ++ Tag;
 					X -> X
 				end;
 			({trunc_newline,T}) ->
