@@ -309,21 +309,21 @@ handle_host_command(Rank, Origin, ReplyTo, Ping, Cmd, Params, State=#state{}) ->
 
 		"reload_all" ->
 			Modules = sets:to_list(State#state.modules),
-			self() ! {state, reload_modules(Modules, State)},
-			{irc, {msg, {ReplyTo, [Ping, "Reloaded."]}}};
+			core ! {irc, {msg, {ReplyTo, [Ping, "Reloaded."]}}},
+			{state, reload_modules(Modules, State)};
 
 		"drop_all" ->
 			Modules = sets:to_list(State#state.modules),
-			self() ! {state, unload_modules(Modules, State)},
-			{irc, {msg, {ReplyTo, [Ping, "Unloaded."]}}};
+			core ! {irc, {msg, {ReplyTo, [Ping, "Unloaded."]}}},
+			{state, unload_modules(Modules, State)};
 
 		"load_mod" ->
 			case Params of
 				[] -> {irc, {msg, {ReplyTo, [Ping, "Provide a module to load."]}}};
 				ModuleStrings ->
 					Modules = lists:map(fun erlang:list_to_atom/1, ModuleStrings),
-					self() ! {state, load_modules(Modules, State)},
-					{irc, {msg, {ReplyTo, [Ping, "Loaded."]}}}
+					core ! {irc, {msg, {ReplyTo, [Ping, "Loaded."]}}},
+					{state, load_modules(Modules, State)}
 			end;
 
 		"drop_mod" ->
@@ -608,7 +608,9 @@ load_module(Module, State) ->
 
 	% Initialise
 	case call_or(Module, data_persistence, [], manual) of
-		manual -> apply(Module, initialise, [State#state{commands = NewCmds, aliases = NewAliases, modules = sets:add_element(Module, State#state.modules)}]);
+		manual ->
+			BaseState = State#state{commands = NewCmds, aliases = NewAliases, modules = sets:add_element(Module, State#state.modules)},
+			call_or(Module, initialise, [BaseState], BaseState);
 		automatic ->
 			Data = modload_auto(Module),
 			State#state{commands = NewCmds, aliases = NewAliases, modules = sets:add_element(Module, State#state.modules), moduledata = orddict:store(Module, Data, State#state.moduledata)};
@@ -651,7 +653,9 @@ unload_module(Module, State) ->
 		true -> Module:data_persistence();
 		false -> manual
 	end of
-		manual -> apply(Module, deinitialise, [State#state{commands = Removed, aliases=NewAliases, modules = sets:del_element(Module, State#state.modules)}]);
+		manual ->
+			BaseState = State#state{commands = Removed, aliases=NewAliases, modules = sets:del_element(Module, State#state.modules)},
+			call_or(Module, deinitialise, [BaseState], BaseState);
 		automatic ->
 			case orddict:find(Module, State#state.moduledata) of
 				{ok, V} ->

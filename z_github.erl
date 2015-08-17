@@ -4,6 +4,7 @@
 -include("colordefs.hrl").
 
 
+-define(URL, ?BLUE).
 -define(REPO, ?GREEN).
 -define(USER, ?LGREEN).
 -define(HASH, ?LGREY).
@@ -168,7 +169,7 @@ handle_decoded(JSON, Channels) ->
 					[struct, "pull_request", struct, "title"],
 					[struct, "pull_request", struct, "base", struct, "label"],
 					[struct, "pull_request", struct, "head", struct, "label"],
-					[struct, "pull_request", struct, "html_url"]
+					{url, [struct, "pull_request", struct, "html_url"]}
 				])];
 		{"reopened", _, error} ->
 			RepoStruct = traverse_json(JSON, [struct, "pull_request", struct, "base", struct, "repo"]),
@@ -179,7 +180,7 @@ handle_decoded(JSON, Channels) ->
 					[struct, "pull_request", struct, "title"],
 					[struct, "pull_request", struct, "base", struct, "label"],
 					[struct, "pull_request", struct, "head", struct, "label"],
-					[struct, "pull_request", struct, "html_url"]
+					{url, [struct, "pull_request", struct, "html_url"]}
 				])];
 		{"closed", _, error} ->
 			RepoStruct = traverse_json(JSON, [struct, "pull_request", struct, "base", struct, "repo"]),
@@ -190,7 +191,7 @@ handle_decoded(JSON, Channels) ->
 					[struct, "pull_request", struct, "title"],
 					[struct, "pull_request", struct, "base", struct, "label"],
 					[struct, "pull_request", struct, "head", struct, "label"],
-					[struct, "pull_request", struct, "html_url"]
+					{url, [struct, "pull_request", struct, "html_url"]}
 				])];
 		{"opened", error, _} ->
 			RepoStruct = traverse_json(JSON, [struct, "issue", struct, "repository"]),
@@ -199,7 +200,7 @@ handle_decoded(JSON, Channels) ->
 					[struct, "sender", struct, "login"],
 					[struct, "issue", struct, "number"],
 					[struct, "issue", struct, "title"],
-					[struct, "issue", struct, "html_url"]
+					{url, [struct, "issue", struct, "html_url"]}
 				])];
 		{"reopened", error, _} ->
 			RepoStruct = traverse_json(JSON, [struct, "issue", struct, "repository"]),
@@ -208,7 +209,7 @@ handle_decoded(JSON, Channels) ->
 					[struct, "sender", struct, "login"],
 					[struct, "issue", struct, "number"],
 					[struct, "issue", struct, "title"],
-					[struct, "issue", struct, "html_url"]
+					{url, [struct, "issue", struct, "html_url"]}
 				])];
 		{"closed", error, _} ->
 			RepoStruct = traverse_json(JSON, [struct, "issue", struct, "repository"]),
@@ -217,7 +218,7 @@ handle_decoded(JSON, Channels) ->
 					[struct, "sender", struct, "login"],
 					[struct, "issue", struct, "number"],
 					[struct, "issue", struct, "title"],
-					[struct, "issue", struct, "html_url"]
+					{url, [struct, "issue", struct, "html_url"]}
 				])];
 		{error, _, _} ->
 			RepoStruct = traverse_json(JSON, [struct, "repository"]),
@@ -228,7 +229,7 @@ handle_decoded(JSON, Channels) ->
 							[struct, "sender", struct, "login"],
 							{ref, [struct, "ref"]},
 							{hash, [struct, "after"]},
-							[struct, "compare"]
+							{url, [struct, "compare"]}
 						])];
 				[false, true, _] ->
 					[create_message(JSON, "[~s] ~s deleted ~s at ~s", [
@@ -248,7 +249,7 @@ handle_decoded(JSON, Channels) ->
 							{ref, [struct, "ref"]},
 							{hash, [struct, "before"]},
 							{hash, [struct, "after"]},
-							[struct, "compare"]
+							{url, [struct, "compare"]}
 						]),
 					CommitList = traverse_json(JSON, [struct, "commits", array]),
 					ShowList = lists:sublist(CommitList, 3),
@@ -300,6 +301,11 @@ create_message(JSON, String, FormatJsonPaths) ->
 					"refs/heads/" ++ Branch -> ?BRANCH ++ Branch ++ ?RESET;
 					"refs/tags/" ++ Tag -> ?TAG ++ "tag " ++ Tag ++ ?RESET;
 					X -> X
+				end;
+			({url,T}) ->
+				case traverse_json(JSON, T) of
+					error -> error;
+					URL -> ?URL ++ ?UNDERLINE ++ URL ++ ?UNDERLINE ++ ?RESET
 				end;
 			({trunc_newline,T}) ->
 				case traverse_json(JSON, T) of

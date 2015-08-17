@@ -16,4 +16,7 @@
 -define(GREY, "\x0314").
 -define(LGREY, "\x0315").
 -define(RESET, "\x03").
+
+
 -define(BOLD, "\x02").
+-define(UNDERLINE, "\x1f").
