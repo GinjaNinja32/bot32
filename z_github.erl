@@ -1,6 +1,15 @@
 -module(z_github).
 -compile(export_all).
 
+-include("colordefs.hrl").
+
+
+-define(REPO, ?GREEN).
+-define(USER, ?LGREEN).
+-define(HASH, ?LGREY).
+-define(BRANCH, ?MAGENTA).
+-define(TAG, ?LMAGENTA).
+
 -define(Timer, 100).
 
 waitfor_gone(Ident) ->
@@ -152,7 +161,7 @@ handle_decoded(JSON, Channels) ->
 			} of
 		{"opened", _, error} ->
 			RepoStruct = traverse_json(JSON, [struct, "pull_request", struct, "base", struct, "repo"]),
-			[create_message(JSON, "[~s] ~s opened pull request #~b: ~s (~s...~s) ~s", [
+			[create_message(JSON, "[~s] ~s opened pull request #~b: ~s (" ++ ?BRANCH ++ "~s" ++ ?RESET ++ "..." ++ ?BRANCH ++ "~s" ++ ?RESET ++ ") ~s", [
 					{reponame, [struct, "pull_request", struct, "base", struct, "repo"]},
 					[struct, "sender", struct, "login"],
 					[struct, "pull_request", struct, "number"],
@@ -163,7 +172,7 @@ handle_decoded(JSON, Channels) ->
 				])];
 		{"reopened", _, error} ->
 			RepoStruct = traverse_json(JSON, [struct, "pull_request", struct, "base", struct, "repo"]),
-			[create_message(JSON, "[~s] ~s reopened pull request #~b: ~s (~s...~s) ~s", [
+			[create_message(JSON, "[~s] ~s reopened pull request #~b: ~s (" ++ ?BRANCH ++ "~s" ++ ?RESET ++ "..." ++ ?BRANCH ++ "~s" ++ ?RESET ++ ") ~s", [
 					{reponame, [struct, "pull_request", struct, "base", struct, "repo"]},
 					[struct, "sender", struct, "login"],
 					[struct, "pull_request", struct, "number"],
@@ -174,7 +183,7 @@ handle_decoded(JSON, Channels) ->
 				])];
 		{"closed", _, error} ->
 			RepoStruct = traverse_json(JSON, [struct, "pull_request", struct, "base", struct, "repo"]),
-			[create_message(JSON, "[~s] ~s closed pull request #~b: ~s (~s...~s) ~s", [
+			[create_message(JSON, "[~s] ~s closed pull request #~b: ~s (" ++ ?BRANCH ++ "~s" ++ ?RESET ++ "..." ++ ?BRANCH ++ "~s" ++ ?RESET ++ ") ~s", [
 					{reponame, [struct, "pull_request", struct, "base", struct, "repo"]},
 					[struct, "sender", struct, "login"],
 					[struct, "pull_request", struct, "number"],
@@ -282,14 +291,14 @@ handle_decoded(JSON, Channels) ->
 create_message(JSON, String, FormatJsonPaths) ->
 	io_lib:format(String, lists:map(fun
 			({T}) -> T;
-			({hash,T}) -> lists:sublist(traverse_json(JSON, T), 8);
+			({hash,T}) -> ?HASH ++ lists:sublist(traverse_json(JSON, T), 8) ++ ?RESET;
 			({length,T}) -> length(traverse_json(JSON, T));
 			({s,Str,T}) -> util:s(length(traverse_json(JSON, T)), Str);
 			({s,T}) -> util:s(length(traverse_json(JSON, T)));
 			({ref,T}) ->
 				case traverse_json(JSON, T) of
-					"refs/heads/" ++ Branch -> Branch;
-					"refs/tags/" ++ Tag -> "tag " ++ Tag;
+					"refs/heads/" ++ Branch -> ?BRANCH ++ Branch ++ ?RESET;
+					"refs/tags/" ++ Tag -> ?TAG ++ "tag " ++ Tag ++ ?RESET;
 					X -> X
 				end;
 			({trunc_newline,T}) ->
@@ -299,8 +308,8 @@ create_message(JSON, String, FormatJsonPaths) ->
 				end;
 			({reponame, RepoStruct}) ->
 				case traverse_json(JSON, RepoStruct ++ [struct, "fork"]) of
-					false -> traverse_json(JSON, RepoStruct ++ [struct, "name"]);
-					_ -> traverse_json(JSON, RepoStruct ++ [struct, "full_name"])
+					false -> ?REPO ++ traverse_json(JSON, RepoStruct ++ [struct, "name"]) ++ ?RESET;
+					_ -> ?USER ++ traverse_json(JSON, RepoStruct ++ [struct, "owner", struct, "login"]) ++ ?RESET ++ "/" ++ ?REPO ++ traverse_json(JSON, RepoStruct ++ [struct, "name"]) ++ ?RESET
 				end;
 			(T) -> traverse_json(JSON, T)
 		end, FormatJsonPaths)).
