@@ -38,9 +38,8 @@ init() ->
 						{prefix, Prefix}	when is_integer(Prefix)				-> Config#config{prefix=[Prefix]};
 						{prefixes, Prefixes}	when is_list(Prefixes)				-> Config#config{prefix=Prefixes};
 
-						{permission, {N,U,H}, P}	when is_list(N) andalso is_list(U) andalso is_list(H) andalso is_atom(P) ->
-														NUH = {string:to_lower(N),U,H},
-														NewPerms = case orddict:find(NUH, Perms) of
+						{permission, Who, P}	when is_atom(P) ->
+														NewPerms = case orddict:find(Who, Perms) of
 															{ok, V} ->
 																case lists:member(P, V) of
 																	true -> V;
@@ -48,7 +47,7 @@ init() ->
 																end;
 															error -> [user, P]
 														end,
-														Config#config{permissions=orddict:store(NUH, NewPerms, Perms)};
+														Config#config{permissions=orddict:store(Who, NewPerms, Perms)};
 
 						{channel, Channel}	when is_list(Channel) orelse is_binary(Channel)	-> Config#config{channels=sets:add_element(Channel, C)};
 						{channels, Channels}	when is_list(Channels)				-> Config#config{channels=lists:foldl(fun sets:add_element/2, C, Channels)};

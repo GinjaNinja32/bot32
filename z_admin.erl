@@ -21,9 +21,6 @@ get_commands() ->
 		{"speak", fun speak/5, admin},
 		{"notice", fun notice/5, admin},
 		{"action", fun action/5, admin},
-		{"ignore", fun ignore/5, admin},
-		{"unignore", fun unignore/5, admin},
-		{"whoignore", fun whoignore/5, admin},
 		{"prefix", fun prefix/5, host},
 		{"addprefix", fun addprefix/5, host},
 		{"remprefix", fun remprefix/5, host},
@@ -208,30 +205,6 @@ action(_, RT, Ping, [_], _) -> {irc, {msg, {RT, [Ping, "Please provide an action
 action(_, RT, Ping, [], _) -> {irc, {msg, {RT, [Ping, "Please provide a channel and action."]}}};
 action(_, _, _, Params, _) -> {irc, {ctcp, {action, hd(Params), string:join(tl(Params), " ")}}}.
 
-
-ignore(_, ReplyTo, Ping, [], _) -> {irc, {msg, {ReplyTo, [Ping, "Please provide a nick to ignore."]}}};
-ignore(_, ReplyTo, Ping, Params, State=#state{ignore=I}) ->
-	Nick = string:to_lower(hd(Params)),
-	case sets:is_element(Nick, I) of
-		true -> {irc, {msg, {ReplyTo, [Ping, "I am already ignoring ", Nick, "."]}}};
-		false -> self() ! {state, State#state{ignore=sets:add_element(Nick, I)}},
-			{irc, {msg, {ReplyTo, [Ping, "Now ignoring ", Nick, "."]}}}
-	end.
-
-unignore(_, ReplyTo, Ping, [], _) -> {irc, {msg, {ReplyTo, [Ping, "Please provide a nick to unignore."]}}};
-unignore(_, ReplyTo, Ping, Params, State=#state{ignore=I}) ->
-	Nick = string:to_lower(hd(Params)),
-	case sets:is_element(Nick, I) of
-		false -> {irc, {msg, {ReplyTo, [Ping, "I am not ignoring ", Nick, "."]}}};
-		true -> self() ! {state, State#state{ignore=sets:del_element(Nick, I)}},
-			{irc, {msg, {ReplyTo, [Ping, "Now listening to ", Nick, "."]}}}
-	end.
-
-whoignore(_, ReplyTo, Ping, _, #state{ignore=I}) ->
-	case sets:size(I) == 0 of
-		true -> {irc, {msg, {ReplyTo, [Ping, "I am not ignoring anyone."]}}};
-		false -> {irc, {msg, {ReplyTo, [Ping, "Ignore list: ", string:join(sets:to_list(I), ", ")]}}}
-	end.
 
 prefix(_, ReplyTo, Ping, [], _) -> {irc, {msg, {ReplyTo, [Ping, "Please provide a prefix to use for commands."]}}};
 prefix(_, ReplyTo, Ping, Params, State=#state{}) ->

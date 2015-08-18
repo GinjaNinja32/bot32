@@ -82,7 +82,19 @@ loop(SvrSock, Svr, Prt, SPrt, Pwd, Notify) ->
 	case receive
 		{pm, Sender, ReplyChannel, ReplyPing, Recipient, Message} ->
 			logging:log(info, "SERVER", "sending PM ~s to ~s", [Message, Recipient]),
-			Reply = case byond:send(Svr, Prt, io_lib:format("?adminmsg=~s;msg=~s;key=~s;sender=~s", lists:map(fun byond:vencode/1, [Recipient, Message, Pwd, Sender]))) of
+			case file:consult("ranks.crl") of
+				{ok, [RDict]} ->
+					case orddict:find(string:to_lower(Sender), RDict) of
+						{ok, Rank} -> ok;
+						error ->
+							common:debug("debug", "dict is ~p without key ~p", [RDict, Sender]),
+							Rank = "Unknown"
+					end;
+				_ ->
+					common:debug("debug", "no dict"),
+					Rank = "Admin"
+			end,
+			Reply = case byond:send(Svr, Prt, io_lib:format("?adminmsg=~s;msg=~s;key=~s;sender=~s;rank=~s", lists:map(fun byond:vencode/1, [Recipient, Message, Pwd, Sender, Rank]))) of
 				{error, T} -> io_lib:format("Error: ~s", [T]);
 				Dict ->
 					case orddict:fetch_keys(Dict) of
@@ -121,7 +133,7 @@ loop(SvrSock, Svr, Prt, SPrt, Pwd, Notify) ->
 			end,
 			core ! {irc, {msg, {ReplyChannel, [ReplyPing, Reply]}}},
 			ok;
-						
+
 		{notify, Who, ReplyChannel, ReplyPing} ->
 			case sets:is_element(string:to_lower(Who), Notify) of
 				true ->
