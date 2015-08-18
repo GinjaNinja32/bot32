@@ -116,7 +116,10 @@ parse_htmlentities(<<"&", B/binary>>, X) ->
 		{I, Rest} -> parse_htmlentities(Rest, <<X/binary, I/binary>>);
 		false -> parse_htmlentities(B, <<X/binary, "&">>)
 	end;
-parse_htmlentities(<<T/utf8, B/binary>>, X) -> parse_htmlentities(B, <<X/binary, T/utf8>>).  
+parse_htmlentities(<<T/utf8, B/binary>>, X) -> parse_htmlentities(B, <<X/binary, T/utf8>>);
+parse_htmlentities(<<T, B/binary>>, X) ->
+	logging:log(error, "UTIL", "T-value is ~p", [T]),
+	parse_htmlentities(B, X).
 
 charents() ->
 	[

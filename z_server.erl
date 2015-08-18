@@ -18,7 +18,8 @@ get_commands() ->
 		{"msg", fun pm/5, server},
 		{"age", fun age/5, server},
 		{"notes", fun notes/5, server},
-		{"notify", fun notify/5, user}
+		{"notify", fun notify/5, user},
+		{"serverrank", fun serverrank/5, host}
 	].
 
 initialise(T) ->
@@ -37,6 +38,23 @@ deinitialise(T) ->
 	T.
 
 %
+
+serverrank(_, RT, Ping, [Rank | Who], _) ->
+	case file:consult("ranks.crl") of
+		{ok, [Dict]} ->
+			case lists:keyfind(Who, 1, Dict) of
+				{_, CRank} -> Message = ["Set rank of ", Who, " to ", Rank, " - was ", CRank];
+				_ ->          Message = ["Set rank of ", Who, " to ", Rank]
+			end,
+			if
+				Rank == "none" -> NewDict = lists:keydelete(Who, 1, Dict);
+				true -> NewDict = lists:keystore(Who, 1, Dict, {Who, Rank})
+			end,
+			file:write_file("ranks.crl", io_lib:format("~p.~n", [NewDict])),
+			{irc, {msg, {RT, [Ping, Message]}}};
+		error ->
+			{irc, {msg, {RT, [Ping, "Failed to read file!"]}}}
+	end.
 
 pm(_, RT, Ping, [], _) -> {irc, {msg, {RT, [Ping, "Provide a user to PM and a message."]}}};
 pm(_, RT, Ping, [_], _) -> {irc, {msg, {RT, [Ping, "Provide a message."]}}};
@@ -84,15 +102,13 @@ loop(SvrSock, Svr, Prt, SPrt, Pwd, Notify) ->
 			logging:log(info, "SERVER", "sending PM ~s to ~s", [Message, Recipient]),
 			case file:consult("ranks.crl") of
 				{ok, [RDict]} ->
-					case orddict:find(string:to_lower(Sender), RDict) of
-						{ok, Rank} -> ok;
-						error ->
+					case lists:keyfind(string:to_lower(Sender), 1, RDict) of
+						{_, Rank} -> ok;
+						_ ->
 							common:debug("debug", "dict is ~p without key ~p", [RDict, Sender]),
 							Rank = "Unknown"
 					end;
-				_ ->
-					common:debug("debug", "no dict"),
-					Rank = "Admin"
+				_ -> Rank = "Admin"
 			end,
 			Reply = case byond:send(Svr, Prt, io_lib:format("?adminmsg=~s;msg=~s;key=~s;sender=~s;rank=~s", lists:map(fun byond:vencode/1, [Recipient, Message, Pwd, Sender, Rank]))) of
 				{error, T} -> io_lib:format("Error: ~s", [T]);

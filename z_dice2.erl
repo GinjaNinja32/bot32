@@ -1,6 +1,8 @@
 -module(z_dice2).
 -compile(export_all).
 
+-include("colordefs.hrl").
+
 get_aliases() ->
 	[
 		{"dice", ["roll", "rtd"]},
@@ -52,8 +54,25 @@ special_dice() ->
 					2*One >= T -> [Summary | ": Glitch!"];
 					true -> Summary
 				end
+			end},
+		{"fate", fun([]) -> fate(0);
+		            ([StrT | _]) -> fate(list_to_integer(StrT))
 			end}
 	].
+
+fate(N) ->
+	{_, RawDice} = rollraw(4, 3),
+	Dice = lists:map(fun(T) -> T-2 end, RawDice), % d3-2 is equivalent to a single FATE die
+	Str = lists:map(fun(-1) -> ?LRED ++ "-" ++ ?RESET;
+	                   ( 0) -> ?WHITE ++ ?BOLD ++ ?BOLD ++ "0" ++ ?RESET;
+	                   (+1) -> ?LGREEN ++ "+" ++ ?RESET
+		end, Dice),
+	Total = lists:foldl(fun erlang:'+'/2, 0, Dice),
+	io_lib:format("[~s|~s] ~s", [Str, show(Total), show(Total+N)]).
+
+show(N) when N < 0 -> io_lib:format("~s~b~s", [?LRED, N, ?RESET]);
+show(N) when N > 0 -> io_lib:format("~s+~b~s", [?LGREEN, N, ?RESET]);
+show(0) -> ?WHITE ++ "+0" ++ ?RESET.
 
 get_sr_edge(0, Sixes, D) -> {Sixes, D};
 get_sr_edge(N, Sixes, D) ->
