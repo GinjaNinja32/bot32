@@ -1,4 +1,4 @@
--module(z_notes).
+-module(notes).
 -compile(export_all).
 
 -include("definitions.hrl").

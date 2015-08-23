@@ -1,4 +1,4 @@
--module(z_botinfo).
+-module(botinfo).
 -compile(export_all).
 
 -include("definitions.hrl").
@@ -13,11 +13,11 @@ get_commands() ->
 
 sectimestamp() -> calendar:datetime_to_gregorian_seconds(calendar:now_to_universal_time(os:timestamp())).
 
-initialise(T=#state{moduledata=M}) -> T#state{moduledata=orddict:store(z_botinfo, sectimestamp(), M)}.
-deinitialise(T=#state{moduledata=M}) -> T#state{moduledata=orddict:erase(z_botinfo, M)}.
+initialise(T=#state{moduledata=M}) -> T#state{moduledata=orddict:store(botinfo, sectimestamp(), M)}.
+deinitialise(T=#state{moduledata=M}) -> T#state{moduledata=orddict:erase(botinfo, M)}.
 
 uptime(_, RT, P, _, #state{moduledata=M}) ->
-	StartTime = orddict:fetch(z_botinfo, M),
+	StartTime = orddict:fetch(botinfo, M),
 	NowTime = sectimestamp(),
 	{irc, {msg, {RT, [P, "I have been running for ", common:format_time_difference(NowTime - StartTime)]}}}.
 

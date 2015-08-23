@@ -1,4 +1,4 @@
--module(z_memory).
+-module(memory).
 -compile(export_all).
 
 get_commands() ->

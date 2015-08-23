@@ -1,4 +1,4 @@
--module(z_status).
+-module(status).
 -compile(export_all).
 
 defaultserver("#yonaguni") -> "europa";
@@ -28,12 +28,12 @@ deinitialise(T) -> T.
 generic(Func) ->
 	fun(_,RT,P,[],_) ->
 		case orddict:find(defaultserver(RT), servers()) of
-			{ok, {Addr,Port,Name}} -> spawn(z_status, Func, [RT, P, Addr, Port, Name]), ok;
+			{ok, {Addr,Port,Name}} -> spawn(status, Func, [RT, P, Addr, Port, Name]), ok;
 			error -> {irc, {msg, {RT, [P, "Failed to find default server for this channel!"]}}}
 		end;
 	   (_,RT,P,[ServerID],_) ->
 		case orddict:find(ServerID, servers()) of
-			{ok, {Addr,Port,Name}} -> spawn(z_status, Func, [RT, P, Addr, Port, Name]), ok;
+			{ok, {Addr,Port,Name}} -> spawn(status, Func, [RT, P, Addr, Port, Name]), ok;
 			error -> {irc, {msg, {RT, [P, "Illegal argument!"]}}}
 		end
 	end.

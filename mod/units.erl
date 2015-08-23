@@ -1,4 +1,4 @@
--module(z_units).
+-module(units).
 -compile(export_all).
 
 %-include("definitions.hrl").

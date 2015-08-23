@@ -1,4 +1,4 @@
--module(z_dictionary).
+-module(dictionary).
 -compile(export_all).
 
 get_aliases() ->

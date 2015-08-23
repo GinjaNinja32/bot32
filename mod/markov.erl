@@ -1,4 +1,4 @@
--module(z_markov).
+-module(markov).
 -compile(export_all).
 
 -include("definitions.hrl").
@@ -81,7 +81,7 @@ initialise(T) ->
 
 deinitialise(T) ->
 	save_data(get_data(T)),
-	T#state{moduledata=orddict:erase(z_markov, T#state.moduledata)}.
+	T#state{moduledata=orddict:erase(markov, T#state.moduledata)}.
 
 %
 
@@ -100,13 +100,13 @@ save_data(Data) ->
 	logging:log(info, "MARKOV", "Save status: ~p", [T]).
 
 get_data(#state{moduledata=M}) ->
-	case orddict:find(z_markov, M) of
+	case orddict:find(markov, M) of
 		{ok, Value} -> Value;
 		error -> #mdata{pairs=[]}
 	end.
 
 set_data(S=#state{moduledata=M}, Data) ->
-	S#state{moduledata=orddict:store(z_markov, Data, M)}.
+	S#state{moduledata=orddict:store(markov, Data, M)}.
 
 handle_event(msg, {_, Channel, Msg}, S) ->
 	case S#state.nick of
@@ -135,7 +135,7 @@ learn_from_markov(Msg, Data) ->
 			error -> orddict:store(P, 1, Prs)
 		end end, Data#mdata.pairs, PairsToAdd),
 
-	self() ! {setkey, {z_markov, Data#mdata{pairs=NewPairs}}},
+	self() ! {setkey, {markov, Data#mdata{pairs=NewPairs}}},
 	ok.
 
 reply_to_markov(Msg, Data) ->

@@ -1,4 +1,4 @@
--module(z_timezone).
+-module(timezone).
 -compile(export_all).
 
 get_commands() ->

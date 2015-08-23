@@ -15,6 +15,7 @@ waitfor(Ident) ->
 	end.
 
 init() ->
+	code:add_path("./mod/bin"),
 	register(bot, self()),
 	{SeedA,SeedB,SeedC}=now(),
 	random:seed(SeedA,SeedB,SeedC),
@@ -22,7 +23,7 @@ init() ->
 		{ok, [Perms]} -> Perms;
 		_ -> orddict:new()
 	end,
-	BaseConfig = #config{nick="Bot32", prefix=$!, permissions=BasePerms, user="Bot32", mode="0", real="Bot32", channels=sets:new(), on_join=[], modules=[z_basic], pass=none},
+	BaseConfig = #config{nick="Bot32", prefix=$!, permissions=BasePerms, user="Bot32", mode="0", real="Bot32", channels=sets:new(), on_join=[], modules=[basic], pass=none},
 	case file:consult("bot_config.crl") of
 		{error, Reason} ->
 			logging:log(error, "BOT", "Failed to load config file: ~p.", [Reason]),
@@ -316,7 +317,7 @@ handle_host_command(Rank, Origin, ReplyTo, Ping, Cmd, Params, State=#state{}) ->
 			core ! {irc, {msg, {ReplyTo, [Ping, "Unloaded."]}}},
 			{state, unload_modules(Modules, State)};
 
-		"load_mod" ->
+		"load" ->
 			case Params of
 				[] -> {irc, {msg, {ReplyTo, [Ping, "Provide a module to load."]}}};
 				ModuleStrings ->
@@ -325,7 +326,7 @@ handle_host_command(Rank, Origin, ReplyTo, Ping, Cmd, Params, State=#state{}) ->
 					{state, load_modules(Modules, State)}
 			end;
 
-		"drop_mod" ->
+		"drop" ->
 			case Params of
 				[] -> {irc, {msg, {ReplyTo, [Ping, "Provide a module to unload."]}}};
 				ModuleStrings ->
@@ -334,7 +335,7 @@ handle_host_command(Rank, Origin, ReplyTo, Ping, Cmd, Params, State=#state{}) ->
 					{state, unload_modules(Modules, State)}
 			end;
 
-		"reload_mod" ->
+		"reload" ->
 			case Params of
 				[] -> {irc, {msg, {ReplyTo, [Ping, "Provide a module to reload."]}}};
 				ModuleStrings ->
@@ -343,7 +344,7 @@ handle_host_command(Rank, Origin, ReplyTo, Ping, Cmd, Params, State=#state{}) ->
 					{state, reload_modules(Modules, State)}
 			end;
 
-		"recompile_mod" ->
+		"recompile" ->
 			case Params of
 				[] -> {irc, {msg, {ReplyTo, [Ping, "Provide a module to recompile."]}}};
 				ModuleStrings ->
@@ -677,7 +678,7 @@ recompile_module(Module, State) ->
 	try
 		Sa = unload_module(Module, State),
 		code:purge(Module),
-		compile:file(Module),
+		compile:file("mod/" ++ atom_to_list(Module), [{outdir, "./mod/bin/"}]),
 		code:load_file(Module),
 		load_module(Module, Sa)
 	catch

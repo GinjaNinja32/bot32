@@ -1,4 +1,4 @@
--module(z_server).
+-module(server).
 -compile(export_all).
 
 -include("definitions.hrl").
@@ -30,17 +30,17 @@ get_commands() ->
 
 initialise(T) ->
 	case file:consult("server.crl") of
-		{ok, {Server, Port, Pwd}) -> spawn(z_server, sloop, [Server, Port, 45678, Pwd]);
+		{ok, [{Server, Port, Pwd}]} -> spawn(server, sloop, [Server, Port, 45678, Pwd]);
 		{error, E} -> logging:log(error, "SERVER", "~p", [E]), error
 	end,
 	T.
 
 deinitialise(T) ->
-	case whereis(z_server) of
+	case whereis(server) of
 		undefined -> ok;
 		Pid -> Pid ! stop
 	end,
-	waitfor_gone(z_server),
+	waitfor_gone(server),
 	T.
 
 %
@@ -86,16 +86,16 @@ serverrank(_, RT, Ping, _, _) -> {irc, {msg, {RT, [Ping, "Provide a rank and a n
 pm(_, RT, Ping, [], _) -> {irc, {msg, {RT, [Ping, "Provide a user to PM and a message."]}}};
 pm(_, RT, Ping, [_], _) -> {irc, {msg, {RT, [Ping, "Provide a message."]}}};
 pm(N, RT, Ping, Params, _) ->
-	z_server ! {pm, N, RT, Ping, string:to_lower(hd(Params)), string:join(tl(Params), " ")},
+	server ! {pm, N, RT, Ping, string:to_lower(hd(Params)), string:join(tl(Params), " ")},
 	ok.
 
 notes(_, RT, Ping, [], _) -> {irc, {msg, {RT, [Ping, "Provide a user to find notes for."]}}};
 notes(N, RT, Ping, [Key], #state{permissions=P}) ->
 	case RT of
-		N -> z_server ! {notes, N, RT, Ping, string:to_lower(Key)};
+		N -> server ! {notes, N, RT, Ping, string:to_lower(Key)};
 		_ -> case lists:member(server, bot:rankof_chan(RT, P)) of
-			true -> z_server ! {notes, N, RT, Ping, string:to_lower(Key)};
-			false -> z_server ! {notes, N, N, "", string:to_lower(Key)}
+			true -> server ! {notes, N, RT, Ping, string:to_lower(Key)};
+			false -> server ! {notes, N, N, "", string:to_lower(Key)}
 		end
 	end,
 	ok;
@@ -103,19 +103,19 @@ notes(_, RT, Ping, _, _) -> {irc, {msg, {RT, [Ping, "Provide a single key."]}}}.
 
 age(_, RT, Ping, [], _) -> {irc, {msg, {RT, [Ping, "Provide a key to check the age of."]}}};
 age(_, RT, Ping, [Key], _) ->
-	z_server ! {age, RT, Ping, Key},
+	server ! {age, RT, Ping, Key},
 	ok;
 age(_, RT, Ping, _, _) -> {irc, {msg, {RT, [Ping, "Provide a single key."]}}}.
 
 notify(N, RT, Ping, _, _) ->
-	z_server ! {notify, N, RT, Ping},
+	server ! {notify, N, RT, Ping},
 	ok.
 
 sloop(Svr, Prt, SPrt, Pwd) ->
 	case gen_tcp:listen(SPrt, [list, {packet, http}, {active, false}, {reuseaddr, true}]) of
 		{ok, SvrSock} ->
 			logging:log(info, "SERVER", "Starting loop."),
-			register(z_server, self()),
+			register(server, self()),
 			loop(SvrSock, Svr, Prt, SPrt, Pwd, sets:new()),
 			logging:log(info, "SERVER", "Ending loop."),
 			gen_tcp:close(SvrSock);

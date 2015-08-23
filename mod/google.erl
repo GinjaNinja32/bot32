@@ -1,4 +1,4 @@
--module(z_google).
+-module(google).
 -compile(export_all).
 
 get_commands() ->

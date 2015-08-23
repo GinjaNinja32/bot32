@@ -1,4 +1,4 @@
--module(z_dice2).
+-module(dice2).
 -compile(export_all).
 
 -include("colordefs.hrl").

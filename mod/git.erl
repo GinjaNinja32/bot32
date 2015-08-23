@@ -1,4 +1,4 @@
--module(z_git).
+-module(git).
 -compile(export_all).
 
 -include("definitions.hrl").
@@ -11,10 +11,10 @@ get_commands() ->
 	].
 
 initialise(T) -> set_data(T, load_trees()).
-deinitialise(T) -> T#state{moduledata=orddict:erase(z_git, T#state.moduledata)}.
+deinitialise(T) -> T#state{moduledata=orddict:erase(git, T#state.moduledata)}.
 
 get_data(S=#state{moduledata=M}) ->
-	case orddict:find(z_git, M) of
+	case orddict:find(git, M) of
 		{ok, Value} -> Value;
 		error ->
 			logging:log(error, "GIT", "Data not found, loading!"),
@@ -24,7 +24,7 @@ get_data(S=#state{moduledata=M}) ->
 	end.
 
 set_data(S=#state{moduledata=M}, Data) ->
-	S#state{moduledata=orddict:store(z_git, Data, M)}.
+	S#state{moduledata=orddict:store(git, Data, M)}.
 
 %
 

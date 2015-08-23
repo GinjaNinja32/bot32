@@ -1,4 +1,4 @@
--module(z_defines).
+-module(defines).
 -compile(export_all).
 
 -include("definitions.hrl").
@@ -11,16 +11,16 @@ get_commands() ->
 	].
 
 initialise(T) -> set_data(T, make_defs()).
-deinitialise(T) -> T#state{moduledata=orddict:erase(z_defines, T#state.moduledata)}.
+deinitialise(T) -> T#state{moduledata=orddict:erase(defines, T#state.moduledata)}.
 
 get_data(#state{moduledata=M}) ->
-	case orddict:find(z_defines, M) of
+	case orddict:find(defines, M) of
 		{ok, Value} -> Value;
 		error -> make_defs()
 	end.
 
 set_data(S=#state{moduledata=M}, Data) ->
-	S#state{moduledata=orddict:store(z_defines, Data, M)}.
+	S#state{moduledata=orddict:store(defines, Data, M)}.
 
 %
 

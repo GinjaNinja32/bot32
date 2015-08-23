@@ -1,4 +1,4 @@
--module(z_dice).
+-module(dice).
 -compile(export_all).
 
 -include("definitions.hrl").
@@ -18,7 +18,7 @@ initialise(T) -> T.
 deinitialise(T) -> T.
 
 get_data(#state{moduledata=M}) ->
-        case orddict:find(z_dice, M) of
+        case orddict:find(dice, M) of
                 {ok, Value} -> Value;
                 error ->
 			logging:log(error, "DICE", "Data not found, using internal."),
@@ -26,7 +26,7 @@ get_data(#state{moduledata=M}) ->
         end.
 
 set_data(S=#state{moduledata=M}, Data) ->
-        S#state{moduledata=orddict:store(z_dice, Data, M)}.
+        S#state{moduledata=orddict:store(dice, Data, M)}.
 
 
 dicemode(_Origin, ReplyTo, Ping, Params, State) ->

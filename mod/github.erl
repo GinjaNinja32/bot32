@@ -1,4 +1,4 @@
--module(z_github).
+-module(github).
 -compile(export_all).
 
 -include("colordefs.hrl").

@@ -1,4 +1,4 @@
--module(z_basic).
+-module(basic).
 -compile(export_all).
 
 get_commands() ->

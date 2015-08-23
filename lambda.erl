@@ -25,9 +25,9 @@ decode(D,K) ->
 	%		io:fwrite("X=~2.16b, A=~2.16b, NX=~2.16b, NA=~2.16b~n", [X, A, NX, (A+NX)band 16#ff]),
 			{NX, (A+NX) band 16#ff}
 		end, 0, lists:reverse(tl(lists:reverse(D)))),
-	Result = case lists:last(D) of
+	case lists:last(D) of
 		C -> {ok, ND};
-		NotC -> {C, ND}
+		_ -> {C, ND}
 	end.
 
 encode(D,K) ->

@@ -1,4 +1,4 @@
--module(z_burger).
+-module(burger).
 -compile(export_all).
 
 -include("definitions.hrl").
@@ -120,5 +120,5 @@ save_food(_, RT, P, _, S) ->
 	{irc, {msg, {RT, [P, "Saved food data."]}}}.
 
 save_data(D) ->
-	T = file:write_file("modules/z_burger.crl", io_lib:format("~p.~n", [D])),
+	T = file:write_file("modules/burger.crl", io_lib:format("~p.~n", [D])),
 	logging:log(info, "BURGER", "Save status: ~p", [T]).

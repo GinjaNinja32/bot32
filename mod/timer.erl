@@ -1,4 +1,4 @@
--module(z_timer).
+-module(timer).
 -compile(export_all).
 
 get_commands() ->
@@ -7,28 +7,28 @@ get_commands() ->
 	].
 
 initialise(T) ->
-	case whereis(z_timer) of
+	case whereis(timer) of
 		undefined -> ok;
 		Pid ->
 			Pid ! quit,
-			common:waitfor_gone(z_timer)
+			common:waitfor_gone(timer)
 	end,
-	spawn(z_timer, init, []),
+	spawn(timer, init, []),
 	T.
 
 deinitialise(T) ->
-	case whereis(z_timer) of
+	case whereis(timer) of
 		undefined -> ok;
 		Pid ->
 			Pid ! quit,
-			common:waitfor_gone(z_timer)
+			common:waitfor_gone(timer)
 	end,
 	T.
 
 
 timer(_, ReplyTo, Ping, [    ], _) -> {irc, {msg, {ReplyTo, [Ping, <<"Provide a timer duration in either seconds, minutes:seconds, or hours:minutes:seconds.">>]}}};
 timer(O, ReplyTo, Ping, Params, _) ->
-	case whereis(z_timer) of
+	case whereis(timer) of
 		undefined -> {irc, {msg, {ReplyTo, [Ping, <<"Timer is currently not running (errored).">>]}}};
 		TimerPid ->
 			case re:run(hd(Params), <<"^([0-9]+)(?::([0-9]+))?(?::([0-9]+))?$">>, [{capture, all_but_first, binary}]) of
@@ -46,10 +46,10 @@ timer(O, ReplyTo, Ping, Params, _) ->
 
 
 init() ->
-	register(z_timer, self()),
-	logging:log(info, "z_timer", "Loop starting."),
+	register(timer, self()),
+	logging:log(info, "timer", "Loop starting."),
 	loop([]),
-	logging:log(info, "z_timer", "Loop ending.").
+	logging:log(info, "timer", "Loop ending.").
 
 loop(Timers) ->
 	Now = calendar:datetime_to_gregorian_seconds(calendar:now_to_universal_time(os:timestamp())),
@@ -73,5 +73,5 @@ handle_expiry(Data) ->
 	case Data of
 		{Nick, Message} -> core ! {irc, {msg, {Nick, ["Your timer has expired: ", Message]}}};
 		{Nick} -> core ! {irc, {msg, {Nick, "Your timer has expired."}}};
-		T -> logging:log(error, "z_timer", "Unknown timer data format: ~p", [T])
+		T -> logging:log(error, "timer", "Unknown timer data format: ~p", [T])
 	end.

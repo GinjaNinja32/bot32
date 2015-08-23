@@ -1,4 +1,4 @@
--module(z_eval).
+-module(eval).
 -compile(export_all).
 
 -include("definitions.hrl").

@@ -1,4 +1,4 @@
--module(z_message).
+-module(message).
 -compile(export_all).
 
 -include("definitions.hrl").
@@ -121,5 +121,5 @@ create_message(FromR, ToR, Msg, Self, Messages) ->
         end.
 
 save_data(Messages) ->
-        T = file:write_file("modules/z_message.crl", io_lib:format("~p.~n", [Messages])),
+        T = file:write_file("modules/message.crl", io_lib:format("~p.~n", [Messages])),
         logging:log(info, "MSGS", "Save status: ~p", [T]).

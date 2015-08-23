@@ -1,4 +1,4 @@
--module(z_weather).
+-module(weather).
 -compile(export_all).
 
 -define(WEATHER_STRINGS, [

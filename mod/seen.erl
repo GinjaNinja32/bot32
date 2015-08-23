@@ -1,4 +1,4 @@
--module(z_seen).
+-module(seen).
 -compile(export_all).
 
 -include("definitions.hrl").
@@ -10,16 +10,16 @@ get_commands() ->
 	].
 
 get_data(#state{moduledata=M}) ->
-	case orddict:find(z_seen, M) of
+	case orddict:find(seen, M) of
 		{ok, Value} -> Value;
 		error -> orddict:new()
 	end.
 
 set_data(S=#state{moduledata=M}, Data) ->
-	S#state{moduledata=orddict:store(z_seen, Data, M)}.
+	S#state{moduledata=orddict:store(seen, Data, M)}.
 
 store_data(Data) ->
-	bot ! {setkey, {z_seen, Data}},
+	bot ! {setkey, {seen, Data}},
 	ok.
 
 store_save_data(Data) ->
@@ -31,7 +31,7 @@ initialise(T) ->
 	set_data(T, load_seen()).
 deinitialise(T) ->
 	save_seen(get_data(T)),
-	T#state{moduledata=orddict:erase(z_seen, T#state.moduledata)}.
+	T#state{moduledata=orddict:erase(seen, T#state.moduledata)}.
 
 handle_event(quit, {#user{nick=N}, Reason}, S) -> on_quit(N, Reason, S);
 handle_event(part, {#user{nick=N}, Channel, Reason}, S) -> on_part(N, Channel, Reason, S);

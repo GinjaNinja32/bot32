@@ -1,4 +1,4 @@
--module(z_admin).
+-module(admin).
 -compile(export_all).
 
 -include("definitions.hrl").

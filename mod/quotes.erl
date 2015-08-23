@@ -1,4 +1,4 @@
--module(z_quotes).
+-module(quotes).
 -compile(export_all).
 
 -include("definitions.hrl").
@@ -27,23 +27,23 @@ get_commands() ->
 	].
 
 get_data(#state{moduledata=M}) ->
-	case orddict:find(z_quotes, M) of
+	case orddict:find(quotes, M) of
 		{ok, Value} -> Value;
 		error -> []
 	end.
 
 set_data(S=#state{moduledata=M}, Data) ->
-	S#state{moduledata=orddict:store(z_quotes, Data, M)}.
+	S#state{moduledata=orddict:store(quotes, Data, M)}.
 
 store_data(Data) ->
-	bot ! {setkey, {z_quotes, Data}},
+	bot ! {setkey, {quotes, Data}},
 	ok.
 
 initialise(T) -> set_data(T, load_quotes()).
 
 deinitialise(T) ->
 	save_quotes(get_data(T)),
-	T#state{moduledata=orddict:erase(z_quotes, T#state.moduledata)}.
+	T#state{moduledata=orddict:erase(quotes, T#state.moduledata)}.
 
 %
 
