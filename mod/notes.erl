@@ -49,7 +49,8 @@ delnote(O, RT, P, [T], S) ->
 		_ -> orddict:store(LO, UDict, Dat)
 	end,
 	core ! {irc, {msg, {RT, [P, Reply]}}},
-	{state, set_data(S, NewDict)};
+	save_data(NewDict),
+	{setkey, {?MODULE, NewDict}};
 delnote(_, RT, P, _, _) -> {irc, {msg, {RT, [P, "Provide a single note key!"]}}}.
 
 note(O, RT, P, ["list"], S) -> notes(O, RT, P, a, S);
@@ -83,7 +84,9 @@ note(O, RT, P, [T|C], S) ->
 		error -> {"Note added.", orddict:store(T, string:join(C, " "), orddict:new())}
 	end,
 	core ! {irc, {msg, {RT, [P, Reply]}}},
-	{state, set_data(S, orddict:store(LO, UDict, Dat))};
+	NewData = orddict:store(LO, UDict, Dat),
+	save_data(NewData),
+	{setkey, {?MODULE, NewData}};
 note(_, RT, P, _, _) -> {irc, {msg, {RT, [P, "Provide either a key (to retrieve) or a key and a string (to set)!"]}}}.
 
 notes(O, RT, P, _, S) ->
