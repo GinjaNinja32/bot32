@@ -249,7 +249,7 @@ handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}, State=#state{ni
 					end
 			end,
 			logging:log(debug2, "BOT", "Parsing command: ~p", [Tokens]),
-			case parse_command(de_russian(Tokens), Prefix, [MyNick, "NT"]) of
+			case parse_command(Tokens, Prefix, [MyNick, "NT"]) of
 				{RCommand, RArguments} ->
 					logging:log(info, "BOT", "Command in ~s from ~s: ~s ~s", [Channel, User#user.nick, RCommand, string:join(RArguments, " ")]),
 					{Command, Arguments} = decode_alias(RCommand, State#state.aliases, RArguments),
@@ -259,21 +259,9 @@ handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}, State=#state{ni
 						false ->     handle_command(Rank, Nick, ReplyChannel, ReplyPing, Command, Arguments, State)
 					end;
 				notcommand ->
-					case lists:dropwhile(fun(X) -> re:run(X, "^https?://.*$", [{capture, none}]) /= match end, Tokens) of
-						[] -> ok;
-						[URL|_] -> showurl(ReplyChannel, ReplyPing, URL, "~s")
-					end,
-					case re:run(string:join(Tokens, " "), "\\[\\[([^ ][^\]]+[^ ])\\]\\]", [{capture, all_but_first, binary}]) of
-						{match, [Page]} ->
-							UR = "http://wiki.baystation12.net/" ++ re:replace(Page, " ", "_", [{return, list}, global]),
-							showurl(ReplyChannel, ReplyPing, UR, UR ++ " - ~s", "Page not found!");
-						_ -> ok
-					end,
-					do_pr_linking(Tokens, ReplyChannel, ReplyPing),
-					do_russian(Tokens, ReplyChannel, ReplyPing),
 					lists:foreach(fun(Module) ->
-							lists:member({handle_event,3}, Module:module_info(exports))
-							andalso Module:handle_event(msg, Params, State)
+							call_or(Module, handle_event, [msg, Params, State], null),
+							call_or(Module, do_extras, [Tokens, ReplyChannel, ReplyPing], null)
 						end, sets:to_list(State#state.modules))
 			end
 	end;
@@ -500,84 +488,6 @@ alternate_eightball(List) ->
 		_ -> false
 	end.
 
-russian_keymap() ->
-	[
-		{1025,96},{1040,70},{1041,44},{1042,68},{1043,85},{1044,76},
-		{1045,84},{1046,58},{1047,80},{1048,66},{1049,81},{1050,82},
-		{1051,75},{1052,86},{1053,89},{1054,74},{1055,71},{1056,72},
-		{1057,67},{1058,78},{1059,69},{1060,65},{1061,91},{1062,87},
-		{1063,88},{1064,73},{1065,79},{1066,93},{1067,83},{1068,77},
-		{1069,39},{1070,46},{1071,90},{1072,102},{1073,44},{1074,100},
-		{1075,117},{1076,108},{1077,116},{1078,59},{1079,112},{1080,98},
-		{1081,113},{1082,114},{1083,107},{1084,118},{1085,121},{1086,106},
-		{1087,103},{1088,104},{1089,99},{1090,110},{1091,101},{1092,97},
-		{1093,91},{1094,119},{1095,120},{1096,105},{1097,111},{1098,93},
-		{1099,115},{1100,109},{1101,39},{1102,46},{1103,122},{1105,96}
-	].
-
-do_russian(Tokens, ReplyChannel, ReplyPing) ->
-	String = utf8(list_to_binary(string:join(Tokens, " "))),
-	case is_russian(String) of
-		true -> core ! {irc, {msg, {ReplyChannel, [ReplyPing, "Did you mean: ", convert_russian(String)]}}};
-		false -> ok
-	end.
-
-de_russian(Tokens) ->
-	lists:map(fun(T) ->
-			UTFed = utf8(list_to_binary(T)),
-			case is_russian(UTFed) of
-				true -> convert_russian(UTFed);
-				false -> T
-			end
-		end, Tokens).
-
-is_russian([]) -> false;
-is_russian(String) ->
-	NumRussian = lists:foldl(fun(S,N) -> case orddict:is_key(S, russian_keymap()) of true -> N+1; false -> N end end, 0, String),
-	X = NumRussian >= length(String)/3,
-	X.
-
-convert_russian(String) ->
-	lists:map(fun(S) ->
-			case orddict:find(S, russian_keymap()) of
-				{ok, V} -> V;
-				error -> S
-			end
-		end, String).
-
-utf8(B) -> lists:reverse(utf8(B,[])).
-utf8(<<>>, L) -> L;
-utf8(<<A/utf8, B/binary>>, L) -> utf8(B, [A | L]).
-
-default_user_repo("#yonaguni") -> {"Yonaguni", "Baystation12"};
-default_user_repo("#bot32-test") -> {"GinjaNinja32", "bot32"};
-default_user_repo(_) -> {"Baystation12", "Baystation12"}.
-
-do_pr_linking(Tokens, Channel, Ping) ->
-	lists:foreach(fun(T) -> do_pr_link_token(T, Channel, Ping) end, Tokens).
-
-do_pr_link_token(Token, Channel, Ping) ->
-	{DefU, DefR} = default_user_repo(Channel),
-	case case re:run(Token, "^(?:([a-zA-Z0-9_\-]+)(?:/([a-zA-Z0-9_\-]+))?)?(?:\\[([0-9]{1,5})\\]|#([0-9]{2,5}))(?:$|[^0-9])", [{capture, all_but_first, list}]) of
-		{match, ["", "", "",  N]} -> {DefU, DefR, N};
-		{match, [ U, "", "",  N]} -> {   U, DefR, N};
-		{match, [ U,  R, "",  N]} -> {   U,    R, N};
-		{match, ["", "",      N]} -> {DefU, DefR, N};
-		{match, [ U, "",      N]} -> {   U, DefR, N};
-		{match, [ U,  R,      N]} -> {   U,    R, N};
-		nomatch -> false
-	end of
-		{User, Repo, Num} ->
-			os:putenv("url", ["http://github.com/", User, $/, Repo, "/issues/", Num]),
-			URLTitle = string:strip(re:replace(os:cmd("/home/bot32/urltitle.sh $url"), "([^·]*·[^·]*) · .*", "\\1", [{return, list}])),
-			case re:run(URLTitle, "Issue #[0-9]+$", [{capture, none}]) of
-				match -> ShowURL = ["http://github.com/", User, $/, Repo, "/issues/", Num];
-				nomatch -> ShowURL = ["http://github.com/", User, $/, Repo, "/pull/", Num]
-			end,
-			core ! {irc, {msg, {Channel, [Ping, ShowURL, " - ", util:parse_htmlentities(list_to_binary(URLTitle))]}}};
-		false -> ok
-	end.
-
 load_modules(Modules, State) -> lists:foldl(fun load_module/2, State, Modules).
 
 load_module(Module, State) ->
@@ -597,7 +507,7 @@ load_module(Module, State) ->
 						{ok, CmdList} -> orddict:store(Cmd, {Module, Fun}, CmdList);
 						error ->         orddict:store(Cmd, {Module, Fun}, orddict:new())
 					end, Commands)
-	end, State#state.commands, Module:get_commands()),
+	end, State#state.commands, call_or(Module, get_commands, [], [])),
 
 	% Load aliases
 	NewAliases = lists:foldl(
@@ -677,25 +587,14 @@ recompile_modules(Modules, State) -> lists:foldl(fun recompile_module/2, State, 
 recompile_module(Module, State) ->
 	try
 		Sa = unload_module(Module, State),
-		code:purge(Module),
-		compile:file("mod/" ++ atom_to_list(Module), [{outdir, "./mod/bin/"}]),
-		code:load_file(Module),
+		io:fwrite("purge ~p~n", [code:purge(Module)]),
+		io:fwrite("compile ~p~n", [compile:file("mod/" ++ atom_to_list(Module), [{outdir, "./mod/bin/"}])]),
+		io:fwrite("load ~p~n", [code:load_file(Module)]),
 		load_module(Module, Sa)
 	catch
 		throw:X -> logging:log(error, "MODULE", "Recompile of ~p threw ~p", [Module, X]), State;
 		error:X -> logging:log(error, "MODULE", "Recompile of ~p errored ~p", [Module, X]), State;
 		exit:X -> logging:log(error, "MODULE", "Recompile of ~p exited ~p", [Module, X]), State
-	end.
-
-showurl(Channel, Ping, URL, Format) -> spawn(bot, showurl_raw, [Channel, Ping, URL, Format, false]).
-showurl(Channel, Ping, URL, Format, NotFound) -> spawn(bot, showurl_raw, [Channel, Ping, URL, Format, NotFound]).
-
-showurl_raw(Channel, Ping, URL, Format, NotFound) ->
-	os:putenv("url", URL),
-	case re:replace(os:cmd("/home/bot32/urltitle.sh $url"), "^[ \\t\\n]+(.*[^ \\t\\n])[ \\t\\n]+$", "\\1", [{return, binary}]) of
-		<<>> when NotFound /= false -> core ! {irc, {msg, {Channel, [Ping, NotFound]}}};
-		<<>> -> ok;
-		Sh -> core ! {irc, {msg, {Channel, [Ping, io_lib:format(Format, [util:parse_htmlentities(Sh)])]}}}
 	end.
 
 decode_alias(Command, Aliases, Arguments) ->
