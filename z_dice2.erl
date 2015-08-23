@@ -5,7 +5,8 @@
 
 get_aliases() ->
 	[
-		{"dice", ["roll", "rtd"]},
+		{{"dice", ["d"]}, ["rtd"]},
+		{"dice", ["roll"]},
 		{"edice", ["eroll", "ertd", "exdice", "exroll", "exrtd"]}
 	].
 

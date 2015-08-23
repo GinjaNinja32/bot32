@@ -11,8 +11,8 @@ get_commands() ->
 		{"sdrop", fun sdrop/5, eval},
 		{"serase", fun serase/5, eval},
 		{"sshow", fun sshow/5, eval},
-		{"math", gen_eval(fun math/1), user},
-		{"maths", gen_eval(fun math/1), user}
+		{"maths", gen_eval(fun math/1), user},
+		{"math", gen_eval(fun math/1), user}
 	].
 
 default_data() -> [].
@@ -129,7 +129,7 @@ math(String) ->
 		{ok, Tokens, _} ->
 			case erl_parse:parse_exprs(Tokens) of
 				{ok, [Form]} ->
-					case erl_eval:expr(Form, [{'C',299792458}, {'E',2.718281828459}, {'Pi', math:pi()}], {value, fun lmath/2}, {value, fun nlmath/2}) of
+					case erl_eval:expr(Form, [{'C',299792458}, {'E',2.718281828459}, {'I', {0,1}}, {'Pi', math:pi()}], {eval, fun lmatheval/3}, {value, fun nlmath/2}) of
 						{value, Value, _} -> {ok, Value};
 						X -> throw(X)
 					end;
@@ -141,29 +141,53 @@ math(String) ->
 		X -> throw(X)
 	end.
 
+lmatheval(Func, Args, Bindings) ->
+	RealArgs = lists:map(fun(T) ->
+			case erl_eval:expr(T, Bindings, {eval, fun lmatheval/3}, {value, fun nlmath/2}) of
+				{value, Value, _} -> Value;
+				X -> throw(X)
+			end
+		end, Args),
+	{value, lmath(Func, RealArgs), Bindings}.
+
+
+lmath(sum, [A]) when is_list(A) -> lists:foldl(fun erlang:'+'/2, 0, A);
+lmath(avg, [A]) when is_list(A) -> lists:foldl(fun erlang:'+'/2, 0, A) / length(A);
 lmath(ipow, [B,P]) when is_integer(B) andalso is_integer(P) -> integer_pow(B,P,1);
 %lmath(fact, [A]) when is_integer(A) -> factorial(A,1);
+
+lmath(real, [Z]) -> complex:real(Z);
+lmath(imag, [Z]) -> complex:imag(Z);
+lmath(conj, [Z]) -> complex:conj(Z);
+lmath(cabs, [Z]) -> complex:abs(Z);
+lmath(csqrt, [Z]) -> complex:sqrt(Z);
+lmath(cpow, [Z,N]) -> complex:pow(Z,N);
+lmath(root, [Z,N]) -> complex:root(Z,N);
 
 lmath(Name, []) -> math:Name();
 lmath(Name, [X]) -> math:Name(X);
 lmath(Name, [X,Y]) -> math:Name(X,Y);
 lmath(Name, _) -> ufunc(Name).
 
+
 nlmath({erlang,T},[A]) ->
+%	common:debug("debug", "erlang:~p(~p, ~p)", [T,A]),
 	case T of
 		'not' -> not A;
 		'bnot' -> bnot A;
+		'-' when is_tuple(A) -> complex:sub(0,A);
 		'-' -> - A;
 		'length' -> length(A);
 		_ -> ufunc(erlang,T)
 	end;
 
 nlmath({erlang,T},[A,B]) ->
+%	common:debug("debug", "erlang:~p(~p, ~p)", [T,A,B]),
 	case T of
-		'+' -> A + B;
-		'*' -> A * B;
-		'/' -> A / B;
-		'-' -> A - B;
+		'+' -> complex:add(A,B);
+		'*' -> complex:mul(A,B);
+		'/' -> complex:divd(A,B);
+		'-' -> complex:sub(A,B);
 		'div' -> A div B;
 		'rem' -> A rem B;
 		'and' -> A and B;
@@ -187,8 +211,8 @@ nlmath({erlang,T},[A,B]) ->
 
 nlmath({A,B}, _) -> ufunc(A,B).
 
-ufunc(Mod,Func) -> ufunc(io_lib:format("~s:~s", [Mod, Func])).
-ufunc(Func) -> throw(io_lib:format("Unknown function ~s",[Func])).
+ufunc(Mod,Func) -> ufunc(lists:flatten(io_lib:format("~s:~s", [Mod, Func]))).
+ufunc(Func) -> throw(lists:flatten(io_lib:format("Unknown function ~s",[Func]))).
 
 % Extra math functions for &math
 

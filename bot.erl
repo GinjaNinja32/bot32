@@ -705,11 +705,13 @@ decode_alias(Command, Aliases, Arguments) ->
 	end.
 
 apply_argspec(Spec, Arguments) ->
-	lists:flatmap(fun
+	Args = lists:flatmap(fun
 			({T}) when is_integer(T) -> lists:nthtail(T-1, Arguments);
 			(T) when is_integer(T) -> [lists:nth(T, Arguments)];
 			(T) -> [T]
-		end, Spec).
+		end, Spec),
+%	common:debug("debug", "initial ~p, spec ~p, final ~p", [Arguments, Spec, Args]),
+	Args.
 
 parse_argspec(Params) ->
 	{ok, lists:map(fun(T) ->

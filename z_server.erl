@@ -12,6 +12,11 @@ waitfor_gone(Ident) ->
 			waitfor_gone(Ident)
 	end.
 
+get_aliases() ->
+	[
+		{"serverrank", ["getserverrank"]}
+	].
+
 get_commands() ->
 	[
 		{"pm", fun pm/5, server},
@@ -19,12 +24,13 @@ get_commands() ->
 		{"age", fun age/5, server},
 		{"notes", fun notes/5, server},
 		{"notify", fun notify/5, user},
-		{"serverrank", fun serverrank/5, host}
+		{"setserverrank", fun serverrank/5, host},
+		{"getserverrank", fun gsr/5, server}
 	].
 
 initialise(T) ->
 	case file:consult("server.crl") of
-		{ok, [{Server, Port, Pwd}]} -> spawn(z_server, sloop, [Server, Port, 45678, Pwd]);
+		{ok, {Server, Port, Pwd}) -> spawn(z_server, sloop, [Server, Port, 45678, Pwd]);
 		{error, E} -> logging:log(error, "SERVER", "~p", [E]), error
 	end,
 	T.
@@ -39,9 +45,28 @@ deinitialise(T) ->
 
 %
 
-serverrank(_, RT, Ping, [Rank | Who], _) ->
+gsr(_, RT, P, [], _) ->
+	case file:consult("ranks.crl") of
+		{ok, [Dict]} -> {irc, {msg, {RT, [P, string:join(lists:map(fun({A,_})-> [hd(A),160,tl(A)] end, Dict), "; ")]}}};
+		_ -> {irc, {msg, {RT, [P, "Failed to read file!"]}}}
+	end;
+gsr(_, RT, P, List, _) ->
 	case file:consult("ranks.crl") of
 		{ok, [Dict]} ->
+			{irc, {msg, {RT, [P, string:join(lists:map(fun(A)-> grank(string:to_lower(A),Dict) end, List), "; ")]}}};
+		_ -> {irc, {msg, {RT, [P, "Failed to read file!"]}}}
+	end.
+grank(N, Dict) ->
+	case lists:keyfind(N, 1, Dict) of
+		{_, Rank} -> io_lib:format("~s\xa0~s: ~s", [[hd(N)], tl(N), Rank]);
+		_ -> io_lib:format("~s\xa0~s unknown", [[hd(N)], tl(N)])
+	end.
+
+
+serverrank(_, RT, Ping, [Rank | RWho], _) when RWho /= [] ->
+	case file:consult("ranks.crl") of
+		{ok, [Dict]} ->
+			Who = string:to_lower(string:join(RWho, " ")),
 			case lists:keyfind(Who, 1, Dict) of
 				{_, CRank} -> Message = ["Set rank of ", Who, " to ", Rank, " - was ", CRank];
 				_ ->          Message = ["Set rank of ", Who, " to ", Rank]
@@ -54,7 +79,9 @@ serverrank(_, RT, Ping, [Rank | Who], _) ->
 			{irc, {msg, {RT, [Ping, Message]}}};
 		error ->
 			{irc, {msg, {RT, [Ping, "Failed to read file!"]}}}
-	end.
+	end;
+serverrank(_, RT, Ping, _, _) -> {irc, {msg, {RT, [Ping, "Provide a rank and a nick; e.g. 'setserverrank Admin CoolGuy3000'."]}}}.
+
 
 pm(_, RT, Ping, [], _) -> {irc, {msg, {RT, [Ping, "Provide a user to PM and a message."]}}};
 pm(_, RT, Ping, [_], _) -> {irc, {msg, {RT, [Ping, "Provide a message."]}}};

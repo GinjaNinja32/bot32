@@ -239,7 +239,7 @@ handle_decoded(JSON, Channels) ->
 							{hash, [struct, "before"]}
 						])];
 				[false, false, Force] ->
-					Pushed = if Force -> "force-pushed"; true -> "pushed" end,
+					Pushed = if Force -> ?RED ++ "force-pushed" ++ ?RESET; true -> "pushed" end,
 					PushMsg = create_message(JSON, "[~s] ~s ~s ~b commit~s to ~s (from ~s to ~s): ~s", [
 							{reponame, [struct, "repository"]},
 							[struct, "sender", struct, "login"],

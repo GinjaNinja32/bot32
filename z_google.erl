@@ -6,15 +6,25 @@ get_commands() ->
 		{"google", fun google/5, user}
 	].
 
+google(_, RT, P, [], _) -> {irc, {msg, {RT, [P, "Provide a term to search for."]}}};
 google(_, RT, P, Params, _) ->
-	SearchTerm = string:join(Params, " "),
-	spawn(?MODULE, search, [RT, P, SearchTerm]),
-	ok.
+	case lists:all(fun(T) -> lists:member(T,"0123456789") end, hd(Params)) of
+		true ->
+			N = list_to_integer(hd(Params)) - 1,
+			SearchTerm = string:join(tl(Params), " ");
+		_ ->
+			N = 0,
+			SearchTerm = string:join(Params, " ")
+	end,
+	case SearchTerm of
+		[] -> {irc, {msg, {RT, [P, "Provide a term to search for."]}}};
+		_ -> spawn(?MODULE, search, [RT, P, N, SearchTerm]), ok
+	end.
 
-search(RT, P, Term) ->
+search(RT, P, N, Term) ->
 	case case gen_tcp:connect("ajax.googleapis.com", 80, [{active, false}, {packet, http}]) of
 		{ok, Sock} ->
-			gen_tcp:send(Sock, "GET " ++ mkurl(Term) ++ " HTTP/1.1\r\nHost: ajax.googleapis.com\r\n\r\n"),
+			gen_tcp:send(Sock, "GET " ++ mkurl(N, Term) ++ " HTTP/1.1\r\nHost: ajax.googleapis.com\r\n\r\n"),
 			case gen_tcp:recv(Sock, 0) of
 				{ok, {http_response, _, 200, "OK"}} ->
 					inet:setopts(Sock, [{packet, httph}]),
@@ -23,14 +33,14 @@ search(RT, P, Term) ->
 						{ok, Value} ->
 							inet:setopts(Sock, [{packet, raw}]),
 							case gen_tcp:recv(Sock, list_to_integer(Value), 5000) of
-								{ok, Data} -> json_handle(RT, P, Term, Data);
+								{ok, Data} -> json_handle(RT, P, N, Term, Data);
 								T -> common:debug("debug", "recv gave ~p", [T]), error
 							end;
 						error ->
 							case orddict:find('Transfer-Encoding', Dict) of
 								{ok, "chunked"} ->
 									inet:setopts(Sock, [{packet, raw}]),
-									read_chunked(RT, P, Term, Sock);
+									read_chunked(RT, P, N, Term, Sock);
 								_ -> logging:log(error, "GOOGLE", "no Content-Length and unknown or not present Transfer-Encoding"), error
 							end
 					end;
@@ -43,10 +53,10 @@ search(RT, P, Term) ->
 		_ -> ok
 	end.
 
-read_chunked(RT, P, Term, Sock) ->
+read_chunked(RT, P, N, Term, Sock) ->
 	case read_chunked(Sock, []) of
 		error -> error;
-		Data -> json_handle(RT, P, Term, Data)
+		Data -> json_handle(RT, P, N, Term, Data)
 	end.
 
 read_chunked(Sock, Data) ->
@@ -67,21 +77,19 @@ read_chunked(Sock, Data) ->
 		T -> common:debug("error", "recv gave ~p", [T]), error
 	end.
 
-mkurl(Term) ->
-	"/ajax/services/search/web?q=" ++ http_uri:encode(Term) ++ "&v=1.0&start=1&rsz=small&safe=active&hl=en".
+mkurl(N, Term) ->
+	"/ajax/services/search/web?q=" ++ http_uri:encode(Term) ++ "&v=1.0&start=" ++ integer_to_list(4 * (N div 4)) ++ "&rsz=small&safe=active&hl=en".
 
-json_handle(RT, P, Term, RawJSON) ->
-%	common:debug("debug", "json is ~s", [RawJSON]),
+json_handle(RT, P, N, Term, RawJSON) ->
 	case catch mochijson:decode(RawJSON) of
 		{'EXIT', T} ->
 			logging:log(error, "GOOGLE", "Error in mochijson: ~p", [T]),
 			ok;
 		JSON ->
-			FirstResult = hd(traverse_json(JSON, [struct, "responseData", struct, "results", array])),
-			URL = traverse_json(FirstResult, [struct, "url"]),
-			Title = traverse_json(FirstResult, [struct, "titleNoFormatting"]),
-			core ! {irc, {msg, {RT, [P, Term, ": ", URL, " - ", Title]}}}
-%			common:debug("debug", "google returned ~p", [Data])
+			Result = lists:nth(1 + (N rem 4), traverse_json(JSON, [struct, "responseData", struct, "results", array])),
+			URL = traverse_json(Result, [struct, "unescapedUrl"]),
+			Title = traverse_json(Result, [struct, "titleNoFormatting"]),
+			core ! {irc, {msg, {RT, [P, $(, integer_to_list(N+1), $), $ , Term, ": ", URL, " - ", Title]}}}
 	end.
 
 traverse_json(JSON, []) -> JSON;

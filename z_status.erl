@@ -14,11 +14,12 @@ servers() ->
 
 get_commands() ->
 	[
-		{"address", generic(address), user},
-		{"status",  generic(status), user},
-		{"players", generic(players), user},
-		{"admins",  generic(admins), user},
-		{"mode",    generic(mode), user}
+		{"address",  generic(address), user},
+		{"status",   generic(status), user},
+		{"players",  generic(players), user},
+		{"admins",   generic(admins), user},
+		{"mode",     generic(mode), user},
+		{"manifest", generic(manifest), user}
 	].
 
 initialise(T) -> T.
@@ -47,7 +48,8 @@ status(RT, _, S, P, Name) ->
                         Players = safeget(Dict, "players"),
                         Mode = safeget(Dict, "mode"),
                         Time = safeget(Dict, "stationtime"),
-                        core ! {irc, {msg, {RT, [Name, "Players: ", Players, "; Mode: ", Mode, "; Station Time: ", Time]}}}
+			Duration = safeget(Dict, "roundduration"),
+                        core ! {irc, {msg, {RT, [Name, "Players: ", Players, "; Mode: ", Mode, "; Station Time: ", Time, "; Round Duration: ", Duration]}}}
 	end.
 
 admins(RT, _, S, P, Name) ->
@@ -59,11 +61,18 @@ admins(RT, _, S, P, Name) ->
 				Admins ->
 					BinMins = lists:map(fun({A,B}) -> {re:replace(A, <<32>>, <<160/utf8>>, [{return, binary}, global]),
 					                                   re:replace(B, <<32>>, <<160/utf8>>, [{return, binary}, global])} end, Admins),
-					AdminStr = util:binary_join(lists:map(fun({<<A/utf8,B/binary>>,C}) -> <<A/utf8, 160/utf8, B/binary, " is a ", C/binary>> end, BinMins), <<"; ">>),
+					AdminStr = util:binary_join(lists:map(fun({<<A/utf8,B/binary>>,C}) -> CA=a(C), <<A/utf8, 160/utf8, B/binary, " is ", CA/binary, " ", C/binary>> end, BinMins), <<"; ">>),
 					[io_lib:format("~sAdmins (~b): ", [Name,length(Admins)]), AdminStr]
 			end,
 			core ! {irc, {msg, {RT, Msg}}}
 	end.
+
+a(<<T/utf8, _/binary>>) ->
+	case lists:member(T, "AEIOUaeiou") of
+		true -> <<"an">>;
+		false -> <<"a">>
+	end;
+a(_) -> <<"a">>.
 
 mode(RT, _, S, P, Name) ->
         case byond:send(S, P, "status=2") of
@@ -77,11 +86,27 @@ players(RT, _, S, P, Name) ->
 	case byond:send(S, P, "status=2") of
 		{error, X} -> core ! {irc, {msg, {RT, io_lib:format("~sError: ~p", [Name, X])}}};
 		Dict ->
-			Players = byond:params2dict(safeget(Dict, "playerlist")),
-			Ordered = lists:sort(lists:map(fun({X,_}) -> re:replace(X, [32], <<160/utf8>>, [{return, binary}, global]) end, Players)),
-			Binaried = lists:map(fun(<<A/utf8, B/binary>>) -> <<A/utf8, 160/utf8, B/binary>> end, Ordered),
-			{_, Str, _, _} = lists:foldl(fun acc_players/2, {0, hd(Binaried), RT, Name}, tl(Binaried)),
-			core ! {irc, {msg, {RT, [Name, "Players: ", Str]}}}
+			case safeget(Dict, "players") of
+				"?" -> core ! {irc, {msg, {RT, [Name, "Error."]}}};
+				"0" -> core ! {irc, {msg, {RT, [Name, "No players present."]}}};
+				_ ->
+					Players = byond:params2dict(safeget(Dict, "playerlist")),
+					Ordered = lists:sort(lists:map(fun({X,_}) -> re:replace(X, [32], <<160/utf8>>, [{return, binary}, global]) end, Players)),
+					Binaried = lists:map(fun(<<A/utf8, B/binary>>) -> <<A/utf8, 160/utf8, B/binary>> end, Ordered),
+					{_, Str, _, _} = lists:foldl(fun acc_players/2, {0, hd(Binaried), RT, Name}, tl(Binaried)),
+					core ! {irc, {msg, {RT, [Name, "Players: ", Str]}}}
+			end
+	end.
+
+manifest(RT, _, S, P, Name) ->
+	case byond:send(S, P, "manifest") of
+		{error, X} -> core ! {irc, {msg, {RT, io_lib:format("~sError: ~p", [Name, X])}}};
+		[] -> core ! {irc, {msg, {RT, [Name, "Manifest is empty"]}}};
+		Dict ->
+			lists:map(fun({Dept,Players}) ->
+					Manif = string:join(lists:map(fun({K,V}) -> [K, ": ", V] end, byond:params2dict(Players)), "; "),
+					core ! {irc, {msg, {RT, [Name, Dept, $:, $ , Manif]}}}
+				end, Dict)
 	end.
 
 safeget(Dict, Key) ->
