@@ -283,10 +283,11 @@ handle_irc(numeric, {{rpl,away},_}, _) -> ok;
 handle_irc(numeric, {{A,B},Params}, _) -> logging:log(info, "BOT", "Numeric received: ~p_~p ~s", [A,B,string:join(Params," ")]);
 
 handle_irc(Type, Params, State) ->
-	lists:foreach(fun(Module) ->
-				lists:member({handle_event,3}, Module:module_info(exports))
-				andalso Module:handle_event(Type, Params, State)
-			end, sets:to_list(State#state.modules)).
+	NewState = lists:foldl(fun(Module, CState) ->
+				call_or(Module, handle_event, [Type, Params, CState], null),
+				call_or(Module, handle_event_s, [Type, Params, CState], CState)
+			end, State, sets:to_list(State#state.modules)),
+	{state, NewState}.
 
 handle_host_command(Rank, Origin, ReplyTo, Ping, Cmd, Params, State=#state{}) ->
 	case string:to_lower(Cmd) of
