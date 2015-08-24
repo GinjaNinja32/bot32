@@ -259,10 +259,12 @@ handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}, State=#state{ni
 						false ->     handle_command(Rank, Nick, ReplyChannel, ReplyPing, Command, Arguments, State)
 					end;
 				notcommand ->
-					lists:foreach(fun(Module) ->
-							call_or(Module, handle_event, [msg, Params, State], null),
-							call_or(Module, do_extras, [Tokens, ReplyChannel, ReplyPing], null)
-						end, sets:to_list(State#state.modules))
+					NewState = lists:foldl(fun(Module, CState) ->
+							call_or(Module, handle_event, [msg, Params, CState], null),
+							call_or(Module, do_extras, [Tokens, ReplyChannel, ReplyPing], null),
+							call_or(Module, handle_event_s, [msg, Params, CState], CState)
+						end, State, sets:to_list(State#state.modules)),
+					{state, NewState}
 			end
 	end;
 
@@ -588,7 +590,7 @@ recompile_module(Module, State) ->
 	try
 		Sa = unload_module(Module, State),
 		io:fwrite("purge ~p~n", [code:purge(Module)]),
-		io:fwrite("compile ~p~n", [compile:file("mod/" ++ atom_to_list(Module), [{outdir, "./mod/bin/"}])]),
+		io:fwrite("compile ~p~n", [compile:file("mod/" ++ atom_to_list(Module), [report_errors, report_warnings, {outdir, "./mod/bin/"}])]),
 		io:fwrite("load ~p~n", [code:load_file(Module)]),
 		load_module(Module, Sa)
 	catch

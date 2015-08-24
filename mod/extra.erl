@@ -1,12 +1,12 @@
 -module(extra).
 -compile(export_all).
 
-showurl(Channel, Ping, URL, Format) -> spawn(bot, showurl_raw, [Channel, Ping, URL, Format, false]).
-showurl(Channel, Ping, URL, Format, NotFound) -> spawn(bot, showurl_raw, [Channel, Ping, URL, Format, NotFound]).
+showurl(Channel, Ping, URL, Format) -> spawn(?MODULE, showurl_raw, [Channel, Ping, URL, Format, false]).
+showurl(Channel, Ping, URL, Format, NotFound) -> spawn(?MODULE, showurl_raw, [Channel, Ping, URL, Format, NotFound]).
 
 showurl_raw(Channel, Ping, URL, Format, NotFound) ->
     os:putenv("url", URL),
-    case re:replace(os:cmd("/home/bot32/urltitle.sh $url"), "^[ \\t\\n]+(.*[^ \\t\\n])[ \\t\\n]+$", "\\1", [{return, binary}]) of
+    case re:replace(os:cmd("./urltitle.sh $url"), "^[ \\t\\n]+(.*[^ \\t\\n])[ \\t\\n]+$", "\\1", [{return, binary}]) of
         <<>> when NotFound /= false -> core ! {irc, {msg, {Channel, [Ping, NotFound]}}};
         <<>> -> ok;
         Sh -> core ! {irc, {msg, {Channel, [Ping, io_lib:format(Format, [util:parse_htmlentities(Sh)])]}}}

@@ -26,22 +26,22 @@ initialise(T) -> T.
 deinitialise(T) -> T.
 
 generic(Func) ->
-	fun(_,RT,P,[],_) ->
+	fun(O,RT,P,[],_) ->
 		case orddict:find(defaultserver(RT), servers()) of
-			{ok, {Addr,Port,Name}} -> spawn(status, Func, [RT, P, Addr, Port, Name]), ok;
+			{ok, {Addr,Port,Name}} -> spawn(status, Func, [RT, P, O, Addr, Port, Name]), ok;
 			error -> {irc, {msg, {RT, [P, "Failed to find default server for this channel!"]}}}
 		end;
-	   (_,RT,P,[ServerID],_) ->
+	   (O,RT,P,[ServerID],_) ->
 		case orddict:find(ServerID, servers()) of
-			{ok, {Addr,Port,Name}} -> spawn(status, Func, [RT, P, Addr, Port, Name]), ok;
+			{ok, {Addr,Port,Name}} -> spawn(status, Func, [RT, P, O, Addr, Port, Name]), ok;
 			error -> {irc, {msg, {RT, [P, "Illegal argument!"]}}}
 		end
 	end.
 
-address(RT, Ping, S, P, Name) ->
+address(RT, Ping, _, S, P, Name) ->
 	core ! {irc, {msg, {RT, [Ping, Name, io_lib:format("byond://~s:~b", [S, P])]}}}.
 
-status(RT, _, S, P, Name) ->
+status(RT, _, _, S, P, Name) ->
         case byond:send(S, P, "status=2") of
                 {error, X} -> core ! {irc, {msg, {RT, io_lib:format("~sError: ~p", [Name, X])}}};
                 Dict ->
@@ -52,7 +52,7 @@ status(RT, _, S, P, Name) ->
                         core ! {irc, {msg, {RT, [Name, "Players: ", Players, "; Mode: ", Mode, "; Station Time: ", Time, "; Round Duration: ", Duration]}}}
 	end.
 
-admins(RT, _, S, P, Name) ->
+admins(RT, _, _, S, P, Name) ->
 	case byond:send(S, P, "status=2") of
 		{error, X} -> core ! {irc, {msg, {RT, io_lib:format("~sError: ~p", [Name,X])}}};
 		Dict ->
@@ -74,7 +74,7 @@ a(<<T/utf8, _/binary>>) ->
 	end;
 a(_) -> <<"a">>.
 
-mode(RT, _, S, P, Name) ->
+mode(RT, _, _, S, P, Name) ->
         case byond:send(S, P, "status=2") of
                 {error, X} -> core ! {irc, {msg, {RT, io_lib:format("~sError: ~p", [Name,X])}}};
                 Dict ->
@@ -82,7 +82,7 @@ mode(RT, _, S, P, Name) ->
                         core ! {irc, {msg, {RT, [Name, "Mode: ", Mode]}}}
         end.
 
-players(RT, _, S, P, Name) ->
+players(RT, _, _, S, P, Name) ->
 	case byond:send(S, P, "status=2") of
 		{error, X} -> core ! {irc, {msg, {RT, io_lib:format("~sError: ~p", [Name, X])}}};
 		Dict ->
@@ -98,15 +98,17 @@ players(RT, _, S, P, Name) ->
 			end
 	end.
 
-manifest(RT, _, S, P, Name) ->
+manifest(RT, _, O, S, P, Name) ->
 	case byond:send(S, P, "manifest") of
 		{error, X} -> core ! {irc, {msg, {RT, io_lib:format("~sError: ~p", [Name, X])}}};
 		[] -> core ! {irc, {msg, {RT, [Name, "Manifest is empty"]}}};
 		Dict ->
-			lists:map(fun({Dept,Players}) ->
-					Manif = string:join(lists:map(fun({K,V}) -> [K, ": ", V] end, byond:params2dict(Players)), "; "),
-					core ! {irc, {msg, {RT, [Name, Dept, $:, $ , Manif]}}}
-				end, Dict)
+			Size = lists:map(fun({Dept,Players}) ->
+					Manif = lists:map(fun({K,V}) -> [K, ": ", V] end, byond:params2dict(Players)),
+					core ! {irc, {msg, {O, [Name, Dept, $:, $ , string:join(Manif, "; ")]}}},
+					io_lib:format("~s: ~b", [Dept, length(Manif)])
+				end, Dict),
+			core ! {irc, {msg, {RT, [Name, "Manifest lengths: ", string:join(Size, "; ")]}}}
 	end.
 
 safeget(Dict, Key) ->

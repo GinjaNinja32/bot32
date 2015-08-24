@@ -106,7 +106,10 @@ dicemode(_, RT, P, [Mode], _) ->
 	end,
 	{irc, {msg, {RT, [P, Reply]}}}.
 
+
+dice(_, RT, P, [], _) -> dicehelp(x, RT, P, x, x);
 dice(_, RT, P, Params, _) -> {irc, {msg, {RT, [P, dice(string:join(Params, " "), false)]}}}.
+edice(_, RT, P, [], _) -> dicehelp(x, RT, P, x, x);
 edice(_, RT, P, Params, _) -> {irc, {msg, {RT, [P, dice(string:join(Params, " "), true)]}}}.
 
 -record(dp, {n=1, min=no, max=no, csl=no, csm=no, cfl=no, cfm=no, show=false}).

@@ -17,14 +17,14 @@ default_data() -> orddict:new().
 data_persistence() -> automatic.
 -include("basic_module.hrl").
 
-handle_event(nick, {_, N}, S) -> check_messages_for(N, get_data(S));
-handle_event(join, {#user{nick=N}, _}, S) -> check_messages_for(N, get_data(S));
-handle_event(_,_,_) -> ok.
+handle_event_s(nick, {_,             N}, S) -> case check_messages_for(N, get_data(S)) of nomessages -> S; New -> New end;
+handle_event_s(join, {#user{nick=N}, _}, S) -> case check_messages_for(N, get_data(S)) of nomessages -> S; New -> New end;
+handle_event_s(_,_,S) -> S.
 
 check_messages(Origin, ReplyTo, Ping, _, State=#state{}) ->
 	case check_messages_for(Origin, get_data(State)) of
 		nomessages -> {irc, {msg, {ReplyTo, [Ping, "You have no new messages."]}}};
-		_ -> ok
+		NewState -> {state, NewState}
 	end.
 
 new_message(_, ReplyTo, Ping, [], _) ->
@@ -50,6 +50,7 @@ check_messages_for(NickR, Messages) ->
         Nick = string:to_lower(NickR),
         case orddict:find(Nick, Messages) of
                 {ok, M} ->
+			logging:log(info, ?MODULE, "Found ~b message(s) for ~s in data", [length(M), Nick]
                         lists:foldr(fun({From, Timestamp, Message},_) ->
                                         {Date, Time} = format_time(Timestamp),
 					ThenSecs = calendar:datetime_to_gregorian_seconds(Timestamp),
@@ -60,8 +61,7 @@ check_messages_for(NickR, Messages) ->
                                 end, x, M),
 			NewData = orddict:erase(Nick, Messages),
 			save_data(NewData),
-                        store_data(NewData),
-                        ok;
+                        set_data(State, NewData);
                 error -> nomessages
         end.
 
