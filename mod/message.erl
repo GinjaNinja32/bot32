@@ -17,14 +17,14 @@ default_data() -> orddict:new().
 data_persistence() -> automatic.
 -include("basic_module.hrl").
 
-handle_event_s(nick, {_,             N}, S) -> case check_messages_for(N, get_data(S)) of nomessages -> S; New -> New end;
-handle_event_s(join, {#user{nick=N}, _}, S) -> case check_messages_for(N, get_data(S)) of nomessages -> S; New -> New end;
+handle_event_s(nick, {_,             N}, S) -> case check_messages_for(N, get_data(S)) of nomessages -> S; New -> set_data(S, New) end;
+handle_event_s(join, {#user{nick=N}, _}, S) -> case check_messages_for(N, get_data(S)) of nomessages -> S; New -> set_data(S, New) end;
 handle_event_s(_,_,S) -> S.
 
 check_messages(Origin, ReplyTo, Ping, _, State=#state{}) ->
 	case check_messages_for(Origin, get_data(State)) of
 		nomessages -> {irc, {msg, {ReplyTo, [Ping, "You have no new messages."]}}};
-		NewState -> {state, NewState}
+		NewState -> {setkey, {?MODULE, NewState}}
 	end.
 
 new_message(_, ReplyTo, Ping, [], _) ->
@@ -49,20 +49,20 @@ debug_messages(_, ReplyTo, Ping, _, State=#state{}) ->
 check_messages_for(NickR, Messages) ->
         Nick = string:to_lower(NickR),
         case orddict:find(Nick, Messages) of
-                {ok, M} ->
-			logging:log(info, ?MODULE, "Found ~b message(s) for ~s in data", [length(M), Nick]
-                        lists:foldr(fun({From, Timestamp, Message},_) ->
-                                        {Date, Time} = format_time(Timestamp),
+           {ok, M} ->
+				logging:log(info, ?MODULE, "Found ~b message(s) for ~s in data", [length(M), Nick]),
+				lists:foldr(fun({From, Timestamp, Message},_) ->
+					{Date, Time} = format_time(Timestamp),
 					ThenSecs = calendar:datetime_to_gregorian_seconds(Timestamp),
 					Secs = calendar:datetime_to_gregorian_seconds(calendar:now_to_universal_time(os:timestamp())),
 					DiffStr = common:format_time_difference(Secs - ThenSecs),
                                         core ! {irc, {msg, {Nick, [Message, " - From ", From, " at ", Date, " ", Time, " UTC (",DiffStr," ago)"]}}},
 					x
-                                end, x, M),
+                  end, x, M),
 			NewData = orddict:erase(Nick, Messages),
 			save_data(NewData),
-                        set_data(State, NewData);
-                error -> nomessages
+            NewData;
+           error -> nomessages
         end.
 
 sent(O, RT, P, _, State) ->

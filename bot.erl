@@ -548,6 +548,9 @@ modload_auto(Module) ->
 unload_modules(Modules, State) -> lists:foldl(fun unload_module/2, State, Modules).
 
 unload_module(Module, State) ->
+	case sets:is_element(Module, State#state.modules) of
+		false -> State;
+		true ->
 	logging:log(info, "MODULE", "unloading ~p", [Module]),
 
 	% Remove commands
@@ -581,6 +584,7 @@ unload_module(Module, State) ->
 			State#state{commands = Removed, aliases=NewAliases, modules=sets:del_element(Module, State#state.modules), moduledata=orddict:erase(Module, State#state.moduledata)};
 		none ->
 			State#state{commands = Removed, aliases=NewAliases, modules=sets:del_element(Module, State#state.modules), moduledata=orddict:erase(Module, State#state.moduledata)}
+	end
 	end.
 
 reload_modules(Modules, State) -> lists:foldl(fun reload_module/2, State, Modules).

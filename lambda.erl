@@ -36,3 +36,6 @@ encode(D,K) ->
 			{NX, (A+X) band 16#ff}
 		end, 0, D),
 	ND ++ [C].
+
+permutations([]) -> [[]];
+permutations(L) -> [ [H|T] || H <- L, T <- permutations(L--[H]) ].

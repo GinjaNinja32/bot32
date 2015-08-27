@@ -4,6 +4,8 @@
 defaultserver("#yonaguni") -> "europa";
 defaultserver(_) -> "main".
 
+-define(Sep, 16#feff).
+
 servers() ->
 	[
 		{"dev", {"baystation12.net", 8100, "(dev) "}},
@@ -61,7 +63,7 @@ admins(RT, _, _, S, P, Name) ->
 				Admins ->
 					BinMins = lists:map(fun({A,B}) -> {re:replace(A, <<32>>, <<160/utf8>>, [{return, binary}, global]),
 					                                   re:replace(B, <<32>>, <<160/utf8>>, [{return, binary}, global])} end, Admins),
-					AdminStr = util:binary_join(lists:map(fun({<<A/utf8,B/binary>>,C}) -> CA=a(C), <<A/utf8, 160/utf8, B/binary, " is ", CA/binary, " ", C/binary>> end, BinMins), <<"; ">>),
+					AdminStr = util:binary_join(lists:map(fun({<<A/utf8,B/binary>>,C}) -> CA=a(C), <<A/utf8, ?Sep/utf8, B/binary, " is ", CA/binary, " ", C/binary>> end, BinMins), <<"; ">>),
 					[io_lib:format("~sAdmins (~b): ", [Name,length(Admins)]), AdminStr]
 			end,
 			core ! {irc, {msg, {RT, Msg}}}
@@ -92,7 +94,7 @@ players(RT, _, _, S, P, Name) ->
 				_ ->
 					Players = byond:params2dict(safeget(Dict, "playerlist")),
 					Ordered = lists:sort(lists:map(fun({X,_}) -> re:replace(X, [32], <<160/utf8>>, [{return, binary}, global]) end, Players)),
-					Binaried = lists:map(fun(<<A/utf8, B/binary>>) -> <<A/utf8, 160/utf8, B/binary>> end, Ordered),
+					Binaried = lists:map(fun(<<A/utf8, B/binary>>) -> <<A/utf8, ?Sep/utf8, B/binary>> end, Ordered),
 					{_, Str, _, _} = lists:foldl(fun acc_players/2, {0, hd(Binaried), RT, Name}, tl(Binaried)),
 					core ! {irc, {msg, {RT, [Name, "Players: ", Str]}}}
 			end

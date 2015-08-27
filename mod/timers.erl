@@ -1,4 +1,4 @@
--module(timer).
+-module(timers).
 -compile(export_all).
 
 get_commands() ->
@@ -7,28 +7,28 @@ get_commands() ->
 	].
 
 initialise(T) ->
-	case whereis(timer) of
+	case whereis(?MODULE) of
 		undefined -> ok;
 		Pid ->
 			Pid ! quit,
-			common:waitfor_gone(timer)
+			common:waitfor_gone(?MODULE)
 	end,
-	spawn(timer, init, []),
+	spawn(?MODULE, init, []),
 	T.
 
 deinitialise(T) ->
-	case whereis(timer) of
+	case whereis(?MODULE) of
 		undefined -> ok;
 		Pid ->
 			Pid ! quit,
-			common:waitfor_gone(timer)
+			common:waitfor_gone(?MODULE)
 	end,
 	T.
 
 
 timer(_, ReplyTo, Ping, [    ], _) -> {irc, {msg, {ReplyTo, [Ping, <<"Provide a timer duration in either seconds, minutes:seconds, or hours:minutes:seconds.">>]}}};
 timer(O, ReplyTo, Ping, Params, _) ->
-	case whereis(timer) of
+	case whereis(?MODULE) of
 		undefined -> {irc, {msg, {ReplyTo, [Ping, <<"Timer is currently not running (errored).">>]}}};
 		TimerPid ->
 			case re:run(hd(Params), <<"^([0-9]+)(?::([0-9]+))?(?::([0-9]+))?$">>, [{capture, all_but_first, binary}]) of
@@ -46,7 +46,7 @@ timer(O, ReplyTo, Ping, Params, _) ->
 
 
 init() ->
-	register(timer, self()),
+	register(?MODULE, self()),
 	logging:log(info, "timer", "Loop starting."),
 	loop([]),
 	logging:log(info, "timer", "Loop ending.").

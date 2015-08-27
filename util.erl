@@ -50,6 +50,8 @@ binary_join(List, Sep) ->
 		end
 	end, <<>>, List).
 
+droplast(T) -> lists:reverse(tl(lists:reverse(T))).
+
 lasttail([T|[]]) -> T;
 lasttail([_|TT]) -> lasttail(TT).
 

@@ -12,12 +12,21 @@ get_commands() ->
 		{"serase", fun serase/5, eval},
 		{"sshow", fun sshow/5, eval},
 		{"maths", gen_eval(fun math/1), user},
-		{"math", gen_eval(fun math/1), user}
+		{"math", gen_eval(fun math/1), user},
+		{"sym", fun sym/5, user},
+		{"lsym", fun lsym/5, host}
 	].
 
 default_data() -> [].
 data_persistence() -> automatic.
 -include("basic_module.hrl").
+
+sym(_, RT, P, Par, _) ->
+	os:putenv("sym", string:join(Par, " ")),
+	{irc, {msg, {RT, [P, os:cmd("./sympy_eval.sh 1 \"$sym\"")]}}}.
+lsym(_, RT, P, Par, _) ->
+	os:putenv("sym", string:join(Par, " ")),
+	{irc, {msg, {RT, [P, os:cmd("./sympy_eval.sh 10 \"$sym\"")]}}}.
 
 shl(_, RT, P, Params, State) ->
 	PStr = lists:flatten(string:join(Params, " ")),
