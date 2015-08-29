@@ -217,6 +217,10 @@ parse_command(Params, Prefix, BotAliases) ->
 		_ -> notcommand
 	end.
 
+check_utf8(<<>>) -> true;
+check_utf8(<<_/utf8,B/binary>>) -> check_utf8(B);
+check_utf8(X) -> io:fwrite("~p~n", [X]), false.
+
 %handle_irc(msg, {_,T,_}, _) when T /= "#bot32-test" -> ok;
 handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}, State=#state{nick=MyNick, prefix=Prefix, permissions=Permissions, modules=M}) ->
 	case sets:is_element(z_seen, M) of
@@ -226,6 +230,9 @@ handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}, State=#state{ni
 			end;
 		_ -> ok
 	end,
+	case lists:all(fun(T) -> check_utf8(list_to_binary(T)) end, Tokens) of
+		false -> logging:log(utf8, "BOT", "Ignoring '~s' due to invalid UTF-8", [string:join(Tokens, " ")]);
+		true ->
 	case hasperm(User, ignore, Permissions) of
 		true -> ok;
 		false ->
@@ -266,6 +273,7 @@ handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}, State=#state{ni
 						end, State, sets:to_list(State#state.modules)),
 					{state, NewState}
 			end
+	end
 	end;
 
 handle_irc(ctcp, {Type, #user{nick=Nick}, _Message}, _State) ->
