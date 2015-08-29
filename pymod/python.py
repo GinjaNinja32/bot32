@@ -10,15 +10,18 @@ def init():
 	global pairs
 	print("init")
 
-	with open("markovstr.txt", "rb") as inf:
-		for line in inf:
-			match = re.search("([^ ]*) ([^ ]*) ([^ ]+)\\n", line.decode("utf-8"))
-			if not match:
-				print("failed to parse: " + line.decode("utf-8"))
-			else:
-				a = rd(match.group(1))
-				b = rd(match.group(2))
-				pairs[(a,b)] = int(match.group(3))
+	try:
+		with open("markovstr.txt", "rb") as inf:
+			for line in inf:
+				match = re.search("([^ ]*) ([^ ]*) ([^ ]+)\\n", line.decode("utf-8"))
+				if not match:
+					print("failed to parse: " + line.decode("utf-8"))
+				else:
+					a = rd(match.group(1))
+					b = rd(match.group(2))
+					pairs[(a,b)] = int(match.group(3))
+	except FileNotFoundError:
+		pass
 
 	print("init done")
 	return Atom(b'ok')
@@ -77,6 +80,12 @@ def add(msg):
 		incpair((msg[i], msg[i+1]))
 	incpair((msg[-1],None))
 
+def markovreply(chan, msg):
+	msg = msg.to_string().split(" ")
+	for i, v in enumerate(msg):
+		msg[i] = filter(v)
+	return reply(chan, msg)
+
 def reply(chan, msg):
 	global pairs
 	freq = {}
@@ -111,7 +120,7 @@ def reply(chan, msg):
 				break
 			reply.insert(0, prev)
 
-	print("markov replying with '" + reply + "'")
+	print("markov replying with '" + str(reply) + "'")
 
 	return (Atom(b'irc'), (Atom(b'msg'), (chan, " ".join(reply))))
 
