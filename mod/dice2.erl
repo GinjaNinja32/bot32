@@ -17,9 +17,19 @@ get_commands() ->
 	++ [
 		{"dicemode", fun dicemode/5, admin},
 		{"dice", fun dice/5, user},
-		{"edice",  fun edice/5, user},
-		{"dicehelp", fun dicehelp/5, user}
+		{"edice",  fun edice/5, user}
 	].
+
+get_help("dice") ->
+	[
+		"'dice XdY' for a basic dice roll, using +/-/* to modify the value.",
+		"Basic comparisons can be done using >, >=, <, <=, and =.",
+		"Prepend a 'c' or 'f' to the previous to set critical-success or critical-failure bounds instead.",
+		"Add an 's' at either end to show a summary rather than all rolls.",
+		"Use 'edice' for an exploded roll, i.e. \"14 : [4,5,5]\" instead of \"14 : 14\"."
+	];
+get_help("edice") -> get_help("dice");
+get_help(_) -> unhandled.
 
 special_dice() ->
 	[
@@ -81,11 +91,6 @@ get_sr_edge(N, Sixes, D) ->
 	S = util:count(fun(T) -> T == 6 end, NewDice),
 	get_sr_edge(S, S+Sixes, NewDice ++ D).
 
-dicehelp(_, RT, P, _, _) ->
-	{irc, {msg, {RT, [P,
-		"use XdY to roll dice - if X or Y are not given, they default to 1 and 6. Use +/-/* to modify the value. >, >=, <, <= and = to set success/failure bounds. Prepend a 'c' or an 'f' to these five to set critical-success and/or critical-failure bounds. Add an 's' to show a summary rather than the rolls."
-	]}}}.
-
 get_dicemode() ->
 	case get(dicemode) of
 		internal -> "internal RNG";
@@ -107,9 +112,9 @@ dicemode(_, RT, P, [Mode], _) ->
 	{irc, {msg, {RT, [P, Reply]}}}.
 
 
-dice(_, RT, P, [], _) -> dicehelp(x, RT, P, x, x);
+dice(_, RT, P, [], _) -> {irc, {msg, {RT, [P, "Provide some dice to roll, or try 'help dice' for help."]}}};
 dice(_, RT, P, Params, _) -> {irc, {msg, {RT, [P, dice(string:join(Params, " "), false)]}}}.
-edice(_, RT, P, [], _) -> dicehelp(x, RT, P, x, x);
+edice(_, RT, P, [], _) -> {irc, {msg, {RT, [P, "Provide some dice to roll, or try 'help dice' for help."]}}};
 edice(_, RT, P, Params, _) -> {irc, {msg, {RT, [P, dice(string:join(Params, " "), true)]}}}.
 
 -record(dp, {n=1, min=no, max=no, csl=no, csm=no, cfl=no, cfm=no, show=false}).

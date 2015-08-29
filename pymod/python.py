@@ -4,7 +4,7 @@ import random
 from erlport.erlterms import Atom
 
 pairs = {}
-replyrate = 25
+replyrate = 0
 
 def init():
 	global pairs
