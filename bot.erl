@@ -292,7 +292,10 @@ handle_irc(Type, Params, State) ->
 handle_host_command(Rank, Origin, ReplyTo, Ping, Cmd, Params, State=#state{}) ->
 	case string:to_lower(Cmd) of
 		"update" ->		{update, ReplyTo};
-		"help" ->		core ! {irc, {msg, {Origin, ["builtin host commands: update, reload_all, drop_all, load_mod, drop_mod, reload_mod"]}}},
+		"help" ->	if Params == [] ->
+						core ! {irc, {msg, {Origin, ["builtin host commands: update, reload_all, drop_all, load_mod, drop_mod, reload_mod"]}}};
+						true -> ok
+					end,
 					handle_command(Rank, Origin, ReplyTo, Ping, Cmd, Params, State);
 
 		"modules" ->
@@ -415,6 +418,38 @@ handle_command(Ranks, Origin, ReplyTo, Ping, Cmd, Params, State=#state{commands=
 							{state, State#state{moduledata=orddict:store(callme, NewDict, State#state.moduledata)}}
 					end
 			end;
+		"help" when Params /= [] ->
+			case orddict:find(hd(Params), State#state.aliases) of
+				{ok, {HelpCommand,_}} -> ok;
+				{ok, HelpCommand} -> ok;
+				error -> HelpCommand = hd(Params)
+			end,
+			HelpTopic = string:join([HelpCommand | tl(Params)], " "),
+			case lists:foldl(fun
+				(Rank, unhandled) ->
+					case case orddict:find(Rank, Commands) of
+						{ok, X} -> X;
+						error -> orddict:new()
+					end of
+						[] -> unhandled;
+						RankCmds ->
+							case orddict:find(HelpCommand, RankCmds) of
+								{ok, {Mod,_}} ->
+									case call_or(Mod, get_help, [HelpTopic], unhandled) of
+										unhandled -> unhandled;
+										Strings ->
+											core ! {irc, {msg, {Origin, ["Help for '", HelpTopic, "':"]}}},
+											lists:foreach(fun(T) -> core ! {irc, {msg, {Origin, T}}} end, Strings), ok
+									end;
+								error -> unhandled
+							end
+					end;
+				(_, Result) -> Result
+			end, unhandled, Ranks) of
+				unhandled -> core ! {irc, {msg, {ReplyTo, [Ping, "No help found for '", HelpTopic, "'."]}}};
+				_ -> ok
+			end,
+			ok;
 		_ -> lists:foldl(fun
 			(Rank, unhandled) ->
 				case case orddict:find(Rank, Commands) of
