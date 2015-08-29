@@ -53,11 +53,10 @@ def main(a, b, c, d):
 	for i, v in enumerate(params):
 		params[i] = v.to_string()
 
-	print(o + ", " + rt + ", " + p)
-	for i, v in enumerate(params):
-		print(str(i) + ": " + params[i])
-
-	return (Atom(b'irc'), (Atom(b'msg'), (rt, p + 'hello world')))
+	rep = reply(rt, " ".join(params))
+	print(" ".join(params) + " -> " + str(rep))
+	return rep
+#	return (Atom(b'irc'), (Atom(b'msg'), (rt, p + 'hello world')))
 
 def markov(chan, msg):
 	msg = msg.to_string().split(" ")
