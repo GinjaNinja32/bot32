@@ -54,7 +54,11 @@ handle_event(msg, {_, Channel, Msg}, S) ->
 	case S#state.nick of
 		Channel -> ok;
 		_ ->
-			case call(markov, [Channel, string:join(Msg, " ")], Channel, S) of
+			case re:run(string:join(Msg, " "), util:regex_escape(S#state.nick), [caseless, {capture, none}]) of
+				match -> Func = markovreply;
+				_ -> Func = markov
+			end,
+			case call(Func, [Channel, string:join(Msg, " ")], Channel, S) of
 				{irc, T} -> core ! {irc, T};
 				_ -> ok
 			end
