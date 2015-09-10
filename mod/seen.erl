@@ -50,7 +50,7 @@ debug(_, RT, P, _, State) ->
 
 seen(_, RT, P, [], _) -> {irc, {msg, {RT, [P, "Provide a nick to search for!"]}}};
 seen(_, RT, P, Params, State) ->
-	LParam = string:to_lower(string:join(Params, " ")),
+	LParam = string:to_lower(hd(Params)),
 	D=get_data(State),
 	case orddict:filter(fun(N,_) ->
 				string:str(string:to_lower(N), LParam) /= 0
@@ -59,7 +59,7 @@ seen(_, RT, P, Params, State) ->
 		[{N, {What, When}}] ->
 			T = format_tstamp(When),
 			{irc, {msg, {RT, [P, N, " was last seen ",What," at ",T]}}};
-		T when length(T) =< 10 ->
+		T -> % when length(T) =< 10 ->
 			{Nicks, {N,{What,When}}} = orddict:fold(
 				fun
 					(N,{What,When},{Nicks,Recent={_, {_,RecentWhen}}}) ->
@@ -76,11 +76,11 @@ seen(_, RT, P, Params, State) ->
 						end,
 						{[N|Nicks],NewRecent}
 				end, {[], {none, {x,x}}}, T),
-			{irc, {msg, {RT, [P, "Results: ", string:join(Nicks, " "), "; ",N," was last seen ",What," at ",format_tstamp(When)]}}};
-		T ->
-			Nicks = lists:map(fun({N,_}) -> N end, T),
-			{FirstTen, _} = lists:split(10, Nicks),
-			{irc, {msg, {RT, [P, "Results: ", string:join(FirstTen, " "), " (", integer_to_list(length(T)-10), " more)"]}}}
+			{Extra, FirstTen} = if
+				length(Nicks) =< 10 -> {"", Nicks};
+				true -> {A,_} = lists:split(10, Nicks), {[" (", integer_to_list(length(Nicks)-10), " more)"], A}
+			end,
+			{irc, {msg, {RT, [P, "Results: ", string:join(FirstTen, " "), Extra, "; ",N," was last seen ",What," at ",format_tstamp(When)]}}}
 	end.
 
 %

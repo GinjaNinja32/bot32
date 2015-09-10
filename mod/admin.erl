@@ -25,6 +25,7 @@ get_commands() ->
 		{"addprefix", fun addprefix/5, host},
 		{"remprefix", fun remprefix/5, host},
 		{"cmode", fun mode/5, admin},
+		{"kick", fun kick/5, admin},
 		{"raw", fun raw/5, host}
 	].
 
@@ -246,6 +247,12 @@ format_prefixes(List) -> lists:foldr(fun(T,B) -> <<T/utf8, B/binary>> end, <<>>,
 
 mode(ReplyTo, ReplyTo, Ping, _, _) -> {irc, {msg, {ReplyTo, [Ping, "Use this in a channel, not query."]}}};
 mode(_, ReplyTo, _, Params, _) -> {irc, {mode, {ReplyTo, string:join(Params, " ")}}}.
+
+kick(_, Chan, _, [User | Reason], _) ->
+	core ! {irc, {kick, {Chan, User, Reason}}},
+	ok;
+kick(_, RT, P, _, _) ->
+	{irc, {msg, {RT, [P, "Provide a user to kick and an optional reason"]}}}.
 	
 raw(_, _, _, Params, _) ->
 	core ! {raw, string:join(Params, " ")},

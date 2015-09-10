@@ -21,19 +21,23 @@ get_commands() ->
 		{"save_food", fun save_food/5, host}
 	].
 
+get_help(String) ->
+	LString = string:to_lower(String),
+	case lists:filter(fun({K,_,_}) -> LString == atom_to_list(K) end, get_food_options()) of
+		[{Type, Options, Format}] ->
+			[
+				["Add with '", String, " add [key] [what]'."],
+				["Key can be: ", string:join(lists:map(fun atom_to_list/1, Options), ", "), $.],
+				["Format is '", lists:map(fun(T) when is_atom(T) -> [$[,atom_to_list(T),$]]; (T) -> T end, Format), "[Nick].'"]
+			];
+		_ -> unhandled
+	end.
+
 default_data() -> orddict:new().
 data_persistence() -> automatic.
 -include("basic_module.hrl").
 
 genfood(T) -> fun(O, RT, P, Prms, S) -> mkfood(T, O, RT, P, Prms, S) end.
-
-mkfood(K, _, RT, P, ["help"|_], _) ->
-	{_, Keys, String} = get_tuple_for_key(K),
-	{irc, {msg, {RT, [P,
-		"Add with '",atom_to_list(K)," add [key] [what]'. ",
-		"Key can be: ", string:join(lists:map(fun atom_to_list/1, Keys), ", "), ". ",
-		"Format is '", lists:map(fun(T) when is_atom(T) -> [$[,atom_to_list(T),$]]; (T) -> T end, String), "[Nick].'"
-	]}}};
 
 mkfood(_, _, RT, P, ["add",_], _) -> {irc, {msg, {RT, [P, "Provide an item!"]}}};
 mkfood(K, _, RT, P, ["add",Key|What], S) ->

@@ -86,10 +86,15 @@ json_handle(RT, P, N, Term, RawJSON) ->
 			logging:log(error, "GOOGLE", "Error in mochijson: ~p", [T]),
 			ok;
 		JSON ->
-			Result = lists:nth(1 + (N rem 4), traverse_json(JSON, [struct, "responseData", struct, "results", array])),
-			URL = traverse_json(Result, [struct, "unescapedUrl"]),
-			Title = traverse_json(Result, [struct, "titleNoFormatting"]),
-			core ! {irc, {msg, {RT, [P, $(, integer_to_list(N+1), $), $ , Term, ": ", URL, " - ", Title]}}}
+			Reply = case traverse_json(JSON, [struct, "responseData", struct, "results", array]) of
+				[] -> "No results found.";
+				List ->
+					Result = lists:nth(1 + (N rem 4), List),
+					URL = traverse_json(Result, [struct, "unescapedUrl"]),
+					Title = traverse_json(Result, [struct, "titleNoFormatting"]),
+					[$(, integer_to_list(N+1), $), $ , Term, ": ", URL, " - ", Title]
+			end,
+			core ! {irc, {msg, {RT, [P, Reply]}}}
 	end.
 
 traverse_json(JSON, []) -> JSON;

@@ -84,7 +84,7 @@ tcp_parse(S, T, M) ->
 			case tl(Tokens) of
 				% Setup & system
 				["PONG", _Who | _Comment] -> ok; % common:debug("pong", "~p : ~p", [Who, Comment]), ok;
-				["NICK", Nick] -> {irc, {nick, {Origin, tl(Nick)}}};
+				["NICK", Nick] -> {irc, {nick, {Origin, Nick}}};
 				["QUIT" | Reason] -> {irc, {quit, {Origin, [tl(hd(Reason)) | tl(Reason)]}}};
 				["MODE" | Params] -> {irc, {mode, {Origin, Params}}};
 				["KICK", Channel, Nick | Params] ->
@@ -144,23 +144,24 @@ parse_notice(Origin, Channel, Message) ->
 		true -> {irc, {notice, {Origin, Channel, Message}}}
 	end.
 
-tcp_send(S, T, {pass, Pass}) ->				raw_send(S, T, ["PASS :", Pass]);
-tcp_send(S, T, {user, {User, Mode, Real}} ) ->		raw_send(S, T, ["USER ",User," ",Mode," * :",Real]);
-tcp_send(S, T, {nick, Nick}) ->				raw_send(S, T, ["NICK ",Nick]);
-tcp_send(S, T, {mode, {Channel, Mode}}) ->		raw_send(S, T, ["MODE ", Channel, 32, Mode]);
-tcp_send(S, T, {quit, Message}) ->			raw_send(S, T, ["QUIT :",Message]), core!quit;
-tcp_send(S, T, {pong, Params}) ->			raw_send(S, T, ["PONG ",Params]);
-tcp_send(S, T, {join, Channel}) ->			raw_send(S, T, ["JOIN ",Channel]);
-tcp_send(S, T, {part, {Channel, Reason}}) ->		raw_send(S, T, ["PART ",Channel," :",Reason]);
-tcp_send(S, T, {msg, {Recipient, Message}}) ->		raw_send(S, T, ["PRIVMSG ",Recipient," :",Message]);
-tcp_send(S, T, {ctcp, {version, R, V}}) ->		raw_send(S, T, ["PRIVMSG ",R," :\1VERSION ",V,1]);
-tcp_send(S, T, {ctcp, {action, R, V}}) ->		raw_send(S, T, ["PRIVMSG ",R," :\1ACTION ",V,1]);
-tcp_send(S, T, {ctcp, {unknown, R, V}}) ->		raw_send(S, T, ["PRIVMSG ",R," :\1",V,1]);
-tcp_send(S, T, {notice, {Recipient, Message}}) ->	raw_send(S, T, ["NOTICE ",Recipient," :",Message]);
-tcp_send(S, T, {ctcp_re, {version, R, V}}) ->		raw_send(S, T, ["NOTICE ",R," :\1VERSION ",V,1]);
-tcp_send(S, T, {ctcp_re, {action, R, V}}) ->		raw_send(S, T, ["NOTICE ",R," :\1ACTION ",V,1]);
-tcp_send(S, T, {ctcp_re, {unknown, R, V}}) ->		raw_send(S, T, ["NOTICE ",R," :\1",V,1]);
-tcp_send(_, _, {T, X}) ->				logging:log(error, "SEND", "Unknown IRC message type or fomat {~p, ~p}", [T, X]).
+tcp_send(S, T, {pass, Pass}) ->                    raw_send(S, T, ["PASS :", Pass]);
+tcp_send(S, T, {user, {User, Mode, Real}} ) ->     raw_send(S, T, ["USER ",User," ",Mode," * :",Real]);
+tcp_send(S, T, {nick, Nick}) ->                    raw_send(S, T, ["NICK ",Nick]);
+tcp_send(S, T, {mode, {Channel, Mode}}) ->         raw_send(S, T, ["MODE ", Channel, 32, Mode]);
+tcp_send(S, T, {quit, Message}) ->                 raw_send(S, T, ["QUIT :",Message]), core!quit;
+tcp_send(S, T, {pong, Params}) ->                  raw_send(S, T, ["PONG ",Params]);
+tcp_send(S, T, {join, Channel}) ->                 raw_send(S, T, ["JOIN ",Channel]);
+tcp_send(S, T, {part, {Channel, Reason}}) ->       raw_send(S, T, ["PART ",Channel," :",Reason]);
+tcp_send(S, T, {kick, {Channel, User, Reason}}) -> raw_send(S, T, ["KICK ",Channel," ",User," :",Reason]);
+tcp_send(S, T, {msg, {Recipient, Message}}) ->     raw_send(S, T, ["PRIVMSG ",Recipient," :",Message]);
+tcp_send(S, T, {ctcp, {version, R, V}}) ->         raw_send(S, T, ["PRIVMSG ",R," :\1VERSION ",V,1]);
+tcp_send(S, T, {ctcp, {action, R, V}}) ->          raw_send(S, T, ["PRIVMSG ",R," :\1ACTION ",V,1]);
+tcp_send(S, T, {ctcp, {unknown, R, V}}) ->         raw_send(S, T, ["PRIVMSG ",R," :\1",V,1]);
+tcp_send(S, T, {notice, {Recipient, Message}}) ->  raw_send(S, T, ["NOTICE ",Recipient," :",Message]);
+tcp_send(S, T, {ctcp_re, {version, R, V}}) ->      raw_send(S, T, ["NOTICE ",R," :\1VERSION ",V,1]);
+tcp_send(S, T, {ctcp_re, {action, R, V}}) ->       raw_send(S, T, ["NOTICE ",R," :\1ACTION ",V,1]);
+tcp_send(S, T, {ctcp_re, {unknown, R, V}}) ->      raw_send(S, T, ["NOTICE ",R," :\1",V,1]);
+tcp_send(_, _, {T, X}) -> logging:log(error, "SEND", "Unknown IRC message type or fomat {~p, ~p}", [T, X]).
 
 parse_origin(O) ->
 	case re:run(O, "([^!@]+)(!([^!@]+)@([^!@]+))?", [{capture, all_but_first, list}]) of
@@ -172,6 +173,11 @@ parse_origin(O) ->
 
 numeric_parse(Num) ->
 	case Num of
+		001 -> {rpl, welcome};
+		002 -> {rpl, your_host};
+		003 -> {rpl, created};
+		004 -> {rpl, my_info};
+		005 -> {rpl, bounce};
 		200 -> {rpl, trace_link};
 		201 -> {rpl, trace_connecting};
 		202 -> {rpl, trace_handshake};

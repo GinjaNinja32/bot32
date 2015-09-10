@@ -3,73 +3,87 @@ import re
 import random
 from erlport.erlterms import Atom
 
+def log(s):
+	print("PYTHON: " + s)
+
 pairs = {}
 replyrate = 0
 
 def init():
 	global pairs
-	print("init")
+	log("init")
 
 	try:
 		with open("markovstr.txt", "rb") as inf:
 			for line in inf:
-				match = re.search("([^ ]*) ([^ ]*) ([^ ]+)\\n", line.decode("utf-8"))
+				match = re.search(b"([^ ]*) ([^ ]*) ([^ ]+)\\n", line)
 				if not match:
-					print("failed to parse: " + line.decode("utf-8"))
+					log("failed to parse: " + line.decode("utf-8"))
 				else:
 					a = rd(match.group(1))
 					b = rd(match.group(2))
 					pairs[(a,b)] = int(match.group(3))
 	except FileNotFoundError:
+		log("failed to load file")
 		pass
 
-	print("init done")
+	log("init done with " + str(len(pairs)) + " pairs")
 	return Atom(b'ok')
 
 def exit():
 	global pairs
-	print("exit")
+	log("exiting with " + str(len(pairs)) + " pairs")
 
-	with open("markovstr.txt", "w") as ouf:
-		for (a,b) in pairs.keys():
-			ouf.write(wr(a) + " " + wr(b) + " " + str(pairs[(a,b)]) + "\n")
+	i = 0
+	s = 0
+	with open("markovstr.txt", "wb") as ouf:
+		for key in pairs.keys():
+			i = i + 1
+			wk0 = wr(key[0])
+			wk1 = wr(key[1])
+			if type(wk0) == bytes and type(wk1) == bytes:
+				s = s + 1
+				ouf.write(wk0 + b" " + wk1 + b" " + bytes(str(pairs[key]), 'utf-8') + b"\n")
+			else:
+				log("cannot write key " + str(key) + " at index " + str(i))
 
+	log("exit done, wrote " + str(s) + " keys successfully of " + str(i) + " total")
 	return Atom(b'ok')
 
 def rd(a):
-	if a == "{}":
+	if a == b"{}":
 		return None
 	else:
 		return a
 
 def wr(a):
 	if a == None:
-		return "{}"
+		return b"{}"
 	else:
 		return a
 
-def main(a, b, c, d):
-	o = a.to_string()
-	rt = b.to_string()
-	p = c.to_string()
-	params = d
-	for i, v in enumerate(params):
-		params[i] = v.to_string()
-
-	rep = reply(rt, " ".join(params))
-	print(" ".join(params) + " -> " + str(rep))
-	return rep
-#	return (Atom(b'irc'), (Atom(b'msg'), (rt, p + 'hello world')))
+def contexts(chan, ping, word):
+	global pairs
+	word = bytes(filter(word.to_string()), 'utf-8')
+	contexts = 0
+	n = 0
+	for (a,b) in pairs.keys():
+		if a == word or b == word:
+			contexts = contexts + 1
+			n = n + pairs[(a,b)]
+	return (Atom(b'irc'), (Atom(b'msg'), (chan, ping.to_string() + "I have " + str(contexts) + " contexts totalling " + str(n) +" instances for '" + str(word) + "'.")))
 
 def markov(chan, msg):
-	msg = msg.to_string().split(" ")
-	for i, v in enumerate(msg):
-		msg[i] = filter(v)
+	words = msg.to_string().split(" ")
+	for i, v in enumerate(words):
+		filtered = filter(v)
+		bytesed = bytes(filtered, 'utf-8')
+		words[i] = bytesed
 
 	if random.randint(0,100) < replyrate:
-		return reply(chan, msg)
+		return reply(chan, words)
 	else:
-		add(msg)
+		add(words)
 		return Atom(b'ok')
 
 def add(msg):
@@ -83,7 +97,7 @@ def add(msg):
 def markovreply(chan, msg):
 	msg = msg.to_string().split(" ")
 	for i, v in enumerate(msg):
-		msg[i] = filter(v)
+		msg[i] = bytes(filter(v), 'utf-8')
 	return reply(chan, msg)
 
 def reply(chan, msg):
@@ -103,26 +117,42 @@ def reply(chan, msg):
 
 	reply = [word]
 
-	for _ in range(0,10):
+	for _ in range(0,20):
 		next = get_word(reply[-1], lambda x,a,b: x==a, lambda a,b: b)
 		if next == None:
-			break
+			continue
 		else:
 			reply.append(next)
 			if next[-1] == '.':
+				log("next (" + str(next) + ") has . at end, breaking")
 				break
-	for _ in range(0,10):
+	for _ in range(0,20):
 		prev = get_word(reply[0], lambda x,a,b: x==b, lambda a,b: a)
 		if prev == None:
-			break
+			continue
 		else:
 			if prev[-1] == '.':
+				log("prev (" + str(prev) + ") has . at end, breaking")
 				break
 			reply.insert(0, prev)
 
-	print("markov replying with '" + str(reply) + "'")
+	reply_str = fix_string(b" ".join(reply))
 
-	return (Atom(b'irc'), (Atom(b'msg'), (chan, " ".join(reply))))
+	log("markov replying with '" + str(reply_str) + "'")
+
+	return (Atom(b'irc'), (Atom(b'msg'), (chan, reply_str)))
+
+def fix_string(string):
+	for pattern, replacement in [
+				(b"(i)(m)",        b"\\1'\\2"),
+				(b"([dw]on|(?:c|w|sh)ouldn|can|shan)(t)", b"\\1'\\2"),
+				(b"(there)(s)",    b"\\1'\\2"),
+				(b"(they|we)(re)", b"\\1'\\2"),
+				(b"(s?he)(s)",     b"\\1'\\2")
+			]:
+		string = re.sub(b"\\b" + pattern + b"\\b", replacement, string, flags = re.IGNORECASE)
+	return string
+#	return re.sub(b"\\b([iI])([mM])\\b", b"\\1'\\2", string)
 
 def get_word(word, match = lambda x, a, b: x==a, select = lambda a, b: b):
 	global pairs
@@ -131,7 +161,10 @@ def get_word(word, match = lambda x, a, b: x==a, select = lambda a, b: b):
 		if match(word, a, b):
 			weight[(a,b)] = pairs[(a,b)]
 	tup = pick_weight(weight)
-	return select(tup[0], tup[1])
+	if tup == None:
+		return None
+	else:
+		return select(tup[0], tup[1])
 
 def calc_freq(word):
 	global pairs

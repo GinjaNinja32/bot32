@@ -19,9 +19,12 @@ get_commands() ->
 initialise(T) -> T.
 deinitialise(T) -> T.
 
+i2l(T, S) when T < 10 -> [S] ++ integer_to_list(T);
+i2l(T, _) -> integer_to_list(T).
+
 colors(_, ReplyTo, Ping, _, _) -> {irc, {msg, {ReplyTo, [Ping,
-		lists:map(fun(X) -> [3,integer_to_list(X),32,integer_to_list(X)] end, lists:seq(0,16)),
-		lists:map(fun(X) -> [3,$0,$,,integer_to_list(X),32,integer_to_list(X)] end, lists:seq(0,16))
+		lists:map(fun(X) -> [3,i2l(X,$0),i2l(X,$ )] end, lists:seq(0,15)),
+		lists:map(fun(X) -> [3,$,,i2l(X,$0),i2l(X,$ )] end, lists:seq(0,15))
 	]}}}.
 
 ping(_, ReplyTo, Ping, _, _) -> {irc, {msg, {ReplyTo, [Ping, "Pong!"]}}}.

@@ -10,7 +10,7 @@ get_help("time") ->
 	[
 		"time [time] [src] [dest]: convert [time] from [src] to [dest], e.g. 'time 2:00 EST GMT' to convert 2:00 EST into GMT",
 		"time [time] [timezone]: work out how long since/until it was/will be [time] in [timezone], e.g. 'time 20:00 GMT' to find out how long until 20:00 GMT",
-		"time now [timezone]: find the current time in [timezone]"
+		"time [timezone]: find the current time in [timezone]"
 	];
 get_help(_) -> unhandled.
 
@@ -19,16 +19,14 @@ deinitialise(T) -> T.
 
 time(_, RT, P, Params, _) -> {irc, {msg, {RT, [P, time_convert(Params)]}}}.
 
-time_convert(["now"]) -> "Provide a timezone to convert to.";
-time_convert(["now", Dst]) ->
+time_convert([Dst]) ->
 	{_,{Hr,Min,_}} = calendar:now_to_universal_time(os:timestamp()),
 	case parse_timezone(string:to_upper(Dst)) of
 		false -> "Invalid destination timezone!";
 		{_, DstHr, DstMin, DstName} -> io_lib:format("It is currently ~s ~s", [san_format(Hr+DstHr, Min+DstMin), DstName])
 	end;
 
-time_convert([]) -> "Provide a time to convert, and a source and destination timezone, the word 'now' and a destination timezone, or a time and a timezone.";
-time_convert([_]) -> "Provide a source and destination timezone, or a timezone to interpret this time in.";
+time_convert([]) -> "Provide a time to convert, and a source and destination timezone, a destination timezone, or a time and a timezone.";
 time_convert([_,_,_,_|_]) -> "Too many arguments!";
 time_convert([Time,TZ]) ->
 	case parse_timezone(string:to_upper(TZ)) of
@@ -38,7 +36,12 @@ time_convert([Time,TZ]) ->
 				false -> "Invalid time!";
 				{Hr, Min} ->
 					{_,{CHr,CMin,_}} = calendar:now_to_universal_time(os:timestamp()),
-					{H,M} = san(Hr-TZHr - CHr - 1, Min-TZMin - CMin),
+					{SH, SM} = case {Hr - TZHr - CHr, Min - TZMin - CMin} of
+						{A,B} when B < 0 -> {A-1 - (-B div 60), B};
+						{A,B} -> {A + (B div 60),B}
+					end,
+					{H, M} = san(SH, SM),
+					io:fwrite("checking TZ; san(~b, ~b) = {~b, ~b}~n", [SH, SM, H, M]),
 					if
 						H > 12 -> io_lib:format("It was ~b:~s ~s ~s ago.", [Hr, mins(Min), TZName, common:format_time_difference((60-M)*60 + (23-H)*3600)]);
 						true -> io_lib:format("It will be ~b:~s ~s in ~s.", [Hr, mins(Min), TZName, common:format_time_difference(M*60 + H*3600)])
@@ -82,10 +85,16 @@ parse_timezone(Code) ->
 	end.
 
 parse_time(TimeStr) ->
-	case re:run(TimeStr, "(2[0-3]|[01]?[0-9])(?::([0-5]?[0-9]))?", [{capture, all_but_first, list}]) of
-		{match, [Hr]} -> {list_to_integer(Hr), 0};
-		{match, [Hr, Min]} -> {list_to_integer(Hr), list_to_integer(Min)};
-		nomatch -> false
+	case re:run(TimeStr, "^(2[0-3]|[01][0-9])[0-5][0-9]$", [{capture, none}]) of
+		match ->
+			{A,B} = lists:split(2, TimeStr),
+			{list_to_integer(A), list_to_integer(B)};
+		nomatch ->
+			case re:run(TimeStr, "^(2[0-3]|[01]?[0-9])(?::([0-5]?[0-9]))?$", [{capture, all_but_first, list}]) of
+				{match, [Hr]} -> {list_to_integer(Hr), 0};
+				{match, [Hr, Min]} -> {list_to_integer(Hr), list_to_integer(Min)};
+				nomatch -> false
+			end
 	end.
 
 san(Hr, Min) when  0 > Hr  -> san(Hr+24, Min);

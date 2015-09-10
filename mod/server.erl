@@ -155,15 +155,10 @@ loop(SvrSock, Svr, Prt, SPrt, Pwd, Notify) ->
 					case hd(orddict:fetch_keys(Dict)) of
 						"No information found on the given key." -> ["No information found on the key '", Lookup, "'."];
 						T ->
-							os:putenv("pp_content", T),
-							Password = genpasswd(),
-							os:putenv("pp_passwd", Password),
-							X = os:cmd("echo $pp_content | /home/bot32/privatepaste.py --no-tee -e '1 hour' -p \"$pp_passwd\""),
-							case re:run(X, ["Pasting...\\n(.+)/", util:regex_escape(Password)], [{capture, all_but_first, binary}]) of
-								{match, [URL]} ->
-									["Notes for ", Lookup, ": ", URL, " - password is ", Password];
-								_ -> ["unknown error: ", X]
-							end
+							File = re:replace(base64:encode(erlang:md5(T)), "/", "@", [global]),
+							Filename = io_lib:format("/home/bot32/www/~s.txt", [File]),
+							file:write_file(Filename, T),
+							["Following link valid for approximately ten minutes: http://151.80.68.132/admin/", File, ".txt"]
 					end
 			end,
 			core ! {irc, {msg, {ReplyChannel, [ReplyPing, Reply]}}},

@@ -23,10 +23,10 @@ data_persistence() -> automatic.
 
 sym(_, RT, P, Par, _) ->
 	os:putenv("sym", string:join(Par, " ")),
-	{irc, {msg, {RT, [P, os:cmd("./sympy_eval.sh 1 \"$sym\"")]}}}.
+	{irc, {msg, {RT, [P, os:cmd("./sympy_eval.sh 5 \"$sym\"")]}}}.
 lsym(_, RT, P, Par, _) ->
 	os:putenv("sym", string:join(Par, " ")),
-	{irc, {msg, {RT, [P, os:cmd("./sympy_eval.sh 10 \"$sym\"")]}}}.
+	{irc, {msg, {RT, [P, os:cmd("./sympy_eval.sh 60 \"$sym\"")]}}}.
 
 shl(_, RT, P, Params, State) ->
 	PStr = lists:flatten(string:join(Params, " ")),
@@ -205,6 +205,8 @@ nlmath({erlang,T},[A,B]) ->
 		'band' -> A band B;
 		'bor' -> A bor B;
 		'bxor' -> A bxor B;
+		'bsl' -> A bsl B;
+		'bsr' -> A bsr B;
 		'==' ->	A == B;
 		'/=' -> A /= B;
 		'=<' -> A =< B;
