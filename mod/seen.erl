@@ -33,13 +33,26 @@ deinitialise(T) ->
 	save_seen(get_data(T)),
 	T#state{moduledata=orddict:erase(seen, T#state.moduledata)}.
 
-handle_event(quit, {#user{nick=N}, Reason}, S) -> on_quit(N, Reason, S);
-handle_event(part, {#user{nick=N}, Channel, Reason}, S) -> on_part(N, Channel, Reason, S);
-handle_event(kick, {#user{nick=N}, WhoKicked, Channel, Reason}, S) -> on_kick(WhoKicked, Channel, Reason, N, S);
-handle_event(join, {#user{nick=N}, Channel}, S) -> on_join(N, Channel, S);
-handle_event(nick, {#user{nick=Old}, N}, S) -> on_nick(Old, N, S);
-handle_event(ctcp, {action, Ch, #user{nick=N}, _}, S) -> on_privmsg(N, Ch, S);
-handle_event(_,_,_) -> ok.
+handle_event_s(quit, {#user{nick=N}, Reason}, S) -> see(N, S, "quitting IRC stating '~s'", [string:join(Reason, " ")]);
+handle_event_s(part, {#user{nick=N}, Channel, Reason}, S) -> see(N, S, "parting ~s stating '~s'", [Channel, string:join(Reason, " ")]);
+handle_event_s(kick, {#user{nick=N}, WhoKicked, Channel, Reason}, S) ->
+	StateA = see(N, S, "kicking ~s from ~s stating '~s'", [WhoKicked, Channel, string:join(Reason, " ")]),
+	see(WhoKicked, StateA, "being kicked from ~s by ~s stating '~s'", [Channel, N, string:join(Reason, " ")]);
+handle_event_s(join, {#user{nick=N}, Channel}, S) -> see(N, S, "joining ~s", [Channel]);
+handle_event_s(nick, {#user{nick=Old}, New}, S) ->
+	StateA = see(Old, S, "changing nicks to ~s", [New]),
+	see(New, StateA, "changing nicks from ~s", [Old]);
+handle_event_s(ctcp, {action, Chan, #user{nick=N}, _}, S) -> see(N, S, "messaging ~s", [Chan]);
+handle_event_s(msg, {#user{nick=N}, Chan, _}, S) -> see(N, S, "messaging ~s", [Chan]);
+handle_event_s(_, _, S) -> S.
+
+%handle_event(quit, {#user{nick=N}, Reason}, S) -> on_quit(N, Reason, S);
+%handle_event(part, {#user{nick=N}, Channel, Reason}, S) -> on_part(N, Channel, Reason, S);
+%handle_event(kick, {#user{nick=N}, WhoKicked, Channel, Reason}, S) -> on_kick(WhoKicked, Channel, Reason, N, S);
+%handle_event(join, {#user{nick=N}, Channel}, S) -> on_join(N, Channel, S);
+%handle_event(nick, {#user{nick=Old}, N}, S) -> on_nick(Old, N, S);
+%handle_event(ctcp, {action, Ch, #user{nick=N}, _}, S) -> on_privmsg(N, Ch, S);
+%handle_event(_,_,_) -> ok.
 
 %
 
@@ -85,31 +98,38 @@ seen(_, RT, P, Params, State) ->
 
 %
 
-on_nick(Old, New, State) ->
-	D=get_data(State),
-	T = orddict:store(string:to_lower(Old), {["changing nicks to ",New], os:timestamp()}, D),
-	store_save_data(orddict:store(string:to_lower(New), {["changing nicks from ",Old], os:timestamp()}, T)).
+%on_nick(Old, New, State) ->
+%	D=get_data(State),
+%	T = orddict:store(string:to_lower(Old), {["changing nicks to ",New], os:timestamp()}, D),
+%	store_save_data(orddict:store(string:to_lower(New), {["changing nicks from ",Old], os:timestamp()}, T)).
+%
+%on_join(User, Channel, State) ->
+%	D=get_data(State),
+%	store_save_data(orddict:store(string:to_lower(User), {["joining ", Channel], os:timestamp()}, D)).
+%
+%on_privmsg(User, Channel, State) ->
+%	logging:log(debug2, "SEEN", "privmsg ~p, ~p", [User, Channel]),
+%	D=get_data(State),
+%	store_save_data(orddict:store(string:to_lower(User), {["messaging ", Channel], os:timestamp()}, D)).
+%
+%on_part(User, Channel, Reason, State) ->
+%	D=get_data(State),
+%	store_save_data(orddict:store(string:to_lower(User), {["parting ",Channel," stating '",string:join(Reason, " "), $'], os:timestamp()}, D)).
+%
+%on_quit(User, Reason, State) ->
+%	D=get_data(State),
+%	store_save_data(orddict:store(string:to_lower(User), {["quitting IRC stating '",string:join(Reason, " "), $'], os:timestamp()}, D)).
+%
+%on_kick(User, Channel, Reason, WhoBy, State) ->
+%	D = get_data(State),
+%	T = orddict:store(string:to_lower(WhoBy), {["kicking ",User," from ",Channel," stating '",string:join(Reason, " "), $'], os:timestamp()}, D),
+%	store_save_data(orddict:store(string:to_lower(User), {["being kicked from ",Channel," by ",WhoBy," stating '",string:join(Reason, " "), $'], os:timestamp()}, T)).
 
-on_join(User, Channel, State) ->
-	D=get_data(State),
-	store_save_data(orddict:store(string:to_lower(User), {["joining ", Channel], os:timestamp()}, D)).
-
-on_privmsg(User, Channel, State) ->
-	D=get_data(State),
-	store_save_data(orddict:store(string:to_lower(User), {["messaging ", Channel], os:timestamp()}, D)).
-
-on_part(User, Channel, Reason, State) ->
-	D=get_data(State),
-	store_save_data(orddict:store(string:to_lower(User), {["parting ",Channel," stating '",string:join(Reason, " "), $'], os:timestamp()}, D)).
-
-on_quit(User, Reason, State) ->
-	D=get_data(State),
-	store_save_data(orddict:store(string:to_lower(User), {["quitting IRC stating '",string:join(Reason, " "), $'], os:timestamp()}, D)).
-
-on_kick(User, Channel, Reason, WhoBy, State) ->
+see(User, State, Message, FormatParams) ->
 	D = get_data(State),
-	T = orddict:store(string:to_lower(WhoBy), {["kicking ",User," from ",Channel," stating '",string:join(Reason, " "), $'], os:timestamp()}, D),
-	store_save_data(orddict:store(string:to_lower(User), {["being kicked from ",Channel," by ",WhoBy," stating '",string:join(Reason, " "), $'], os:timestamp()}, T)).
+	T = orddict:store(string:to_lower(User), {io_lib:format(Message, FormatParams),os:timestamp()}, D),
+	save_seen(T),
+	set_data(State, T).
 
 %
 

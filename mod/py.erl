@@ -7,7 +7,7 @@ get_commands() ->
 	[
 		{"markov", fun markov/5, user},
 		{"pyreload", fun pyreload/5, py},
-		{"contexts", fun contexts/5, py}
+		{"contexts", fun contexts/5, user}
 	].
 
 initialise(T) ->
