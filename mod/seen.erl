@@ -43,8 +43,10 @@ handle_event_s(nick, {#user{nick=Old}, New}, S) ->
 	StateA = see(Old, S, "changing nicks to ~s", [New]),
 	see(New, StateA, "changing nicks from ~s", [Old]);
 handle_event_s(ctcp, {action, Chan, #user{nick=N}, _}, S) -> see(N, S, "messaging ~s", [Chan]);
-handle_event_s(msg, {#user{nick=N}, Chan, _}, S) -> see(N, S, "messaging ~s", [Chan]);
+handle_event_s(msg, {#user{nick=N}, Chan, _}, S) when N /= S#state.nick -> see(N, S, "messaging ~s", [Chan]);
 handle_event_s(_, _, S) -> S.
+
+privmsg_hook(N, C, S) -> see(N, S, "messaging ~s", [C]).
 
 %handle_event(quit, {#user{nick=N}, Reason}, S) -> on_quit(N, Reason, S);
 %handle_event(part, {#user{nick=N}, Channel, Reason}, S) -> on_part(N, Channel, Reason, S);

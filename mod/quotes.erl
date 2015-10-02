@@ -162,6 +162,6 @@ load_quotes() ->
 	end.
 
 save_quotes(Quotes) ->
-	file:write_file("quotes.crl", io_lib:format("~w.", [Quotes])),
+	file:write_file("quotes.crl", io_lib:format("~p.", [Quotes])),
 	logging:log(info, "QUOTE", "Saved.").
 

@@ -26,10 +26,16 @@ recv(Sock) ->
 	case gen_tcp:recv(Sock, 5, 10 * 1000) of
 		{ok, <<_:16, Len:16, _:8>>} ->
 			case gen_tcp:recv(Sock, Len-1, 10 * 1000) of
-				{ok, S} -> {ok, lists:reverse(tl(lists:reverse(erlang:binary_to_list(S))))};
-				{error, T} -> {error, T}
+				{ok, S} ->
+					gen_tcp:close(Sock),
+					{ok, lists:reverse(tl(lists:reverse(erlang:binary_to_list(S))))};
+				{error, T} ->
+					gen_tcp:close(Sock),
+					{error, T}
 			end;
-		{error, T} -> {error, T}
+		{error, T} ->
+			gen_tcp:close(Sock),
+			{error, T}
 	end.
 
 parse(Str) ->

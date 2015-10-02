@@ -39,3 +39,15 @@ encode(D,K) ->
 
 permutations([]) -> [[]];
 permutations(L) -> [ [H|T] || H <- L, T <- permutations(L--[H]) ].
+
+gvals(Sizes, Binary) ->
+	{Rest, Lst} = lists:foldl(fun(Size, {Bin, Nums}) ->
+			{R,N} = gval(Size, Bin),
+			{R, [N|Nums]}
+		end, {Binary, []}, Sizes),
+	{Rest, lists:reverse(Lst)}.
+
+gval(N, Bin) ->
+	{binary:part(Bin, N, byte_size(Bin) - N),
+	binary:decode_unsigned(binary:part(Bin, 0, N), little)}.
+	

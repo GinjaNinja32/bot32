@@ -1,14 +1,14 @@
 
--define(WHITE, "\x030").
--define(BLACK, "\x031").
--define(BLUE, "\x032").
--define(GREEN, "\x033").
--define(LRED, "\x034").
--define(RED, "\x035").
--define(MAGENTA, "\x036").
--define(YELLOW, "\x037").
--define(LYELLOW, "\x038").
--define(LGREEN, "\x039").
+-define(WHITE, "\x0300").
+-define(BLACK, "\x0301").
+-define(BLUE, "\x0302").
+-define(GREEN, "\x0303").
+-define(LRED, "\x0304").
+-define(RED, "\x0305").
+-define(MAGENTA, "\x0306").
+-define(YELLOW, "\x0307").
+-define(LYELLOW, "\x0308").
+-define(LGREEN, "\x0309").
 -define(CYAN, "\x0310").
 -define(LCYAN, "\x0311").
 -define(LBLUE, "\x0312").

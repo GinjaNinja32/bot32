@@ -67,11 +67,19 @@ def contexts(chan, ping, word):
 	word = bytes(filter(word.to_string()), 'utf-8')
 	contexts = 0
 	n = 0
+	x = []
 	for (a,b) in pairs.keys():
 		if a == word or b == word:
 			contexts = contexts + 1
-			n = n + pairs[(a,b)]
-	return (Atom(b'irc'), (Atom(b'msg'), (chan, ping.to_string() + "I have " + str(contexts) + " contexts totalling " + str(n) +" instances for '" + str(word) + "'.")))
+			ab = pairs[(a,b)]
+			n = n + ab
+			if len(x) < 10:
+				if a == None:
+					a = b"[start]"
+				if b == None:
+					b = b"[end]"
+				x.append("'" + a.decode("utf-8") + " " + b.decode("utf-8") + "' (" + str(ab) + ")")
+	return (Atom(b'irc'), (Atom(b'msg'), (chan, ping.to_string() + "I have " + str(contexts) + " contexts totalling " + str(n) +" instances for '" + word.decode("utf-8") + "': '" + ", ".join(x) + "'.")))
 
 def markov(chan, msg):
 	words = msg.to_string().split(" ")

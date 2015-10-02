@@ -223,9 +223,9 @@ check_utf8(X) -> io:fwrite("~p~n", [X]), false.
 
 %handle_irc(msg, {_,T,_}, _) when T /= "#bot32-test" -> ok;
 handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}, State=#state{nick=MyNick, prefix=Prefix, permissions=Permissions, modules=M}) ->
-	case sets:is_element(z_seen, M) of
+	case sets:is_element(seen, M) of
 		true -> if
-				Channel /= MyNick -> z_seen:on_privmsg(Nick, Channel, State);
+				Channel /= MyNick -> seen:privmsg_hook(Nick, Channel, State);
 				true -> ok
 			end;
 		_ -> ok
@@ -234,7 +234,9 @@ handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}, State=#state{ni
 		false -> logging:log(utf8, "BOT", "Ignoring '~s' due to invalid UTF-8", [string:join(Tokens, " ")]);
 		true ->
 	case hasperm(User, ignore, Permissions) of
-		true -> ok;
+		true ->
+			logging:log(ignore, "BOT", "Ignoring ~s!~s@~s: ~s.", [Nick, User#user.username, User#user.host, string:join(Tokens, " ")]),
+			ok;
 		false ->
 			case Channel of
 				MyNick ->
@@ -262,8 +264,8 @@ handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}, State=#state{ni
 					{Command, Arguments} = decode_alias(RCommand, State#state.aliases, RArguments),
 					Rank = rankof(User, Permissions, ReplyChannel),
 					case hasperm(User, host, Permissions) of
-						true -> handle_host_command(Rank, Nick, ReplyChannel, ReplyPing, Command, Arguments, State);
-						false ->     handle_command(Rank, Nick, ReplyChannel, ReplyPing, Command, Arguments, State)
+						true -> handle_host_command(Rank, User, ReplyChannel, ReplyPing, Command, Arguments, State);
+						false ->     handle_command(Rank, User, ReplyChannel, ReplyPing, Command, Arguments, State)
 					end;
 				notcommand ->
 					NewState = lists:foldl(fun(Module, CState) ->
@@ -297,14 +299,14 @@ handle_irc(Type, Params, State) ->
 			end, State, sets:to_list(State#state.modules)),
 	{state, NewState}.
 
-handle_host_command(Rank, Origin, ReplyTo, Ping, Cmd, Params, State=#state{}) ->
+handle_host_command(Rank, User, ReplyTo, Ping, Cmd, Params, State=#state{}) ->
 	case string:to_lower(Cmd) of
 		"update" ->		{update, ReplyTo};
 		"help" ->	if Params == [] ->
-						core ! {irc, {msg, {Origin, ["builtin host commands: update, reload_all, drop_all, load_mod, drop_mod, reload_mod"]}}};
+						core ! {irc, {msg, {User#user.nick, ["builtin host commands: update, reload_all, drop_all, load_mod, drop_mod, reload_mod"]}}};
 						true -> ok
 					end,
-					handle_command(Rank, Origin, ReplyTo, Ping, Cmd, Params, State);
+					handle_command(Rank, User, ReplyTo, Ping, Cmd, Params, State);
 
 		"modules" ->
 			{irc, {msg, {ReplyTo, [Ping, string:join(lists:map(fun atom_to_list/1, lists:sort(sets:to_list(State#state.modules))), " ")]}}};
@@ -394,23 +396,23 @@ handle_host_command(Rank, Origin, ReplyTo, Ping, Cmd, Params, State=#state{}) ->
 				_ -> {irc, {msg, {ReplyTo, [Ping, "Provide a command and an alias!"]}}}
 			end;
 
-		_ -> handle_command(Rank, Origin, ReplyTo, Ping, Cmd, Params, State)
+		_ -> handle_command(Rank, User, ReplyTo, Ping, Cmd, Params, State)
 	end.
 
-handle_command(Ranks, Origin, ReplyTo, Ping, Cmd, Params, State=#state{commands=Commands}) ->
+handle_command(Ranks, User, ReplyTo, Ping, Cmd, Params, State=#state{commands=Commands}) ->
 	Result = case string:to_lower(Cmd) of
 		"call" ->
 			case Params of
 				[] -> {irc, {msg, {ReplyTo, [Ping, "Supply either a nick, or the string 'me', and a name to use!"]}}};
 				[_] -> {irc, {msg, {ReplyTo, [Ping, "Supply a name to use!"]}}};
-				[Usr|Nick] ->
-					User = case Usr of
-						"me" -> string:to_lower(Origin);
-						_ -> string:to_lower(Usr)
+				[RawUsr|Nick] ->
+					Usr = case RawUsr of
+						"me" -> string:to_lower(User#user.nick);
+						_ -> string:to_lower(RawUsr)
 					end,
-					case case {lists:member(admin, Ranks), string:to_lower(Origin)} of
+					case case {lists:member(admin, Ranks), string:to_lower(User#user.nick)} of
 						{true,_} -> ok;
-						{_,User} -> ok;
+						{_,Usr} -> ok;
 						_ -> false
 					end of
 						false -> {irc, {msg, {ReplyTo, [Ping, "You are not authorised to do that!"]}}};
@@ -419,7 +421,7 @@ handle_command(Ranks, Origin, ReplyTo, Ping, Cmd, Params, State=#state{commands=
 								{ok, V} -> V;
 								error -> orddict:new()
 							end,
-							NewDict = orddict:store(User, string:join(Nick, " "), OldDict),
+							NewDict = orddict:store(Usr, string:join(Nick, " "), OldDict),
 							core ! {irc, {msg, {ReplyTo, [Ping, "Done."]}}},
 							Y = file:write_file("call.crl", io_lib:format("~p.~n", [NewDict])),
 							logging:log(info, "BOT", "call save: ~p", [Y]),
@@ -446,8 +448,8 @@ handle_command(Ranks, Origin, ReplyTo, Ping, Cmd, Params, State=#state{commands=
 									case call_or(Mod, get_help, [HelpTopic], unhandled) of
 										unhandled -> unhandled;
 										Strings ->
-											core ! {irc, {msg, {Origin, ["Help for '", HelpTopic, "':"]}}},
-											lists:foreach(fun(T) -> core ! {irc, {msg, {Origin, T}}} end, Strings), ok
+											core ! {irc, {msg, {User#user.nick, ["Help for '", HelpTopic, "':"]}}},
+											lists:foreach(fun(T) -> core ! {irc, {msg, {User#user.nick, T}}} end, Strings), ok
 									end;
 								error -> unhandled
 							end
@@ -468,11 +470,16 @@ handle_command(Ranks, Origin, ReplyTo, Ping, Cmd, Params, State=#state{commands=
 					RankCmds ->
 						case string:to_lower(Cmd) of
 							"help" ->
-								do_help_for(Origin, Rank, orddict:fetch_keys(RankCmds)),
+								do_help_for(User#user.nick, Rank, orddict:fetch_keys(RankCmds)),
 								unhandled;
 								%core ! {irc, {msg, {Origin, [io_lib:format("~s commands: ",[Rank]), string:join(orddict:fetch_keys(RankCmds), ", "), "."]}}}, unhandled;
 							T -> case orddict:find(T, RankCmds) of
-								{ok, {_,Result}} -> apply(Result, [Origin, ReplyTo, Ping, Params, State]);
+								{ok, {Mod,Result}} ->
+									UseOrigin = case call_or(Mod, origin_mode, [], basic) of
+										basic -> User#user.nick;
+										full -> User
+									end,
+									apply(Result, [UseOrigin, ReplyTo, Ping, Params, State]);
 								error -> unhandled
 							end
 						end
