@@ -25,7 +25,8 @@ get_commands() ->
 		{"notes", fun notes/5, server},
 		{"notify", fun notify/5, user},
 		{"setserverrank", fun serverrank/5, host},
-		{"getserverrank", fun gsr/5, server}
+		{"getserverrank", fun gsr/5, server},
+		{"info", fun info/5, server}
 	].
 
 initialise(T) ->
@@ -111,6 +112,11 @@ notify(N, RT, Ping, _, _) ->
 	server ! {notify, N, RT, Ping},
 	ok.
 
+info(_, RT, P, [], _) -> {irc, {msg, {RT, [P, "Provide something to find info on!"]}}};
+info(_, RT, P, Params, _) ->
+	server ! {info, RT, P, string:join(Params, " ")},
+	ok.
+
 sloop(Svr, Prt, SPrt, Pwd) ->
 	case gen_tcp:listen(SPrt, [list, {packet, http}, {active, false}, {reuseaddr, true}]) of
 		{ok, SvrSock} ->
@@ -171,7 +177,33 @@ loop(SvrSock, Svr, Prt, SPrt, Pwd, Notify) ->
 			end,
 			core ! {irc, {msg, {ReplyChannel, [ReplyPing, Reply]}}},
 			ok;
-
+		{info, ReplyChannel, ReplyPing, Search} ->
+			logging:log(info, "SERVER", "finding info for ~s", [Search]),
+			Reply = case byond:send(Svr, Prt, io_lib:format("?info=~s;key=~s", lists:map(fun byond:vencode/1, [Search, Pwd]))) of
+				{error, T} -> io_lib:format("Error: ~s", [T]);
+				[{"No matches",_}] -> "No matches found";
+				Dict ->
+					case orddict:find("key", Dict) of
+						{ok,_} -> % specific player
+							D = fun(T) ->
+								case orddict:find(T, Dict) of
+									{ok, V} -> V;
+									error -> "???"
+								end
+							end,
+							Damage = string:join(lists:map(fun({A,B}) -> [A,": ",B] end, byond:params2dict(D("damage"))), ", "),
+							[
+								D("key"), "/(", D("name"), ") ", D("role"), $/, D("antag"), case D("hasbeenrev") of "1" -> " (has been rev)"; _ -> "" end,
+								"; loc:\xa0", D("loc"), "; turf:\xa0", D("turf"), "; area:\xa0", lists:filter(fun(T) -> 32 =< T andalso T =< 127 end, D("area")),
+								"; stat:\xa0", D("stat"), ", damage:\xa0[", Damage, $],
+								"; type:\xa0", D("type"), "; gender:\xa0", D("gender")
+							];
+						error -> % key->name
+							string:join(lists:map(fun({Key,Name}) -> io_lib:format("~s/(~s)", [Key,Name]) end, Dict), "; ")
+					end
+			end,
+			core ! {irc, {msg, {ReplyChannel, [ReplyPing, Reply]}}},
+			ok;
 		{notify, Who, ReplyChannel, ReplyPing} ->
 			case sets:is_element(string:to_lower(Who), Notify) of
 				true ->
