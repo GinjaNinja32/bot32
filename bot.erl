@@ -195,15 +195,15 @@ hasperm(_, user, _) -> true;
 hasperm(User=#user{}, Perm, Permissions) ->
 	lists:member(Perm, rankof(User, Permissions)).
 
-parse_command([],_,_) -> notcommand;
-parse_command(Params, Prefix, BotAliases) when is_list(Prefix) ->
+parse_command([],_,_,_) -> notcommand;
+parse_command(Params, Prefix, BotAliases, IsQuery) when is_list(Prefix) ->
 	<<FirstChar/utf8, Rest/binary>> = list_to_binary(hd(Params)),
 	case lists:member(FirstChar, Prefix) of
 		true when Rest /= <<>> -> {binary_to_list(Rest), tl(Params)};
 		true -> notcommand;
-		false -> parse_command(Params, none, BotAliases)
+		false -> parse_command(Params, none, BotAliases, IsQuery)
 	end;
-parse_command(Params, Prefix, BotAliases) ->
+parse_command(Params, Prefix, BotAliases, IsQuery) ->
 	case hd(Params) of
 		[Prefix | Command] -> {Command, tl(Params)};
 		X when length(Params) > 1 ->
@@ -212,8 +212,13 @@ parse_command(Params, Prefix, BotAliases) ->
 						[] -> {[], []};
 						_ -> {hd(tl(Params)), tl(tl(Params))}
 					end;
-				false -> notcommand
+				false ->
+					if
+						IsQuery -> {hd(Params), tl(Params)};
+						true -> notcommand
+					end
 			end;
+		X when IsQuery -> {X,[]};
 		_ -> notcommand
 	end.
 
@@ -222,13 +227,13 @@ check_utf8(<<_/utf8,B/binary>>) -> check_utf8(B);
 check_utf8(X) -> io:fwrite("~p~n", [X]), false.
 
 %handle_irc(msg, {_,T,_}, _) when T /= "#bot32-test" -> ok;
-handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}, State=#state{nick=MyNick, prefix=Prefix, permissions=Permissions, modules=M}) ->
-	case sets:is_element(seen, M) of
+handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}, OState=#state{nick=MyNick, prefix=Prefix, permissions=Permissions, modules=M}) ->
+	State = case sets:is_element(seen, M) of
 		true -> if
-				Channel /= MyNick -> seen:privmsg_hook(Nick, Channel, State);
-				true -> ok
+				Channel /= MyNick -> seen:privmsg_hook(Nick, Channel, OState);
+				true -> OState
 			end;
-		_ -> ok
+		_ -> OState
 	end,
 	case lists:all(fun(T) -> check_utf8(list_to_binary(T)) end, Tokens) of
 		false -> logging:log(utf8, "BOT", "Ignoring '~s' due to invalid UTF-8", [string:join(Tokens, " ")]);
@@ -258,7 +263,7 @@ handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}, State=#state{ni
 					end
 			end,
 			logging:log(debug2, "BOT", "Parsing command: ~p", [Tokens]),
-			case parse_command(Tokens, Prefix, [MyNick, "NT"]) of
+			case parse_command(Tokens, Prefix, [MyNick, "NT"], Channel == MyNick) of
 				{RCommand, RArguments} ->
 					logging:log(info, "BOT", "Command in ~s from ~s: ~s ~s", [Channel, User#user.nick, RCommand, string:join(RArguments, " ")]),
 					{Command, Arguments} = decode_alias(RCommand, State#state.aliases, RArguments),

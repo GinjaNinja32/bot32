@@ -70,7 +70,7 @@ seen(_, RT, P, Params, State) ->
 	case orddict:filter(fun(N,_) ->
 				string:str(string:to_lower(N), LParam) /= 0
 			end, D) of
-		[] -> {irc, {msg, {RT, [P, "No matching entries found."]}}};
+		[] -> {irc, {msg, {RT, [P, hd(Params), " has never been in a channel I can see."]}}};
 		[{N, {What, When}}] ->
 			T = format_tstamp(When),
 			{irc, {msg, {RT, [P, N, " was last seen ",What," at ",T]}}};

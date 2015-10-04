@@ -103,7 +103,8 @@ handle_sock(Socket, Channels, Secret) ->
 			gen_tcp:send(Socket, "HTTP/1.1 204 No Content\r\n\r\n"),
 			gen_tcp:close(Socket);
 		{error, T} ->
-			logging:log(info, "GITHUB", "HTTP error: ~p", [T])
+			logging:log(info, "GITHUB", "HTTP error: ~p", [T]),
+			gen_tcp:close(Socket)
 	end.
 
 read_headers(Socket) -> read_headers(Socket, orddict:new()).

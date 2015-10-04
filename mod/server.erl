@@ -191,7 +191,10 @@ loop(SvrSock, Svr, Prt, SPrt, Pwd, Notify) ->
 									error -> "???"
 								end
 							end,
-							Damage = string:join(lists:map(fun({A,B}) -> [A,": ",B] end, byond:params2dict(D("damage"))), ", "),
+							Damage = case D("damage") of
+									"non-living" -> "non-living";
+									Dmg -> string:join(lists:map(fun({A,B}) -> [A,": ",B] end, byond:params2dict(Dmg)), ", ")
+							end,
 							[
 								D("key"), "/(", D("name"), ") ", D("role"), $/, D("antag"), case D("hasbeenrev") of "1" -> " (has been rev)"; _ -> "" end,
 								"; loc:\xa0", D("loc"), "; turf:\xa0", D("turf"), "; area:\xa0", lists:filter(fun(T) -> 32 =< T andalso T =< 127 end, D("area")),
