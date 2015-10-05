@@ -92,10 +92,17 @@ json_handle(RT, P, N, Term, RawJSON) ->
 					Result = lists:nth(1 + (N rem 4), List),
 					URL = traverse_json(Result, [struct, "unescapedUrl"]),
 					Title = traverse_json(Result, [struct, "titleNoFormatting"]),
-					[$(, integer_to_list(N+1), $), $ , Term, ": ", URL, " - ", Title]
+					FixedTitle = fix(Title),
+					[$(, integer_to_list(N+1), $), $ , Term, ": ", URL, " - ", FixedTitle]
 			end,
 			core ! {irc, {msg, {RT, [P, Reply]}}}
 	end.
+
+fix(Title) -> lists:reverse(fix(Title, [])).
+fix([A|Rest], Out) when is_integer(A) andalso A > 255 -> fix(Rest, [binary_to_list(<<A/utf8>>) | Out]);
+fix([A|Rest], Out) when is_list(A) -> fix(Rest, [fix(A) | Out]);
+fix([A|Rest], Out) -> fix(Rest, [A | Out]);
+fix([], Out) -> Out.
 
 traverse_json(JSON, []) -> JSON;
 traverse_json({X,T}, [X|Path]) -> traverse_json(T, Path);
