@@ -359,16 +359,9 @@ evaluate(T, Expand, DP) ->
 			{cf, "6"},
 			{cs, "11"},
 			{f, "5"},
-			{n, "8"},
+			{n, ""},
 			{s, "3"}
 		]),
-%	C = if
-%		DP#dp.min == no andalso no == DP#dp.max -> $7;
-%		DP#dp.min == no andalso  X  < DP#dp.max -> $3;
-%		DP#dp.min  <  X andalso no == DP#dp.max -> $3;
-%		DP#dp.min  <  X andalso  X  < DP#dp.max -> $3;
-%		true -> $5
-%	end,
 	{C, [2,3,Color,32,integer_to_list(X), "\x02\x0315 : ", Y, "\x03"]}.
 
 -define(bt(Min, N, Max), (Min /= no orelse Max /= no) andalso ((Min == no orelse Min < N) andalso (Max == no orelse N < Max))).
