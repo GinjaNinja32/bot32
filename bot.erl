@@ -660,7 +660,7 @@ recompile_module(Module, State) ->
 	end.
 
 decode_alias(Command, Aliases, Arguments) ->
-	case orddict:find(Command, Aliases) of
+	case orddict:find(string:to_lower(Command), Aliases) of
 		{ok, {V,Spec}} -> {V, apply_argspec(Spec, Arguments)};
 		{ok, V} -> {V, Arguments};
 		error -> {Command, Arguments}
