@@ -1,3 +1,7 @@
 *.beam
+bin/
+mod/bin/
 logs/
 modules/
+config/
+data/

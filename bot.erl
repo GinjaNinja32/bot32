@@ -4,8 +4,6 @@
 
 -include("definitions.hrl").
 
--record(config, {nick, prefix, permissions, unused=false, user, mode, real, channels, on_join, modules, pass}).
-
 waitfor(Ident) ->
 	case whereis(Ident) of
 		undefined ->
@@ -19,154 +17,95 @@ init() ->
 	register(bot, self()),
 	{SeedA,SeedB,SeedC}=now(),
 	random:seed(SeedA,SeedB,SeedC),
-	BasePerms = case file:consult("permissions.crl") of
-		{ok, [Perms]} -> Perms;
-		_ -> orddict:new()
-	end,
-	BaseConfig = #config{nick="Bot32", prefix=$!, permissions=BasePerms, user="Bot32", mode="0", real="Bot32", channels=sets:new(), on_join=[], modules=[basic], pass=none},
-	case file:consult("bot_config.crl") of
-		{error, Reason} ->
-			logging:log(error, "BOT", "Failed to load config file: ~p.", [Reason]),
-			UseConfig = BaseConfig;
-		{ok, Terms} ->
-			UseConfig = lists:foldl(fun(Option, Config=#config{permissions=Perms, on_join=OJ, channels=C, modules=M}) ->
-					case Option of
-						{nick, Nick}		when is_list(Nick) orelse is_binary(Nick)	-> Config#config{nick=Nick};
-						{user, User}		when is_list(User) orelse is_binary(User)	-> Config#config{user=User};
-						{mode, Mode}		when is_list(Mode) orelse is_binary(Mode)	-> Config#config{mode=Mode};
-						{real, Real}		when is_list(Real) orelse is_binary(Real)	-> Config#config{real=Real};
 
-						{prefix, Prefix}	when is_integer(Prefix)				-> Config#config{prefix=[Prefix]};
-						{prefixes, Prefixes}	when is_list(Prefixes)				-> Config#config{prefix=Prefixes};
+	config:offer_value(config, [permissions], []),
+	config:offer_value(config, [bot, nick], "Bot32"),
+	config:offer_value(config, [bot, user], "Bot32"),
+	config:offer_value(config, [bot, mode], "0"),
+	config:offer_value(config, [bot, real], "Bot32"),
+	config:offer_value(config, [bot, prefix], "!"),
+	config:offer_value(config, [bot, channels], []),
+	config:offer_value(config, [bot, modules], []),
+	config:offer_value(config, [bot, on_join], []),
+	config:offer_value(config, [bot, pass], none),
+	config:offer_value(config, [bot, names], []),
 
-						{permission, Who, P}	when is_atom(P) ->
-														NewPerms = case orddict:find(Who, Perms) of
-															{ok, V} ->
-																case lists:member(P, V) of
-																	true -> V;
-																	false -> [P | V]
-																end;
-															error -> [user, P]
-														end,
-														Config#config{permissions=orddict:store(Who, NewPerms, Perms)};
+	config:set_value(temp, [bot, aliases], []),
+	config:set_value(temp, [bot, commands], []),
 
-						{channel, Channel}	when is_list(Channel) orelse is_binary(Channel)	-> Config#config{channels=sets:add_element(Channel, C)};
-						{channels, Channels}	when is_list(Channels)				-> Config#config{channels=lists:foldl(fun sets:add_element/2, C, Channels)};
-
-						{module, Mod}		when is_atom(Mod)				-> Config#config{modules = [Mod | M]};
-						{modules, Mods}		when is_list(Mods)				-> Config#config{modules=lists:foldl(
-																fun	(Mod, MX) when is_atom(Mod) -> [Mod|MX];
-																	(Mod, _) -> logging:log(error, "BOT", "Non-atomic module ~p specified!", [Mod])
-																 end, M, Mods)};
-
-						{pass, Password}	when Password == none orelse is_list(Password)  -> Config#config{pass=Password};
-						{on_join, Cmd}		when is_tuple(Cmd)				-> Config#config{on_join = [Cmd | OJ]};
-
-						T -> logging:log(error, "BOT", "Failed to parse config line ~p!", [T]), Config
-					end
-				end, BaseConfig, Terms)
-	end,
 	waitfor(core), % wait for core to startup
-	if
-		UseConfig#config.pass /= none -> core ! {irc, {pass, UseConfig#config.pass}};
-		true -> ok
+	case config:require_value(config, [bot, pass]) of
+		none -> ok;
+		Pass -> core ! {irc, {pass, Pass}}
 	end,
-	core ! {irc, {user, {UseConfig#config.user, UseConfig#config.mode, UseConfig#config.real}}},
-	core ! {irc, {nick, UseConfig#config.nick}},
-	timer:sleep(250),
-	lists:foreach(fun(T) ->
-			core ! {irc, T}
-		end, UseConfig#config.on_join),
-	timer:sleep(50), % wait for server auth
-	lists:foreach(fun(T) -> core ! {irc, {join, T}} end, sets:to_list(UseConfig#config.channels)),
-	CallWhoWhat = case file:consult("call.crl") of
-		{ok, [Call]} -> Call;
-		_ -> []
+	core ! {irc, {user, {config:require_value(config, [bot, user]), config:require_value(config, [bot, mode]), config:require_value(config, [bot, real])}}},
+	core ! {irc, {nick, config:require_value(config, [bot, nick])}},
+	receive
+		{irc, {numeric, {{rpl, welcome}, _}}} -> ok
+	after
+		10000 -> throw(connection_failed)
 	end,
-	logging:log(info, "BOT", "starting"),
-	State = load_modules(UseConfig#config.modules,
-			    #state{
-				nick     = UseConfig#config.nick,
-				prefix   = UseConfig#config.prefix,
-				permissions = UseConfig#config.permissions,
-				aliases = orddict:new(),
-				commands = orddict:new(),
-				moduledata  = [{callme, CallWhoWhat}],
-				modules = sets:new()
-			    }),
-	case loop(State) of
-		FinalState=#state{} ->
-			X = file:write_file("permissions.crl", io_lib:format("~p.~n", [FinalState#state.permissions])),
-			logging:log(info, "BOT", "permissions save: ~p", [X]),
-			Y = file:write_file("call.crl", io_lib:format("~p.~n", [case orddict:find(callme, FinalState#state.moduledata) of {ok,Z}->Z; error->[] end])),
-			logging:log(info, "BOT", "call save: ~p", [Y]),
-			lists:foreach(fun(Module) ->
-					lists:member({deinitialise,1}, Module:module_info(exports)) andalso apply(Module, deinitialise, [FinalState])
-				end, sets:to_list(FinalState#state.modules)),
-			logging:log(info, "BOT", "quitting");
-		T -> logging:log(info, "BOT", "quitting under condition ~p", [T])
-	end.
+	timer:sleep(100),
+	lists:foreach(fun(T) -> core ! {irc, T} end, config:require_value(config, [bot, on_join])),
+	timer:sleep(100), % wait for server auth
+	lists:foreach(fun(T) -> core ! {irc, {join, T}} end, config:require_value(config, [bot, channels])),
+	logging:log(info, ?MODULE, "starting"),
 
-reinit(State) ->
+	config:set_value(temp, [bot, aliases], []),
+	config:set_value(temp, [bot, commands], []),
+
+	load_modules(config:get_value(config, [bot, modules])),
+	loop().
+
+reinit(_) ->
 	register(bot, self()),
-	logging:log(info, "BOT", "starting"),
-	case loop(State) of
-		FinalState=#state{} ->
-			lists:foreach(fun(Module) ->
-					lists:member({deinitialise,1}, Module:module_info(exports)) andalso apply(Module, deinitialise, [FinalState])
-				end, sets:to_list(FinalState#state.modules)),
-			logging:log(info, "BOT", "quitting");
-		T -> logging:log(info, "BOT", "quitting under condition ~p", [T])
-	end.
+	logging:log(info, ?MODULE, "starting"),
+	loop().
 
-notify_error(msg, {#user{nick=N}, MyNick, _}, #state{nick=MyNick}) -> {irc, {msg, {N, "Error!"}}};
-notify_error(msg, {#user{nick=N}, Channel, _}, _) -> {irc, {msg, {Channel, [N, ": Error!"]}}};
-notify_error(X, Y, _) -> logging:log(error, "BOT", "~p : ~p", [X,Y]).
+notify_error(msg, {#user{nick=N}, Channel, _}) ->
+	case config:get_value(config, [bot, nick]) of
+		Channel -> {irc, {msg, {N,             "Error!" }}};
+		_ ->       {irc, {msg, {Channel, [N, ": Error!"]}}}
+	end;
+notify_error(X, Y) -> logging:log(error, ?MODULE, "~p : ~p", [X,Y]).
 
-loop(State = #state{}) ->
+loop() ->
 	case receive
 		{ircfwd, T} -> {irc, T};
 		{irc, {Type, Params}} ->
-			case catch handle_irc(Type, Params, State) of
-				{'EXIT', {Reason, Stack}} -> logging:log(error, "BOT", "handle_irc errored ~p (~p), continuing", [Reason, Stack]), notify_error(Type, Params, State);
-				{'EXIT', Term} ->  logging:log(error, "BOT", "handle_irc exited ~p, continuing",  [Term]), notify_error(Type, Params, State);
+			case catch handle_irc(Type, Params) of
+				{'EXIT', {Reason, Stack}} -> logging:log(error, ?MODULE, "handle_irc errored ~p (~p), continuing", [Reason, Stack]), notify_error(Type, Params);
+				{'EXIT', Term} ->  logging:log(error, ?MODULE, "handle_irc exited ~p, continuing",  [Term]), notify_error(Type, Params);
 				T -> T
 			end;
 		T when is_atom(T) -> T;
 		{T, K} when is_atom(T) -> {T, K};
-		T -> logging:log(error, "BOT", "unknown receive ~p, continuing", [T])
+		T -> logging:log(error, ?MODULE, "unknown receive ~p, continuing", [T])
 	end of
-		{multi, List} -> lists:foreach(fun(T) -> core ! T end, List), bot:loop(State);
-		{irc, What} -> core ! {irc,What}, bot:loop(State);
-		quit -> State;
+		{multi, List} -> lists:foreach(fun(T) -> core ! T end, List), bot:loop();
+		{irc, What} -> core ! {irc,What}, bot:loop();
+		quit -> ok;
 		error -> error;
-		ok -> bot:loop(State);
-		{state, S = #state{}} -> bot:loop(S);
-		{setkey, {Key, Val}} -> bot:loop(State#state{moduledata = orddict:store(Key, Val, State#state.moduledata)});
+		ok -> bot:loop();
 		update ->
-			spawn(common,purge_call,[bot,reinit,State]),
+			spawn(common,purge_call,[bot,reinit,[]]),
 			ok;
 		{update,Chan} ->
-			spawn(common,purge_call_report,[bot,reinit,State,Chan]),
+			spawn(common,purge_call_report,[bot,reinit,[],Chan]),
 			ok;
-		S -> logging:log(error, "BOT", "unknown code ~p, continuing", [S]), bot:loop(State)
+		S -> logging:log(error, ?MODULE, "unknown code ~p, continuing", [S]), bot:loop()
 	end.
 
-message_admins(Category, Msg, Admins) ->
-	logging:log(info, "ADMIN", [Category, ": ", Msg]),
-	lists:foreach(fun(T) ->
-			core ! {irc, {msg, {T, [Category, ": ", Msg]}}}
-		end, sets:to_list(Admins)),
-	ok.
-
-message_all_rank(Category, Msg, Rank, Permissions) ->
+message_all_rank(Category, Msg, Rank) ->
+	Permissions = config:require_value(config, [permissions]),
 	logging:log(info, Rank, "~s: ~s", [Category, Msg]),
 	lists:foreach(fun({N,_U,_H}) ->
 			core ! {irc, {msg, {N, [Category, ": ", Msg]}}}
 		end, orddict:fetch_keys(orddict:filter(fun(_,V) -> lists:member(Rank,V) end, Permissions))).
 
-rankof(Usr=#user{}, Permissions) -> rankof(Usr, Permissions, none).
-rankof(#user{nick=N,username=U,host=H}, Permissions, Channel) ->
+rankof(Usr=#user{}) -> rankof(Usr, none).
+rankof(#user{nick=N,username=U,host=H}, Channel) ->
+	Permissions = config:require_value(config, [permissions]),
 	C = case Channel of
 		none ->	none;
 		_ -> list_to_binary(Channel)
@@ -185,187 +124,171 @@ rankof(#user{nick=N,username=U,host=H}, Permissions, Channel) ->
 				end
 		end, [user], Permissions).
 
-rankof_chan(Channel, Permissions) ->
-	case orddict:find(list_to_binary(Channel), Permissions) of
+rankof_chan(Channel) ->
+	case orddict:find(list_to_binary(Channel), config:require_value(config, [permissions])) of
 		{ok, Value} -> Value;
 		error -> [user]
 	end.
 
-hasperm(_, user, _) -> true;
-hasperm(User=#user{}, Perm, Permissions) ->
-	lists:member(Perm, rankof(User, Permissions)).
+hasperm(_, user) -> true;
+hasperm(User=#user{}, Perm) ->
+	lists:member(Perm, rankof(User)).
 
-parse_command([],_,_,_) -> notcommand;
-parse_command(Params, Prefix, BotAliases, IsQuery) when is_list(Prefix) ->
+parse_command([],_) -> notcommand;
+parse_command(Params, IsQuery) ->
 	<<FirstChar/utf8, Rest/binary>> = list_to_binary(hd(Params)),
-	case lists:member(FirstChar, Prefix) of
+	case lists:member(FirstChar, config:require_value(config, [bot, prefix])) of
 		true when Rest /= <<>> -> {binary_to_list(Rest), tl(Params)};
 		true -> notcommand;
-		false -> parse_command(Params, none, BotAliases, IsQuery)
-	end;
-parse_command(Params, Prefix, BotAliases, IsQuery) ->
-	case hd(Params) of
-		[Prefix | Command] -> {Command, tl(Params)};
-		X when length(Params) > 1 ->
-			case lists:any(fun(Alias) -> R=util:regex_escape(Alias), re:run(X, <<"^", R/binary, "($|[^a-zA-Z0-9])">>, [caseless, {capture, none}]) == match end, BotAliases) of
-				true -> case tl(Params) of
-						[] -> {[], []};
-						_ -> {hd(tl(Params)), tl(tl(Params))}
+		false ->
+			if
+				length(Params) > 1 ->
+					BotAliases = [config:require_value(config, [bot, nick]) | config:require_value(config, [bot, names])],
+					case lists:any(fun(Alias) -> R=util:regex_escape(Alias), re:run(hd(Params), <<"^", R/binary, "($|[^a-zA-Z0-9])">>, [caseless, {capture, none}]) == match end, BotAliases) of
+						true -> case tl(Params) of
+								[] -> {[], []};
+								_ -> {hd(tl(Params)), tl(tl(Params))}
+							end;
+						false ->
+							if
+								IsQuery -> {hd(Params), tl(Params)};
+								true -> notcommand
+							end
 					end;
-				false ->
-					if
-						IsQuery -> {hd(Params), tl(Params)};
-						true -> notcommand
-					end
-			end;
-		X when IsQuery -> {X,[]};
-		_ -> notcommand
+				IsQuery -> {hd(Params),tl(Params)};
+				true -> notcommand
+			end
 	end.
 
 check_utf8(<<>>) -> true;
 check_utf8(<<_/utf8,B/binary>>) -> check_utf8(B);
 check_utf8(X) -> io:fwrite("~p~n", [X]), false.
 
-%handle_irc(msg, {_,T,_}, _) when T /= "#bot32-test" -> ok;
-handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}, OState=#state{nick=MyNick, prefix=Prefix, permissions=Permissions, modules=M}) ->
-	State = case sets:is_element(seen, M) of
-		true -> if
-				Channel /= MyNick -> seen:privmsg_hook(Nick, Channel, OState);
-				true -> OState
-			end;
-		_ -> OState
-	end,
+handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}) ->
+	lists:foreach(fun(Module) ->
+			call_or(Module, handle_event, [msg, Params], null)
+		end, config:get_value(config, [bot, modules])),
+
 	case lists:all(fun(T) -> check_utf8(list_to_binary(T)) end, Tokens) of
-		false -> logging:log(utf8, "BOT", "Ignoring '~s' due to invalid UTF-8", [string:join(Tokens, " ")]);
+		false -> logging:log(utf8, ?MODULE, "Ignoring '~s' due to invalid UTF-8", [string:join(Tokens, " ")]);
 		true ->
-	case hasperm(User, ignore, Permissions) of
+	case hasperm(User, ignore) of
 		true ->
-			logging:log(ignore, "BOT", "Ignoring ~s!~s@~s: ~s.", [Nick, User#user.username, User#user.host, string:join(Tokens, " ")]),
+			logging:log(ignore, ?MODULE, "Ignoring ~s!~s@~s: ~s.", [Nick, User#user.username, User#user.host, string:join(Tokens, " ")]),
 			ok;
 		false ->
-			case Channel of
-				MyNick ->
+			case config:require_value(config, [bot, nick]) of
+				Channel ->
 					ReplyChannel = Nick,
 					ReplyPing = "",
-					case hasperm(User, admin, Permissions) of
+					case hasperm(User, admin) of
 						true -> ok;
-						_ -> message_all_rank(["Query from ",Nick], string:join(Tokens, " "), pmlog, Permissions)
+						_ -> message_all_rank(["Query from ",Nick], string:join(Tokens, " "), pmlog)
 					end;
 				_ ->
 					ReplyChannel = Channel,
-					ReplyPing = case orddict:find(callme, State#state.moduledata) of
-						{ok, Dict} ->
-							case orddict:find(string:to_lower(Nick), Dict) of
-								{ok, V} -> V ++ ": ";
-								error -> Nick ++ ": "
-							end;
-						error -> Nick ++ ": "
+					ReplyPing = case config:get_value(data, [call, string:to_lower(Nick)]) of
+						'$none' -> Nick ++ ": ";
+						T -> T ++ ": "
 					end
 			end,
-			logging:log(debug2, "BOT", "Parsing command: ~p", [Tokens]),
-			case parse_command(Tokens, Prefix, [MyNick, "NT"], Channel == MyNick) of
+			logging:log(debug2, ?MODULE, "Parsing command: ~p", [Tokens]),
+			case parse_command(Tokens, Channel == config:require_value(config, [bot, nick])) of
 				{RCommand, RArguments} ->
-					logging:log(info, "BOT", "Command in ~s from ~s: ~s ~s", [Channel, User#user.nick, RCommand, string:join(RArguments, " ")]),
-					{Command, Arguments} = decode_alias(RCommand, State#state.aliases, RArguments),
-					Rank = rankof(User, Permissions, ReplyChannel),
-					case hasperm(User, host, Permissions) of
-						true -> handle_host_command(Rank, User, ReplyChannel, ReplyPing, Command, Arguments, State);
-						false ->     handle_command(Rank, User, ReplyChannel, ReplyPing, Command, Arguments, State)
+					logging:log(info, ?MODULE, "Command in ~s from ~s: ~s ~s", [Channel, User#user.nick, RCommand, string:join(RArguments, " ")]),
+					{Command, Arguments} = decode_alias(RCommand, RArguments),
+					Rank = rankof(User, ReplyChannel),
+					case hasperm(User, host) of
+						true -> handle_host_command(Rank, User, ReplyChannel, ReplyPing, Command, Arguments);
+						false ->     handle_command(Rank, User, ReplyChannel, ReplyPing, Command, Arguments)
 					end;
 				notcommand ->
-					NewState = lists:foldl(fun(Module, CState) ->
-							call_or(Module, handle_event, [msg, Params, CState], null),
-							call_or(Module, do_extras, [Tokens, ReplyChannel, ReplyPing], null),
-							call_or(Module, handle_event_s, [msg, Params, CState], CState)
-						end, State, sets:to_list(State#state.modules)),
-					{state, NewState}
+					lists:foreach(fun(Module) ->
+							call_or(Module, do_extras, [Tokens, ReplyChannel, ReplyPing], null)
+						end, config:require_value(config, [bot, modules]))
 			end
 	end
 	end;
 
-handle_irc(ctcp, {Type, #user{nick=Nick}, _Message}, _State) ->
+handle_irc(ctcp, {Type, #user{nick=Nick}, _Message}) ->
 	case Type of
 		version -> {irc, {ctcp_re, {version, Nick, ?VERSION}}};
 		action -> ok;
-		_ -> logging:log(error, "BOT", "Unknown CTCP message ~p, continuing", [Type])
+		_ -> logging:log(error, ?MODULE, "Unknown CTCP message ~p, continuing", [Type])
 	end;
 
-handle_irc(nick, {#user{nick=MyNick}, NewNick}, State=#state{nick=MyNick}) -> {state, State#state{nick=NewNick}};
+handle_irc(nick, {#user{nick=OldNick}, NewNick}) ->
+	case config:get_value(config, [bot, nick]) of
+		OldNick -> config:set_value(config, [bot, nick], NewNick);
+		_ -> ok
+	end;
 
-handle_irc(notice, _, _) -> ok;
+handle_irc(notice, _) -> ok;
 
-handle_irc(numeric, {{rpl,away},_}, _) -> ok;
-handle_irc(numeric, {{A,B},Params}, _) -> logging:log(info, "BOT", "Numeric received: ~p_~p ~s", [A,B,string:join(Params," ")]);
+handle_irc(numeric, {{rpl,away},_}) -> ok;
+handle_irc(numeric, {{A,B},Params}) -> logging:log(info, ?MODULE, "Numeric received: ~p_~p ~s", [A,B,string:join(Params," ")]);
 
-handle_irc(Type, Params, State) ->
-	NewState = lists:foldl(fun(Module, CState) ->
-				call_or(Module, handle_event, [Type, Params, CState], null),
-				call_or(Module, handle_event_s, [Type, Params, CState], CState)
-			end, State, sets:to_list(State#state.modules)),
-	{state, NewState}.
+handle_irc(Type, Params) ->
+	lists:foreach(fun(Module) ->
+				call_or(Module, handle_event, [Type, Params], null)
+			end, config:require_value(config, [bot, modules])).
 
-handle_host_command(Rank, User, ReplyTo, Ping, Cmd, Params, State=#state{}) ->
+handle_host_command(Rank, User, ReplyTo, Ping, Cmd, Params) ->
 	case string:to_lower(Cmd) of
 		"update" ->		{update, ReplyTo};
 		"help" ->	if Params == [] ->
 						core ! {irc, {msg, {User#user.nick, ["builtin host commands: update, reload_all, drop_all, load_mod, drop_mod, reload_mod"]}}};
 						true -> ok
 					end,
-					handle_command(Rank, User, ReplyTo, Ping, Cmd, Params, State);
+					handle_command(Rank, User, ReplyTo, Ping, Cmd, Params);
 
 		"modules" ->
-			{irc, {msg, {ReplyTo, [Ping, string:join(lists:map(fun atom_to_list/1, lists:sort(sets:to_list(State#state.modules))), " ")]}}};
+			{irc, {msg, {ReplyTo, [Ping, string:join(lists:map(fun atom_to_list/1, lists:sort(config:require_value(config, [bot, modules]))), " ")]}}};
 
 		"reload_all" ->
-			Modules = sets:to_list(State#state.modules),
-			core ! {irc, {msg, {ReplyTo, [Ping, "Reloaded."]}}},
-			{state, reload_modules(Modules, State)};
+			reload_modules(config:require_value(config, [bot, modules])),
+			{irc, {msg, {ReplyTo, [Ping, "Reloaded."]}}};
 
 		"drop_all" ->
-			Modules = sets:to_list(State#state.modules),
-			core ! {irc, {msg, {ReplyTo, [Ping, "Unloaded."]}}},
-			{state, unload_modules(Modules, State)};
+			unload_modules(config:require_value(config, [bot, modules])),
+			{irc, {msg, {ReplyTo, [Ping, "Unloaded."]}}};
 
 		"load" ->
 			case Params of
 				[] -> {irc, {msg, {ReplyTo, [Ping, "Provide a module to load."]}}};
 				ModuleStrings ->
-					Modules = lists:map(fun erlang:list_to_atom/1, ModuleStrings),
-					core ! {irc, {msg, {ReplyTo, [Ping, "Loaded."]}}},
-					{state, load_modules(Modules, State)}
+					load_modules(lists:map(fun erlang:list_to_atom/1, ModuleStrings)),
+					{irc, {msg, {ReplyTo, [Ping, "Loaded."]}}}
 			end;
 
 		"drop" ->
 			case Params of
 				[] -> {irc, {msg, {ReplyTo, [Ping, "Provide a module to unload."]}}};
 				ModuleStrings ->
-					Modules = lists:map(fun erlang:list_to_atom/1, ModuleStrings),
-					core ! {irc, {msg, {ReplyTo, [Ping, "Unloaded."]}}},
-					{state, unload_modules(Modules, State)}
+					unload_modules(lists:map(fun erlang:list_to_atom/1, ModuleStrings)),
+					{irc, {msg, {ReplyTo, [Ping, "Unloaded."]}}}
 			end;
 
 		"reload" ->
 			case Params of
 				[] -> {irc, {msg, {ReplyTo, [Ping, "Provide a module to reload."]}}};
 				ModuleStrings ->
-					Modules = lists:map(fun erlang:list_to_atom/1, ModuleStrings),
-					core ! {irc, {msg, {ReplyTo, [Ping, "Reloaded."]}}},
-					{state, reload_modules(Modules, State)}
+					reload_modules(lists:map(fun erlang:list_to_atom/1, ModuleStrings)),
+					{irc, {msg, {ReplyTo, [Ping, "Reloaded."]}}}
 			end;
 
 		"recompile" ->
 			case Params of
 				[] -> {irc, {msg, {ReplyTo, [Ping, "Provide a module to recompile."]}}};
 				ModuleStrings ->
-					Modules = lists:map(fun erlang:list_to_atom/1, ModuleStrings),
-					core ! {irc, {msg, {ReplyTo, [Ping, "Done."]}}},
-					{state, recompile_modules(Modules, State)}
+					recompile_modules(lists:map(fun erlang:list_to_atom/1, ModuleStrings)),
+					{irc, {msg, {ReplyTo, [Ping, "Done."]}}}
 			end;
 
 		"isalias" ->
 			case Params of
 				[New] ->
-					Msg = case orddict:find(New, State#state.aliases) of
+					Msg = case orddict:find(New, config:require_value(temp, [bot, aliases])) of
 						{ok, {Real, Spec}} -> io_lib:format("~s is an alias for ~s with argspec ~p.", [New, Real, Spec]);
 						{ok, Real} -> io_lib:format("~s is an alias for ~s.", [New, Real]);
 						error -> io_lib:format("~s is not an alias.", [New])
@@ -377,36 +300,37 @@ handle_host_command(Rank, User, ReplyTo, Ping, Cmd, Params, State=#state{}) ->
 		"unalias" ->
 			case Params of
 				[New] ->
-					{NewA, Msg} = case orddict:find(New, State#state.aliases) of
-						{ok, _} -> {orddict:erase(New, State#state.aliases), "Removed."};
-						error -> {State#state.aliases, "Could not find alias."}
+					Aliases = config:require_value(temp, [bot, aliases]),
+					Msg = case orddict:find(New, Aliases) of
+						{ok, _} ->
+							config:set_value(temp, [bot, aliases], orddict:erase(New, Aliases)),
+							"Removed.";
+						error -> "Could not find alias."
 					end,
-					core ! {irc, {msg, {ReplyTo, [Ping, Msg]}}},
-					{state, State#state{aliases=NewA}};
+					{irc, {msg, {ReplyTo, [Ping, Msg]}}};
 				_ -> {irc, {msg, {ReplyTo, [Ping, "Provide an alias to clear!"]}}}
 			end;
 
 		"alias" ->
 			case Params of
-%				[New, Real, "*"] ->
-%					core ! {irc, {msg, {ReplyTo, [Ping, "Done."]}}},
-%					{state, State#state{aliases=orddict:store(New, Real, State#state.aliases)}};
 				[New, Real | ArgSpec] ->
 					case parse_argspec(ArgSpec) of
 						{ok,Spec} ->
-							core ! {irc, {msg, {ReplyTo, [Ping, "Done."]}}},
-							{state, State#state{aliases=orddict:store(New, {Real, Spec}, State#state.aliases)}};
+							config:set_value(temp, [bot, aliases, New], {Real, Spec}),
+							{irc, {msg, {ReplyTo, [Ping, "Done."]}}};
 						error -> {irc, {msg, {ReplyTo, [Ping, "Illegal argspec."]}}}
 					end;
 				_ -> {irc, {msg, {ReplyTo, [Ping, "Provide a command and an alias!"]}}}
 			end;
 
-		_ -> handle_command(Rank, User, ReplyTo, Ping, Cmd, Params, State)
+		_ -> handle_command(Rank, User, ReplyTo, Ping, Cmd, Params)
 	end.
 
-handle_command(Ranks, User, ReplyTo, Ping, Cmd, Params, State=#state{commands=Commands}) ->
+handle_command(Ranks, User, ReplyTo, Ping, Cmd, Params) ->
+	Commands = config:require_value(temp, [bot, commands]),
 	Result = case string:to_lower(Cmd) of
 		"call" ->
+			io:fwrite("~p | ~p | ~p~n", [User, ReplyTo, Ping]),
 			case Params of
 				[] -> {irc, {msg, {ReplyTo, [Ping, "Supply either a nick, or the string 'me', and a name to use!"]}}};
 				[_] -> {irc, {msg, {ReplyTo, [Ping, "Supply a name to use!"]}}};
@@ -422,19 +346,14 @@ handle_command(Ranks, User, ReplyTo, Ping, Cmd, Params, State=#state{commands=Co
 					end of
 						false -> {irc, {msg, {ReplyTo, [Ping, "You are not authorised to do that!"]}}};
 						ok ->
-							OldDict = case orddict:find(callme, State#state.moduledata) of
-								{ok, V} -> V;
-								error -> orddict:new()
-							end,
-							NewDict = orddict:store(Usr, string:join(Nick, " "), OldDict),
-							core ! {irc, {msg, {ReplyTo, [Ping, "Done."]}}},
-							Y = file:write_file("call.crl", io_lib:format("~p.~n", [NewDict])),
-							logging:log(info, "BOT", "call save: ~p", [Y]),
-							{state, State#state{moduledata=orddict:store(callme, NewDict, State#state.moduledata)}}
+							Nickname = string:join(Nick, " "),
+							config:set_value(data, [call, Usr], Nickname),
+							io:fwrite("~p / ~p / ~p~n", [ReplyTo, Ping, Nickname]),
+							{irc, {msg, {ReplyTo, [Ping, "Done."]}}}
 					end
 			end;
 		"help" when Params /= [] ->
-			case orddict:find(hd(Params), State#state.aliases) of
+			case orddict:find(hd(Params), config:require_value(temp, [bot, aliases])) of
 				{ok, {HelpCommand,_}} -> ok;
 				{ok, HelpCommand} -> ok;
 				error -> HelpCommand = hd(Params)
@@ -484,7 +403,7 @@ handle_command(Ranks, User, ReplyTo, Ping, Cmd, Params, State=#state{commands=Co
 										basic -> User#user.nick;
 										full -> User
 									end,
-									apply(Result, [UseOrigin, ReplyTo, Ping, Params, State]);
+									apply(Result, [UseOrigin, ReplyTo, Ping, Params]);
 								error -> unhandled
 							end
 						end
@@ -497,7 +416,7 @@ handle_command(Ranks, User, ReplyTo, Ping, Cmd, Params, State=#state{commands=Co
 		_ ->
 			case Result of
 				unhandled ->
-					case alternate_commands([Cmd | Params], State#state.modules) of
+					case alternate_commands([Cmd | Params], config:get_value(config, [bot, modules])) of
 						false -> ok; % {irc, {msg, {ReplyTo, [Ping, "Unknown command '",Cmd,"'!"]}}};
 						R -> {irc, {msg, {ReplyTo, [Ping, R]}}}
 					end;
@@ -511,7 +430,7 @@ do_help_for(Origin, Rank, Cmds) ->
 	{A,B} = lists:split(35, Cmds),
 	core ! {irc, {msg, {Origin, [io_lib:format("~s commands: ",[Rank]), string:join(A, ", "), "."]}}},
 	do_help_for(Origin, Rank, B).
-	
+
 
 alternate_commands(Tokens, Modules) ->
 	AltFunctions = lists:foldl(fun(Mod,Alt) ->
@@ -519,7 +438,7 @@ alternate_commands(Tokens, Modules) ->
 				true -> Alt ++ Mod:alt_funcs();
 				false -> Alt
 			end
-		end, [fun select_or_string/1, fun alternate_eightball/1], sets:to_list(Modules)),
+		end, [fun select_or_string/1, fun alternate_eightball/1], Modules),
 	lists:foldl(fun
 			(Func, false) -> Func(Tokens);
 			(_,Re) -> Re
@@ -546,44 +465,42 @@ alternate_eightball(List) ->
 		_ -> false
 	end.
 
-load_modules(Modules, State) -> lists:foldl(fun load_module/2, State, Modules).
+load_modules(Modules) -> lists:foreach(fun load_module/1, Modules).
+load_module(Module) ->
+	Modules = config:require_value(config, [bot, modules]),
+	case lists:member(Module, Modules) of
+		true -> ok;
+		false ->
+			logging:log(info, "MODULE", "loading ~p", [Module]),
 
-load_module(Module, State) ->
-	logging:log(info, "MODULE", "loading ~p", [Module]),
+			% Load commands
+			NewCmds = lists:foldl(
+				fun
+					({Cmd,Fun,Restrict}, Commands) when is_list(Restrict) ->
+						lists:foldl(fun(Res, Cmds) ->
+							orddict:store(Res, case orddict:find(Res, Cmds) of
+									{ok, CmdList} -> orddict:store(Cmd, {Module, Fun}, CmdList);
+									error ->         orddict:store(Cmd, {Module, Fun}, orddict:new())
+								end, Cmds) end, Commands, Restrict);
+					({Cmd,Fun,Restrict}, Commands) ->
+						orddict:store(Restrict, case orddict:find(Restrict, Commands) of
+								{ok, CmdList} -> orddict:store(Cmd, {Module, Fun}, CmdList);
+								error ->         orddict:store(Cmd, {Module, Fun}, orddict:new())
+							end, Commands)
+			end, config:require_value(temp, [bot, commands]), call_or(Module, get_commands, [], [])),
+			config:set_value(temp, [bot, commands], NewCmds),
 
-	% Load commands
-	NewCmds = lists:foldl(
-		fun
-			({Cmd,Fun,Restrict}, Commands) when is_list(Restrict) ->
-				lists:foldl(fun(Res, Cmds) ->
-					orddict:store(Res, case orddict:find(Res, Cmds) of
-							{ok, CmdList} -> orddict:store(Cmd, {Module, Fun}, CmdList);
-							error ->         orddict:store(Cmd, {Module, Fun}, orddict:new())
-						end, Cmds) end, Commands, Restrict);
-			({Cmd,Fun,Restrict}, Commands) ->
-				orddict:store(Restrict, case orddict:find(Restrict, Commands) of
-						{ok, CmdList} -> orddict:store(Cmd, {Module, Fun}, CmdList);
-						error ->         orddict:store(Cmd, {Module, Fun}, orddict:new())
-					end, Commands)
-	end, State#state.commands, call_or(Module, get_commands, [], [])),
+			% Load aliases
+			NewAliases = lists:foldl(
+				fun
+					({Real, Aliases}, AllAliases) ->
+						lists:foldl(fun(A, Al) -> orddict:store(A,Real,Al) end, AllAliases, Aliases)
+				end, config:require_value(temp, [bot, aliases]), call_or(Module, get_aliases, [], [])),
+			config:set_value(temp, [bot, aliases], NewAliases),
 
-	% Load aliases
-	NewAliases = lists:foldl(
-		fun
-			({Real, Aliases}, AllAliases) ->
-				lists:foldl(fun(A, Al) -> orddict:store(A,Real,Al) end, AllAliases, Aliases)
-		end, State#state.aliases, call_or(Module, get_aliases, [], [])),
-
-	% Initialise
-	case call_or(Module, data_persistence, [], manual) of
-		manual ->
-			BaseState = State#state{commands = NewCmds, aliases = NewAliases, modules = sets:add_element(Module, State#state.modules)},
-			call_or(Module, initialise, [BaseState], BaseState);
-		automatic ->
-			Data = modload_auto(Module),
-			State#state{commands = NewCmds, aliases = NewAliases, modules = sets:add_element(Module, State#state.modules), moduledata = orddict:store(Module, Data, State#state.moduledata)};
-		none ->
-			State#state{commands = NewCmds, aliases = NewAliases, modules = sets:add_element(Module, State#state.modules)}
+			% Initialise
+			call_or(Module, initialise, [], ok),
+			config:set_value(config, [bot, modules], [Module | Modules])
 	end.
 
 call_or(Mod, Func, Args, Or) ->
@@ -592,74 +509,51 @@ call_or(Mod, Func, Args, Or) ->
 		false -> Or
 	end.
 
-modload_auto(Module) ->
-	case file:consult(["modules/", Module, ".crl"]) of
-		{ok, [Data]} -> logging:log(info, Module, "Loaded."), Data;
-		{ok, _} -> logging:log(error, Module, "Incorrect format."), Module:default_data();
-		{error, T} -> logging:log(error, Module, "Error loading: ~p", [T]), Module:default_data()
-	end.
-
-
-unload_modules(Modules, State) -> lists:foldl(fun unload_module/2, State, Modules).
-
-unload_module(Module, State) ->
-	case sets:is_element(Module, State#state.modules) of
-		false -> State;
+unload_modules(Modules) -> lists:foreach(fun unload_module/1, Modules).
+unload_module(Module) ->
+	Modules = config:require_value(config, [bot, modules]),
+	case lists:member(Module, Modules) of
+		false -> ok;
 		true ->
-	logging:log(info, "MODULE", "unloading ~p", [Module]),
+			logging:log(info, "MODULE", "unloading ~p", [Module]),
 
-	% Remove commands
-	Cleaned = orddict:map(fun(_,RankCmds) ->
-			orddict:filter(fun(_,{Mod,_}) -> Mod /= Module end, RankCmds)
-		end, State#state.commands),
-	Removed = orddict:filter(fun(_,V) -> V /= [] end, Cleaned),
+			% Remove commands
+			Cleaned = orddict:map(fun(_,RankCmds) ->
+					orddict:filter(fun(_,{Mod,_}) -> Mod /= Module end, RankCmds)
+				end, config:require_value(temp, [bot, commands])),
+			Removed = orddict:filter(fun(_,V) -> V /= [] end, Cleaned),
+			config:set_value(temp, [bot, commands], Removed),
 
-	% Remove aliases
-	NewAliases = lists:foldl(fun({Real,Aliases}, AllAliases) ->
-			orddict:filter(fun(K,V) -> not lists:member(K, Aliases) andalso V /= Real end, AllAliases)
-		end, State#state.aliases, call_or(Module, get_aliases, [], [])),
+			% Remove aliases
+			NewAliases = lists:foldl(fun({Real,Aliases}, AllAliases) ->
+					orddict:filter(fun(K,V) -> not lists:member(K, Aliases) andalso V /= Real end, AllAliases)
+				end, config:require_value(temp, [bot, aliases]), call_or(Module, get_aliases, [], [])),
+			config:set_value(temp, [bot, aliases], NewAliases),
 
-	% Deinitialise
-	case case lists:member({data_persistence,0}, Module:module_info(exports)) of
-		true -> Module:data_persistence();
-		false -> manual
-	end of
-		manual ->
-			BaseState = State#state{commands = Removed, aliases=NewAliases, modules = sets:del_element(Module, State#state.modules)},
-			call_or(Module, deinitialise, [BaseState], BaseState);
-		automatic ->
-			case orddict:find(Module, State#state.moduledata) of
-				{ok, V} ->
-					Status = file:write_file(["modules/", Module, ".crl"], io_lib:format("~p.~n", [V])),
-					logging:log(info, Module, "Save status: ~p", [Status]);
-				error ->
-					file:delete(["modules/", Module, ".crl"]),
-					logging:log(info, Module, "Save found no data.")
-			end,
-			State#state{commands = Removed, aliases=NewAliases, modules=sets:del_element(Module, State#state.modules), moduledata=orddict:erase(Module, State#state.moduledata)};
-		none ->
-			State#state{commands = Removed, aliases=NewAliases, modules=sets:del_element(Module, State#state.modules), moduledata=orddict:erase(Module, State#state.moduledata)}
-	end
+			% Deinitialise
+			call_or(Module, deinitialise, [], ok),
+			config:set_value(config, [bot, modules], lists:delete(Module, Modules))
 	end.
 
-reload_modules(Modules, State) -> lists:foldl(fun reload_module/2, State, Modules).
-reload_module(Module, State) -> load_module(Module, unload_module(Module, State)).
+reload_modules(Modules) -> lists:foreach(fun reload_module/1, Modules).
+reload_module(Module) -> unload_module(Module), load_module(Module).
 
-recompile_modules(Modules, State) -> lists:foldl(fun recompile_module/2, State, Modules).
-recompile_module(Module, State) ->
+recompile_modules(Modules) -> lists:foreach(fun recompile_module/1, Modules).
+recompile_module(Module) ->
 	try
-		Sa = unload_module(Module, State),
+		unload_module(Module),
 		io:fwrite("purge ~p~n", [code:purge(Module)]),
 		io:fwrite("compile ~p~n", [compile:file("mod/" ++ atom_to_list(Module), [report_errors, report_warnings, {outdir, "./mod/bin/"}])]),
 		io:fwrite("load ~p~n", [code:load_file(Module)]),
-		load_module(Module, Sa)
+		load_module(Module)
 	catch
-		throw:X -> logging:log(error, "MODULE", "Recompile of ~p threw ~p", [Module, X]), State;
-		error:X -> logging:log(error, "MODULE", "Recompile of ~p errored ~p", [Module, X]), State;
-		exit:X -> logging:log(error, "MODULE", "Recompile of ~p exited ~p", [Module, X]), State
+		throw:X -> logging:log(error, "MODULE", "Recompile of ~p threw ~p", [Module, X]);
+		error:X -> logging:log(error, "MODULE", "Recompile of ~p errored ~p", [Module, X]);
+		exit:X -> logging:log(error, "MODULE", "Recompile of ~p exited ~p", [Module, X])
 	end.
 
-decode_alias(Command, Aliases, Arguments) ->
+decode_alias(Command, Arguments) ->
+	Aliases = config:require_value(temp, [bot, aliases]),
 	case orddict:find(string:to_lower(Command), Aliases) of
 		{ok, {V,Spec}} -> {V, apply_argspec(Spec, Arguments)};
 		{ok, V} -> {V, Arguments};
@@ -683,4 +577,4 @@ parse_argspec(Params) ->
 				nomatch -> T
 			end
 		end, Params)}.
-	
+

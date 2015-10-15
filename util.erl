@@ -246,3 +246,11 @@ s(N) -> s(N, "s").
 
 s(1,_) -> "";
 s(_,T) -> T.
+
+waitfor(Ident) ->
+	case whereis(Ident) of
+		undefined ->
+			timer:sleep(100),
+			waitfor(Ident);
+		_ -> ok
+	end.
