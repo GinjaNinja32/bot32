@@ -54,7 +54,9 @@ init() ->
 	config:set_value(temp, [bot, aliases], []),
 	config:set_value(temp, [bot, commands], []),
 
-	load_modules(config:get_value(config, [bot, modules])),
+	Modules = config:get_value(config, [bot, modules]),
+	config:set_value(config, [bot, modules], []),
+	load_modules(Modules),
 	loop().
 
 reinit(_) ->

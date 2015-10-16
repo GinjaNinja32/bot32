@@ -12,12 +12,12 @@ get_aliases() ->
 
 get_commands() ->
 	lists:map(fun({K,F}) ->
-			{K, fun(_, RT, P, Params, _) -> {irc, {msg, {RT, [P, F(Params)]}}} end, user}
+			{K, fun(_, RT, P, Params) -> {irc, {msg, {RT, [P, F(Params)]}}} end, user}
 		end, special_dice())
 	++ [
-		{"dicemode", fun dicemode/5, admin},
-		{"dice", fun dice/5, user},
-		{"edice",  fun edice/5, user}
+		{"dicemode", fun dicemode/4, admin},
+		{"dice", fun dice/4, user},
+		{"edice",  fun edice/4, user}
 	].
 
 get_help("dice") ->
@@ -92,30 +92,27 @@ get_sr_edge(N, Sixes, D) ->
 	get_sr_edge(S, S+Sixes, NewDice ++ D).
 
 get_dicemode() ->
-	case get(dicemode) of
+	case config:get_value(config, [dice2, dicemode], undefined) of
 		internal -> "internal RNG";
 		random -> "random.org";
 		undefined -> "undefined (using internal)";
 		_ -> "unknown"
 	end.
 
-initialise(T)->T.
-deinitialise(T)->T.
-
-dicemode(_, RT, P, [], _) -> {irc, {msg, {RT, [P, "Dicemode is ", get_dicemode()]}}};
-dicemode(_, RT, P, [Mode], _) ->
+dicemode(_, RT, P, []) -> {irc, {msg, {RT, [P, "Dicemode is ", get_dicemode()]}}};
+dicemode(_, RT, P, [Mode]) ->
 	Reply = case Mode of
-		"random" -> put(dicemode, random), "Dicemode set to random.org.";
-		"internal" -> put(dicemode, internal), "Dicemode set to internal RNG";
+		"random" -> config:set_value(config, [dice2, dicemode], random), "Dicemode set to random.org.";
+		"internal" -> config:set_value(config, [dice2, dicemode], internal), "Dicemode set to internal RNG";
 		_ -> ["Unknown dicemode '", Mode, $']
 	end,
 	{irc, {msg, {RT, [P, Reply]}}}.
 
 
-dice(_, RT, P, [], _) -> {irc, {msg, {RT, [P, "Provide some dice to roll, or try 'help dice' for help."]}}};
-dice(_, RT, P, Params, _) -> {irc, {msg, {RT, [P, dice(string:join(Params, " "), false)]}}}.
-edice(_, RT, P, [], _) -> {irc, {msg, {RT, [P, "Provide some dice to roll, or try 'help dice' for help."]}}};
-edice(_, RT, P, Params, _) -> {irc, {msg, {RT, [P, dice(string:join(Params, " "), true)]}}}.
+dice(_, RT, P, []) -> {irc, {msg, {RT, [P, "Provide some dice to roll, or try 'help dice' for help."]}}};
+dice(_, RT, P, Params) -> {irc, {msg, {RT, [P, dice(string:join(Params, " "), false)]}}}.
+edice(_, RT, P, []) -> {irc, {msg, {RT, [P, "Provide some dice to roll, or try 'help dice' for help."]}}};
+edice(_, RT, P, Params) -> {irc, {msg, {RT, [P, dice(string:join(Params, " "), true)]}}}.
 
 -record(dp, {n=1, min=no, max=no, csl=no, csm=no, cfl=no, cfm=no, show=false}).
 
@@ -413,7 +410,7 @@ roll(N, M, Expand) ->
 
 rollraw(N, 1) -> {ok, lists:duplicate(N, 1)};
 rollraw(N, M) ->
-	case get(dicemode) of
+	case config:get_value(config, [dice2, dicemode], internal) of
 		random when N > 100 -> {"\x038!\x03 ", lists:map(fun(_) -> random:uniform(M) end, lists:duplicate(N, x))};
 		random when M =< 100 -> {ok, get_n_m(N, M)};
 		_ -> {ok, lists:map(fun(_) -> random:uniform(M) end, lists:duplicate(N, x))}
@@ -436,20 +433,15 @@ get_n_m(N, M) ->
 	end.
 
 get_avail(M) ->
-	case get(dice_avail) of
-		undefined -> [];
-		Dict ->
-			case orddict:find(M, Dict) of
-				{ok, List} -> List;
-				error -> []
-			end
+	Dict = config:get_value(temp, [dice2, cache], []),
+	case orddict:find(M, Dict) of
+		{ok, List} -> List;
+		error -> []
 	end.
 
 set_avail(M, List) ->
-	case get(dice_avail) of
-		undefined -> put(dice_avail, [{M, List}]);
-		Dict -> put(dice_avail, orddict:store(M, List, Dict))
-	end.
+	Dict = config:get_value(temp, [dice2, cache], []),
+	config:set_value(temp, [dice2, cache], orddict:store(M, List, Dict)).
 
 describe(f) -> "failures";
 describe(s) -> "successes";

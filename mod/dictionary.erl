@@ -8,14 +8,11 @@ get_aliases() ->
 
 get_commands() ->
 	[
-		{"dictionary", fun dict/5, user}
+		{"dictionary", fun dict/4, user}
 	].
 
-initialise(T) -> T.
-deinitialise(T) -> T.
 
-
-dict(_, RT, P, Params, _) -> {irc, {msg, {RT, [P, dictionary(Params)]}}}.
+dict(_, RT, P, Params) -> {irc, {msg, {RT, [P, dictionary(Params)]}}}.
 
 dictionary([]) -> "Provide a word to look up.";
 dictionary(Words) ->
@@ -32,6 +29,7 @@ dictionary(Words) ->
 	end.
 
 parse_reply(Text, N) ->
+	io:fwrite("reply(~b): ~p", [N, Text]),
 	Lines = string:tokens(Text, "\n"),
 	case lists:prefix("No definitions found for", hd(Lines)) of
 		true ->

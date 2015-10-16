@@ -16,15 +16,13 @@ get_commands() ->
 	lists:map(fun({K,_,_}) -> {atom_to_list(K), genfood(K), user} end, get_food_options())
 	++
 	[
-		{"delfood", fun delfood/5, admin},
-		{"load_food", fun load_food/5, host},
-		{"save_food", fun save_food/5, host}
+		{"delfood", fun delfood/4, admin}
 	].
 
 get_help(String) ->
 	LString = string:to_lower(String),
 	case lists:filter(fun({K,_,_}) -> LString == atom_to_list(K) end, get_food_options()) of
-		[{Type, Options, Format}] ->
+		[{_, Options, Format}] ->
 			[
 				["Add with '", String, " add [key] [what]'."],
 				["Key can be: ", string:join(lists:map(fun atom_to_list/1, Options), ", "), $.],
@@ -33,20 +31,12 @@ get_help(String) ->
 		_ -> unhandled
 	end.
 
-default_data() -> orddict:new().
-data_persistence() -> automatic.
--include("basic_module.hrl").
+genfood(T) -> fun(O, RT, P, Prms) -> mkfood(T, O, RT, P, Prms) end.
 
-genfood(T) -> fun(O, RT, P, Prms, S) -> mkfood(T, O, RT, P, Prms, S) end.
-
-mkfood(_, _, RT, P, ["add",_], _) -> {irc, {msg, {RT, [P, "Provide an item!"]}}};
-mkfood(K, _, RT, P, ["add",Key|What], S) ->
+mkfood(_, _, RT, P, ["add",_]) -> {irc, {msg, {RT, [P, "Provide an item!"]}}};
+mkfood(K, _, RT, P, ["add",Key|What]) ->
 	{_,Keys,_} = get_tuple_for_key(K),
-	Data = get_data(S),
-	Food = case orddict:find(K,  Data) of
-		{ok, V} -> V;
-		error -> orddict:new()
-	end,
+	Food = config:get_value(data, [burger, K], []),
 	case case lists:member(Key, lists:map(fun atom_to_list/1, Keys)) of
 		true -> list_to_atom(Key);
 		false -> "Invalid type!"
@@ -64,29 +54,25 @@ mkfood(K, _, RT, P, ["add",Key|What], S) ->
 				error -> {irc, {msg, {RT, [P, "That's already on the list."]}}};
 				NewList ->
 					NewFood = orddict:store(RealKey, NewList, Food),
-					NewData = orddict:store(K, NewFood, Data),
-					save_data(NewData),
-				%	store_data(NewData),
-					core ! {irc, {msg, {RT, [P, "Added."]}}},
-					{setkey, {?MODULE, NewData}}
+					config:set_value(data, [burger, K], NewFood),
+					{irc, {msg, {RT, [P, "Added."]}}}
 			end;
 		Error -> {irc, {msg, {RT, [P, Error]}}}
 	end;
 
-mkfood(K, O, RT, P, _, S) ->
+mkfood(K, O, RT, P, _) ->
 	{_,_,String} = get_tuple_for_key(K),
-	Data = get_data(S),
-	Message = case orddict:find(K, Data) of
-		{ok, Food} ->
+	Message = case config:get_value(data, [burger, K], []) of
+		[] -> [P, "Can't find my ",atom_to_list(K)," ingredients, sorry."];
+		Food ->
 			Msg = lists:map(fun(T) when is_atom(T) -> getrand(T, Food); (T) -> T end, String),
-			["\x01ACTION ", Msg, O, ".\x01"];
-		error -> [P, "Can't find my ",atom_to_list(K)," ingredients, sorry."]
+			["\x01ACTION ", Msg, O, ".\x01"]
 	end,
 	{irc, {msg, {RT, Message}}}.
 
-delfood(_, RT, P, Params, _) when length(Params) < 3 -> {irc, {msg, {RT, [P, "Provide a type, key, and the exact string of what you want to remove."]}}};
-delfood(_, RT, P, [T,K|W], S) ->
-	Data = get_data(S),
+delfood(_, RT, P, Params) when length(Params) < 3 -> {irc, {msg, {RT, [P, "Provide a type, key, and the exact string of what you want to remove."]}}};
+delfood(_, RT, P, [T,K|W]) ->
+	Data = config:get_value(data, [burger], []),
 	Bin = list_to_binary(string:join(W, " ")),
 	Msg = case orddict:find(list_to_atom(T), Data) of
 		{ok, X} ->
@@ -95,10 +81,7 @@ delfood(_, RT, P, [T,K|W], S) ->
 					case lists:member(Bin, Y) of
 						true ->
 							NewList = lists:delete(Bin, Y),
-							NewX = orddict:store(list_to_atom(K), NewList, X),
-							NewData = orddict:store(list_to_atom(T), NewX, Data),
-							save_data(NewData),
-							store_data(NewData),
+							config:set_value(data, [burger, list_to_atom(T), list_to_atom(K)], NewList),
 							"Removed.";
 						false -> "Entry Not found."
 					end;
@@ -114,15 +97,3 @@ getrand(Key, Data) ->
 		{ok, List} -> lists:nth(random:uniform(length(List)), List);
 		error -> "##error"
 	end.
-
-load_food(_, RT, P, _, _) ->
-	store_data(bot:modload_auto(?MODULE)),
-	{irc, {msg, {RT, [P, "Loaded food data."]}}}.
-
-save_food(_, RT, P, _, S) ->
-	save_data(get_data(S)),
-	{irc, {msg, {RT, [P, "Saved food data."]}}}.
-
-save_data(D) ->
-	T = file:write_file("modules/burger.crl", io_lib:format("~p.~n", [D])),
-	logging:log(info, "BURGER", "Save status: ~p", [T]).
