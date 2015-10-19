@@ -3,11 +3,11 @@
 
 get_commands() ->
 	[
-		{"google", fun google/5, user}
+		{"google", fun google/4, user}
 	].
 
-google(_, RT, P, [], _) -> {irc, {msg, {RT, [P, "Provide a term to search for."]}}};
-google(_, RT, P, Params, _) ->
+google(_, RT, P, []) -> {irc, {msg, {RT, [P, "Provide a term to search for."]}}};
+google(_, RT, P, Params) ->
 	case lists:all(fun(T) -> lists:member(T,"0123456789") end, hd(Params)) of
 		true ->
 			N = list_to_integer(hd(Params)) - 1,

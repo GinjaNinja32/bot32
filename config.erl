@@ -9,7 +9,8 @@
 		require_value/2,
 		get_value/3,
 		set_value/3,
-		offer_value/3
+		offer_value/3,
+		del_value/2
 	]).
 
 is_started(Name) ->
@@ -58,6 +59,13 @@ offer_value(Name, Key, Value) -> % set iff not currently set
 	Name ! {self(), offer, Key, Value},
 	receive
 		{Name, offer, Key} -> ok;
+		{Name, error} -> error
+	end.
+
+del_value(Name, Key) ->
+	Name ! {self(), delete, Key},
+	receive
+		{Name, delete, Key} -> ok;
 		{Name, error} -> error
 	end.
 
@@ -130,6 +138,26 @@ loop(Name, Config, SaveToFile) ->
 					Config1
 			end,
 			loop(Name, NewConf, SaveToFile);
+		{Pid, delete, Key} ->
+			Config1 = case orddict:find(hd(Key), Config) of
+				error -> try_load_key(Name, hd(Key), Config);
+				{ok, _} -> Config
+			end,
+			NewConf = try
+				NC = delete_raw(Key, Config1),
+				if
+					SaveToFile -> save(Name, hd(Key), NC);
+					true -> ok
+				end,
+				Pid ! {Name, delete, Key},
+				NC
+			catch
+				A:B ->
+					logging:log(error, ?MODULE, "caught ~p:~p while deleting key ~p", [A,B,Key]),
+					Pid ! {Name, error},
+					Config1
+			end,
+			loop(Name, NewConf, SaveToFile);
 		{Pid, stop} ->
 			Pid ! {Name, stop},
 			ok;
@@ -174,3 +202,12 @@ offer_raw([Key | Rest], Value, Config) ->
 		error -> offer_raw(Rest, Value, [])
 	end,
 	orddict:store(Key, NewV, Config).
+
+delete_raw([Key], Config) -> orddict:delete(Key, Config);
+delete_raw([Key | Rest], Config) ->
+	case orddict:find(Key, Config) of
+		{ok, V} ->
+			NewV = delete_raw(Rest, V),
+			orddict:store(Key, NewV, Config);
+		error -> Config % the key's precursor doesn't exist, so we don't need to do anything
+	end.

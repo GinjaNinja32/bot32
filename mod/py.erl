@@ -5,70 +5,69 @@
 
 get_commands() ->
 	[
-		{"markov", fun markov/5, user},
-		{"pyreload", fun pyreload/5, py},
-		{"contexts", fun contexts/5, user}
+		{"markov", fun markov/4, user},
+		{"pyreload", fun pyreload/4, py},
+		{"contexts", fun contexts/4, user}
 	].
 
-initialise(T) ->
+initialise() ->
 	case python:start([{python_path, "./pymod"}, {python, "python3"}]) of
 		{ok,Py} ->
-			python:call(Py, python, init, []),
-			T#state{moduledata=orddict:store(?MODULE, Py, T#state.moduledata)};
-		_ -> T
+			config:set_value(temp, [?MODULE, pypid], Py),
+			python:call(Py, python, init, []);
+		_ -> ok
 	end.
 
-deinitialise(T) ->
-	case orddict:find(?MODULE, T#state.moduledata) of
-		{ok, Py} ->
+deinitialise() ->
+	case config:get_value(temp, [?MODULE, pypid]) of
+		'$none' -> ok;
+		Py ->
 			catch python:call(Py, python, exit, []),
-			python:stop(Py);
-		_ -> ok
-	end,
-	T#state{moduledata=orddict:erase(?MODULE, T#state.moduledata)}.
+			python:stop(Py)
+	end.
 
-pyreload(_, RT, P, _, S) ->
-	case orddict:find(?MODULE, S#state.moduledata) of
-		{ok, Py} ->
+pyreload(_, RT, P, _) ->
+	case config:get_value(temp, [?MODULE, pypid]) of
+		'$none' -> ok;
+		Py ->
 			catch python:call(Py, python, exit, []),
-			python:stop(Py);
-		error -> ok
+			python:stop(Py)
 	end,
 	case python:start([{python_path, "./pymod"}, {python, "python3"}]) of
 		{ok, NewPy} ->
+			config:set_value(temp, [?MODULE, pypid], NewPy),
 			python:call(NewPy, python, init, []),
-			core ! {irc, {msg, {RT, [P, "Python reloaded."]}}},
-			{setkey, {?MODULE, NewPy}};
+			{irc, {msg, {RT, [P, "Python reloaded."]}}};
 		_ -> core ! {irc, {msg, {RT, [P, "Python failed to start."]}}}
 	end.
 
-contexts(_, RT, P, [Word], S) ->
-	call(contexts, [RT, P, Word], RT, S);
-contexts(_, RT, P, _, _) -> {irc, {msg, {RT, [P, "Provide a single word!"]}}}.
+contexts(_, RT, P, [Word]) ->
+	call(contexts, [RT, P, Word], RT);
+contexts(_, RT, P, _) -> {irc, {msg, {RT, [P, "Provide a single word!"]}}}.
 
-markov(_, RT, _, Params, S) ->
-	call(markovreply, [RT, string:join(Params, " ")], RT, S).
+markov(_, RT, _, Params) ->
+	call(markovreply, [RT, string:join(Params, " ")], RT).
 
-call(Func, Args, RT, S) ->
-	case orddict:find(?MODULE, S#state.moduledata) of
-		{ok, Py} -> python:call(Py, python, Func, Args);
-		error -> {irc,{msg,{RT,"Could not find python."}}}
+call(Func, Args, RT) ->
+	case config:get_value(temp, [?MODULE, pypid]) of
+		'$none' -> {irc,{msg,{RT,"Could not find python."}}};
+		Py -> python:call(Py, python, Func, Args)
 	end.
 
-handle_event(msg, {_, Channel, Msg}, S) ->
-	case S#state.nick of
+handle_event(msg, {_, Channel, Msg}) ->
+	case config:get_value(config, [bot, nick]) of
 		Channel -> ok;
-		_ ->
-			case re:run(string:join(Msg, " "), [$(, util:regex_escape(S#state.nick) | "|(^|[^a-z0-9])nti([^a-z0-9]|$))"], [caseless, {capture, none}]) of
+		Nick ->
+			case re:run(string:join(Msg, " "), [$(, util:regex_escape(Nick) | "|(^|[^a-z0-9])nti([^a-z0-9]|$))"], [caseless, {capture, none}]) of
 				match -> Func = markovreply;
 				_ -> Func = markov
 			end,
-			case call(Func, [Channel, string:join(Msg, " ")], Channel, S) of
+			case call(Func, [Channel, string:join(Msg, " ")], Channel) of
 				{irc, T} -> core ! {irc, T};
 				_ -> ok
 			end
 	end;
-handle_event(_, _, _) -> ok.
+handle_event(_, _) -> ok.
 
 
 

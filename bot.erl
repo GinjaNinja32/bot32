@@ -168,7 +168,11 @@ check_utf8(X) -> io:fwrite("~p~n", [X]), false.
 
 handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}) ->
 	lists:foreach(fun(Module) ->
-			call_or(Module, handle_event, [msg, Params], null)
+			try
+				call_or(Module, handle_event, [msg, Params], null)
+			catch
+				A:B -> logging:log(error, ?MODULE, "Encountered ~p:~p while calling handle_event for ~p!", [A,B,Module])
+			end
 		end, config:get_value(config, [bot, modules])),
 
 	case lists:all(fun(T) -> check_utf8(list_to_binary(T)) end, Tokens) of
@@ -543,7 +547,7 @@ reload_module(Module) -> unload_module(Module), load_module(Module).
 recompile_modules(Modules) -> lists:foreach(fun recompile_module/1, Modules).
 recompile_module(Module) ->
 	try
-		unload_module(Module),
+		catch unload_module(Module),
 		io:fwrite("purge ~p~n", [code:purge(Module)]),
 		io:fwrite("compile ~p~n", [compile:file("mod/" ++ atom_to_list(Module), [report_errors, report_warnings, {outdir, "./mod/bin/"}])]),
 		io:fwrite("load ~p~n", [code:load_file(Module)]),

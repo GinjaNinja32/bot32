@@ -5,72 +5,44 @@
 
 get_commands() ->
 	[
-		{"delnote", fun delnote/5, user},
-		{"remnote", fun delnote/5, user},
-		{"note", fun note/5, user}
+		{"delnote", fun delnote/4, user},
+		{"remnote", fun delnote/4, user},
+		{"note", fun note/4, user}
 	].
-
-get_data(#state{moduledata=M}) ->
-	case orddict:find(?MODULE, M) of
-		{ok, Value} -> Value;
-		error -> orddict:new()
-	end.
-
-set_data(S=#state{moduledata=M}, Data) ->
-	S#state{moduledata=orddict:store(?MODULE, Data, M)}.
-
-store_data(Data) ->
-	bot ! {setkey, {?MODULE, Data}},
-	ok.
-
-initialise(T) ->
-	Data = load_data(),
-	set_data(T, Data).
-
-deinitialise(T) ->
-	save_data(get_data(T)),
-	T#state{moduledata=orddict:erase(?MODULE, T#state.moduledata)}.
 
 %
 
-delnote(O, RT, P, [T], S) ->
-	Dat = get_data(S),
+delnote(O, RT, P, [T]) ->
 	LO = string:to_lower(O),
-	{Reply, UDict} = case orddict:find(LO, Dat) of
-		{ok, Value} ->
+	{Reply, UDict} = case config:get_value(data, [?MODULE, LO]) of
+		'$none' -> {"You have no notes.", []};
+		Value ->
 			case orddict:find(T, Value) of
 				{ok, _} -> {"Note deleted.", orddict:erase(T, Value)};
 				error -> {"Note not found.", Value}
-			end;
-		error -> {"You have no notes.", orddict:new()}
+			end
 	end,
-	NewDict = case UDict of
-		[] -> orddict:erase(LO, Dat);
-		_ -> orddict:store(LO, UDict, Dat)
-	end,
-	core ! {irc, {msg, {RT, [P, Reply]}}},
-	save_data(NewDict),
-	{setkey, {?MODULE, NewDict}};
-delnote(_, RT, P, _, _) -> {irc, {msg, {RT, [P, "Provide a single note key!"]}}}.
+	config:set_value(data, [?MODULE, LO], UDict),
+	{irc, {msg, {RT, [P, Reply]}}};
+delnote(_, RT, P, _) -> {irc, {msg, {RT, [P, "Provide a single note key!"]}}}.
 
-note(O, RT, P, ["list"], S) -> notes(O, RT, P, a, S);
-note(O, RT, P, [T], S) ->
-	Dat = get_data(S),
+note(O, RT, P, ["list"]) -> notes(O, RT, P, a);
+note(O, RT, P, [T]) ->
 	LO = string:to_lower(O),
-	Reply = case orddict:find(LO, Dat) of
-		{ok, Value} ->
+	Reply = case config:get_value(data, [?MODULE, LO]) of
+		'$none' -> "You do not have any notes.";
+		Value ->
 			case orddict:find(T, Value) of
 				{ok, Note} -> Note;
 				error -> ["You do not have a note '", T, "'."]
-			end;
-		error -> "You do not have any notes."
+			end
 	end,
 	{irc, {msg, {RT, [P, Reply]}}};
-note(O, RT, P, [T|C], S) ->
-	Dat = get_data(S),
+note(O, RT, P, [T|C]) ->
 	LO = string:to_lower(O),
-	{Reply, UDict} = case orddict:find(LO, Dat) of
-		{ok, Value} ->
+	{Reply, UDict} = case config:get_value(data, [?MODULE, LO]) of
+		'$none' -> {"Note added.", orddict:store(T, string:join(C, " "), orddict:new())};
+		Value ->
 			Len = orddict:size(Value),
 			if
 				Len < 20 ->
@@ -80,33 +52,16 @@ note(O, RT, P, [T|C], S) ->
 					end;
 				true ->
 					{"You have too many notes; delete some before adding more!", Value}
-			end;
-		error -> {"Note added.", orddict:store(T, string:join(C, " "), orddict:new())}
+			end
 	end,
-	core ! {irc, {msg, {RT, [P, Reply]}}},
-	NewData = orddict:store(LO, UDict, Dat),
-	save_data(NewData),
-	{setkey, {?MODULE, NewData}};
-note(_, RT, P, _, _) -> {irc, {msg, {RT, [P, "Provide either a key (to retrieve) or a key and a string (to set)!"]}}}.
+	config:set_value(data, [?MODULE, LO], UDict),
+	{irc, {msg, {RT, [P, Reply]}}};
+note(_, RT, P, _) -> {irc, {msg, {RT, [P, "Provide either a key (to retrieve) or a key and a string (to set)!"]}}}.
 
-notes(O, RT, P, _, S) ->
-	Dat = get_data(S),
+notes(O, RT, P, _) ->
 	LO = string:to_lower(O),
-	Reply = case case orddict:find(LO, Dat) of
-		{ok, Value} -> orddict:fetch_keys(Value);
-		error -> []
-	end of
+	Reply = case orddict:fetch_keys(config:get_value(data, [?MODULE, LO], [])) of
 		[] -> "You have no notes.";
 		T -> string:join(lists:map(fun(X)->[$',X,$'] end, T), " ")
 	end,
 	{irc, {msg, {RT, [P, Reply]}}}.
-
-load_data() ->
-	case file:consult("notes.crl") of
-		{ok, [Notes]} -> Notes;
-		_ -> orddict:new()
-	end.
-
-save_data(Dat) ->
-	T = file:write_file("notes.crl", io_lib:format("~p.~n", [Dat])),
-	logging:log(info, "NOTES", "Save status: ~p", [T]).

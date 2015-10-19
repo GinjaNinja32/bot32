@@ -254,3 +254,10 @@ waitfor(Ident) ->
 			waitfor(Ident);
 		_ -> ok
 	end.
+waitfor_gone(Ident) ->
+	case whereis(Ident) of
+		undefined -> ok;
+		_ ->
+			timer:sleep(100),
+			waitfor_gone(Ident)
+	end.

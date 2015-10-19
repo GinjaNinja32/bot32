@@ -13,63 +13,49 @@
 
 -define(Timer, 100).
 
-waitfor_gone(Ident) ->
-	case whereis(Ident) of
-		undefined -> ok;
-		_ -> timer:sleep(100), waitfor_gone(Ident)
-	end.
-
-get_commands() -> [].
-initialise(T) ->
+initialise() ->
 	case whereis(?MODULE) of
 		undefined -> ok;
-		Pid -> Pid ! stop, waitfor_gone(?MODULE)
+		Pid -> Pid ! stop, util:waitfor_gone(?MODULE)
 	end,
-	case file:consult("github_announce.crl") of
-		{ok, [Secret,Channels]} -> ok;
-		_ ->
-			Secret = '*',
-			Channels = [{'*', '*', "#bot32-test"}]
-	end,
-	spawn(?MODULE, init, [Channels, Secret]),
-	T.
+	spawn(?MODULE, init, []).
 
-deinitialise(T) ->
+deinitialise() ->
 	case whereis(?MODULE) of
 		undefined -> ok;
 		Pid -> Pid ! stop
 	end,
-	T.
+	util:waitfor_gone(?MODULE).
 
-init(Channels, Secret) ->
+init() ->
 	case gen_tcp:listen(8080, [binary, {packet, http}, {active, false}, {reuseaddr, true}]) of
 		{ok, SvrSock} ->
 			logging:log(info, "GITHUB", "Starting loop."),
 			register(?MODULE, self()),
-			loop(SvrSock, Channels, Secret),
+			loop(SvrSock),
 			gen_tcp:close(SvrSock),
 			logging:log(info, "GITHUB", "Ending loop.");
 		{error, Reason} ->
 			logging:log(error, "GITHUB", "Failed to open listen socket: ~p", [Reason])
 	end.
 
-loop(SvrSock, Channels, Secret) ->
+loop(SvrSock) ->
 	case receive
 		stop -> stop
 	after ?Timer ->
 		case gen_tcp:accept(SvrSock, ?Timer) of
-			{ok, Socket} -> handle_sock(Socket, Channels, Secret), ok;
+			{ok, Socket} -> handle_sock(Socket), ok;
 			{error, timeout} -> ok;
 			{error, X} -> {error, X}
 		end
 	end of
-		ok -> loop(SvrSock, Channels, Secret);
+		ok -> loop(SvrSock);
 		stop -> ok;
 		{error, E} -> logging:log(error, "GITHUB", "error: ~p", [E]);
 		E -> logging:log(error, "GITHUB", "Unknown status ~p", [E])
 	end.
 
-handle_sock(Socket, Channels, Secret) ->
+handle_sock(Socket) ->
 	case gen_tcp:recv(Socket, 0, 2000) of
 		{ok, {http_request, 'POST', A, B}} ->
 			inet:setopts(Socket, [{packet, httph}]),
@@ -79,13 +65,16 @@ handle_sock(Socket, Channels, Secret) ->
 					case case case orddict:find('Content-Length', Dict) of
 						{ok, Value} ->
 							inet:setopts(Socket, [{packet, raw}]),
+							Secret = config:require_value(config, [?MODULE, secret]),
 							read_content(Socket, list_to_integer(Value), Signature, Secret);
 						error -> <<"">>
 					end of
 						sigerr -> error;
 						<<"">> -> ok;
 						{error, T} -> logging:log(error, "GITHUB", "Error: ~p", [T]);
-						Content -> decode_content(Content, Channels), ok
+						Content ->
+							Channels = config:require_value(config, [?MODULE, channels]),
+							decode_content(Content, Channels), ok
 					end of
 						ok ->
 							gen_tcp:send(Socket, "HTTP/1.1 204 No Content\r\n\r\n");
@@ -93,7 +82,7 @@ handle_sock(Socket, Channels, Secret) ->
 							logging:log(info, "GITHUB", "HTTP request with incorrect signature ~p ~p ~p", [A, B, Dict]),
 							gen_tcp:send(Socket, "HTTP/1.1 403 Forbidden\r\n\r\n")
 					end;
-				error -> 
+				error ->
 					logging:log(info, "GITHUB", "HTTP request with no signature ~p ~p ~p", [A, B, Dict]),
 					gen_tcp:send(Socket, "HTTP/1.1 403 Forbidden\r\n\r\n")
 			end,
