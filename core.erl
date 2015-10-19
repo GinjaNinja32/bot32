@@ -5,13 +5,21 @@
 -include("definitions.hrl").
 
 init() ->
-	case file:consult("core_config.crl") of
-		{ok, [{Server, Port, Transport}]} -> init(Server, Transport, Port);
-		{ok, Terms} -> logging:log(error, "CORE", "Wrong config file format: ~p", [Terms]);
-		{error, R} -> logging:log(error, "CORE", "Failed to read config file: ~p", [R])
-	end.
+	config:start(config),
+	util:waitfor(config),
+	Server    = config:require_value(config, [core, server]),
+	Port      = config:require_value(config, [core, port]),
+	Transport = config:require_value(config, [core, transport]),
+	init(Server, Transport, Port).
 
 init(Server, Transport, Port) ->
+	case config:is_started(config) of
+		false -> config:start(config);
+		true -> ok
+	end,
+	config:start(data),
+	config:start_transient(temp),
+
 	case Transport of
 		ssl -> ssl:start();
 		_ -> ok

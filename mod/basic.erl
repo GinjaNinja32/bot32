@@ -3,40 +3,37 @@
 
 get_commands() ->
 	[
-		{"ping", fun ping/5, user},
-		{"pong", fun pong/5, user},
-		{"8ball", fun eightball/5, user},
-		{"rand", fun rand/5, user},
-		{"pick", fun pick/5, user},
-		{"dance", fun dance/5, user},
-		{"rot13", fun rot_thirteen/5, user},
-		{"rot", fun rot_n/5, user},
-		{"colors", fun colors/5, user},
-		{"colours", fun colors/5, user},
-		{"coin", fun coin/5, user}
+		{"ping", fun ping/4, user},
+		{"pong", fun pong/4, user},
+		{"8ball", fun eightball/4, user},
+		{"rand", fun rand/4, user},
+		{"pick", fun pick/4, user},
+		{"dance", fun dance/4, user},
+		{"rot13", fun rot_thirteen/4, user},
+		{"rot", fun rot_n/4, user},
+		{"colors", fun colors/4, user},
+		{"colours", fun colors/4, user},
+		{"coin", fun coin/4, user}
 	].
-
-initialise(T) -> T.
-deinitialise(T) -> T.
 
 i2l(T, S) when T < 10 -> [S] ++ integer_to_list(T);
 i2l(T, _) -> integer_to_list(T).
 
-colors(_, ReplyTo, Ping, _, _) -> {irc, {msg, {ReplyTo, [Ping,
+colors(_, ReplyTo, Ping, _) -> {irc, {msg, {ReplyTo, [Ping,
 		lists:map(fun(X) -> [3,i2l(X,$0),i2l(X,$ )] end, lists:seq(0,15)),
 		lists:map(fun(X) -> [3,$,,i2l(X,$0),i2l(X,$ )] end, lists:seq(0,15))
 	]}}}.
 
-ping(_, ReplyTo, Ping, _, _) -> {irc, {msg, {ReplyTo, [Ping, "Pong!"]}}}.
-pong(_, ReplyTo, Ping, _, _) -> {irc, {msg, {ReplyTo, [Ping, "Ping!"]}}}.
+ping(_, ReplyTo, Ping, _) -> {irc, {msg, {ReplyTo, [Ping, "Pong!"]}}}.
+pong(_, ReplyTo, Ping, _) -> {irc, {msg, {ReplyTo, [Ping, "Ping!"]}}}.
 
-eightball(_, ReplyTo, Ping, ["add"|Thing], _) ->
+eightball(_, ReplyTo, Ping, ["add"|Thing]) ->
 	{irc, {msg, {ReplyTo, [Ping, util:addeightball(list_to_binary(string:join(Thing, " ")))]}}};
-eightball(_, ReplyTo, Ping, _, _) ->
+eightball(_, ReplyTo, Ping, _) ->
         {irc, {msg, {ReplyTo, [Ping, util:eightball()]}}}.
 
-rand(_, ReplyTo, Ping, [], _) -> {irc, {msg, {ReplyTo, [Ping, "Please pass a positive integer."]}}};
-rand(_, ReplyTo, Ping, Params, _) ->
+rand(_, ReplyTo, Ping, []) -> {irc, {msg, {ReplyTo, [Ping, "Please pass a positive integer."]}}};
+rand(_, ReplyTo, Ping, Params) ->
         {Num, _Rest} = string:to_integer(hd(Params)),
         case Num of
                 error -> {irc, {msg, {ReplyTo, [Ping, "Unable to parse integer."]}}};
@@ -44,10 +41,10 @@ rand(_, ReplyTo, Ping, Params, _) ->
                 _ -> {irc, {msg, {ReplyTo, [Ping, "Please pass a positive integer."]}}}
         end.
 
-pick(_, ReplyTo, Ping, [], _) -> {irc, {msg, {ReplyTo, [Ping, "I need some things to pick from!"]}}};
-pick(_, ReplyTo, Ping, Params, _) -> {irc, {msg, {ReplyTo, [Ping, lists:nth(random:uniform(length(Params)), Params)]}}}.
+pick(_, ReplyTo, Ping, []) -> {irc, {msg, {ReplyTo, [Ping, "I need some things to pick from!"]}}};
+pick(_, ReplyTo, Ping, Params) -> {irc, {msg, {ReplyTo, [Ping, lists:nth(random:uniform(length(Params)), Params)]}}}.
 
-dance(_, ReplyTo, Ping, _, _) ->
+dance(_, ReplyTo, Ping, _) ->
 	T = random:uniform(100),
 	if
 		T < 20 -> 	{multi, [
@@ -59,8 +56,8 @@ dance(_, ReplyTo, Ping, _, _) ->
 		true -> {irc, {msg, {ReplyTo, [Ping, "What sort of bot do you think I am?!"]}}}
 	end.
 
-rot_thirteen(_, ReplyTo, Ping, [], _) -> {irc, {msg, {ReplyTo, [Ping, "Supply a string to rot13!"]}}};
-rot_thirteen(_, ReplyTo, Ping, Params, _) ->
+rot_thirteen(_, ReplyTo, Ping, []) -> {irc, {msg, {ReplyTo, [Ping, "Supply a string to rot13!"]}}};
+rot_thirteen(_, ReplyTo, Ping, Params) ->
 	String = lists:flatten(string:join(Params, " ")),
 	Rotated = lists:map(fun(T) ->
 		if
@@ -76,9 +73,9 @@ mod(X,Y) when X > 0 -> X rem Y;
 mod(X,Y) when X < 0 -> Y + X rem Y;
 mod(0,_) -> 0.
 
-rot_n(_, ReplyTo, Ping, [], _) -> {irc, {msg, {ReplyTo, [Ping, "Supply a number to rotate by and a string to encode!"]}}};
-rot_n(_, ReplyTo, Ping, [_], _) -> {irc, {msg, {ReplyTo, [Ping, "Supply a string to encode!"]}}};
-rot_n(_, ReplyTo, Ping, Params, _) ->
+rot_n(_, ReplyTo, Ping, []) -> {irc, {msg, {ReplyTo, [Ping, "Supply a number to rotate by and a string to encode!"]}}};
+rot_n(_, ReplyTo, Ping, [_]) -> {irc, {msg, {ReplyTo, [Ping, "Supply a string to encode!"]}}};
+rot_n(_, ReplyTo, Ping, Params) ->
 	StrN = hd(Params),
 	case catch list_to_integer(StrN) of
 		N when is_integer(N) ->
@@ -93,5 +90,5 @@ rot_n(_, ReplyTo, Ping, Params, _) ->
 		_ -> {irc, {msg, {ReplyTo, [Ping, "Supply a valid number!"]}}}
 	end.
 
-coin(_, RT, P, _, _) ->
+coin(_, RT, P, _) ->
 	{irc, {msg, {RT, [P, lists:nth(random:uniform(2), ["Heads!", "Tails!"])]}}}.

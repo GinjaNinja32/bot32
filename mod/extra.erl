@@ -40,7 +40,7 @@ russian_keymap() ->
 		{1093,91},{1094,119},{1095,120},{1096,105},{1097,111},{1098,93},
 		{1099,115},{1100,109},{1101,39},{1102,46},{1103,122},{1105,96}
 	].
-	
+
 do_russian(Tokens, ReplyChannel, ReplyPing) ->
 	String = utf8(list_to_binary(string:join(Tokens, " "))),
 	case is_russian(String) of
@@ -104,4 +104,3 @@ do_pr_link_token(Token, Channel, Ping) ->
 			end;
 		false -> ok
 	end.
-

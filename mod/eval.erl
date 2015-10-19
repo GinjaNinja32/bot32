@@ -7,45 +7,38 @@ get_commands() ->
 	[
 		{"eval", gen_eval(fun eval/1), eval},
 		{"evalstr", gen_eval_str(fun eval/1), eval},
-		{"s", fun shl/5, eval},
-		{"sdrop", fun sdrop/5, eval},
-		{"serase", fun serase/5, eval},
-		{"sshow", fun sshow/5, eval},
+		{"s", fun shl/4, eval},
+		{"sdrop", fun sdrop/4, eval},
+		{"serase", fun serase/4, eval},
+		{"sshow", fun sshow/4, eval},
 		{"maths", gen_eval(fun math/1), user},
 		{"math", gen_eval(fun math/1), user},
-		{"sym", fun sym/5, user},
-		{"lsym", fun lsym/5, host}
+		{"sym", fun sym/4, user},
+		{"lsym", fun lsym/4, host}
 	].
 
-default_data() -> [].
-data_persistence() -> automatic.
--include("basic_module.hrl").
-
-sym(_, RT, P, Par, _) ->
+sym(_, RT, P, Par) ->
 	os:putenv("sym", string:join(Par, " ")),
 	{irc, {msg, {RT, [P, os:cmd("./sympy_eval.sh 5 \"$sym\"")]}}}.
-lsym(_, RT, P, Par, _) ->
+lsym(_, RT, P, Par) ->
 	os:putenv("sym", string:join(Par, " ")),
 	{irc, {msg, {RT, [P, os:cmd("./sympy_eval.sh 60 \"$sym\"")]}}}.
 
-shl(_, RT, P, Params, State) ->
+shl(_, RT, P, Params) ->
 	PStr = lists:flatten(string:join(Params, " ")),
 	String = case lists:last(PStr) of
 		$. -> PStr;
 		_ -> PStr ++ "."
 	end,
-	case orddict:find(?MODULE, State#state.moduledata) of
-		{ok, Bindings} -> ok;
-		_ -> Bindings = []
-	end,
+	Bindings = config:get_value(data, [eval, shell], []),
 	case erl_scan:string(String) of
 		{ok, Tokens, _} ->
 			case erl_parse:parse_exprs(Tokens) of
 				{ok, Forms} ->
 					case catch erl_eval:exprs(Forms, Bindings) of
 						{value, Value, NewBinds} ->
-							core ! {irc, {msg, {RT, [P, io_lib:format("~p", [Value])]}}},
-							{setkey, {?MODULE, NewBinds}};
+							config:set_value(data, [eval, shell], NewBinds),
+							{irc, {msg, {RT, [P, io_lib:format("~p", [Value])]}}};
 						{'EXIT', {Reason, Stack}} -> {irc, {msg, {RT, [P, format_reasonstack(Reason, Stack)]}}};
 						{'EXIT', Term} -> {irc, {msg, {RT, [P, io_lib:format("Code exited with ~p", [Term])]}}};
 						Term -> {irc, {msg, {RT, [P, io_lib:format("Code threw ~p", [Term])]}}}
@@ -55,33 +48,35 @@ shl(_, RT, P, Params, State) ->
 		T -> {irc, {msg, {RT, [P, io_lib:format("~p", [T])]}}}
 	end.
 
-sshow(_, RT, P, _, State) ->
-	case orddict:find(?MODULE, State#state.moduledata) of
-		{ok, V} -> {irc, {msg, {RT, [P, io_lib:format("~p", [V])]}}};
-		error -> {irc, {msg, {RT, [P, "No state found."]}}}
+sshow(_, RT, P, _) ->
+	case config:get_value(data, [eval, shell]) of
+		'$none' -> {irc, {msg, {RT, [P, "No state found."]}}};
+		V -> {irc, {msg, {RT, [P, io_lib:format("~p", [V])]}}}
 	end.
 
-serase(_, RT, P, A, _) when length(A) /= 1 -> {irc, {msg, {RT, [P, "Provide a single var name."]}}};
-serase(_, RT, P, [Var], S) ->
-	{Msg, NewDict} = case orddict:find(?MODULE, S#state.moduledata) of
-		{ok, Vars} ->
+serase(_, RT, P, A) when length(A) /= 1 -> {irc, {msg, {RT, [P, "Provide a single var name."]}}};
+serase(_, RT, P, [Var]) ->
+	Msg = case config:get_value(data, [eval, shell]) of
+		'$none' -> "No vars found.";
+		Vars ->
 			Atom = list_to_atom(Var),
 			case orddict:find(Atom, Vars) of
-				{ok, Val} -> {io_lib:format("Dropped value ~p.", [Val]), orddict:erase(Atom, Vars)};
-				error -> {io_lib:format("No variable ~s found.", [Var]), Vars}
-			end;
-		error -> {"No vars found.", []}
+				{ok, Val} ->
+					config:set_value(data, [eval, shell], orddict:erase(Atom, Vars)),
+					io_lib:format("Dropped value ~p.", [Val]);
+				error ->
+					io_lib:format("No variable ~s found.", [Var])
+			end
 	end,
-	core ! {irc, {msg, {RT, [P, Msg]}}},
-	{setkey, {?MODULE, NewDict}}.
+	{irc, {msg, {RT, [P, Msg]}}}.
 
-sdrop(_, RT, P, _, _) ->
-	core ! {irc, {msg, {RT, [P, "State dropped."]}}},
-	{setkey, {?MODULE, []}}.
+sdrop(_, RT, P, _) ->
+	config:set_value(data, [eval, shell], []),
+	{irc, {msg, {RT, [P, "State dropped."]}}}.
 
 gen_eval(Func) ->
-	fun(_,ReplyTo,Ping,[    ],_) -> {irc, {msg, {ReplyTo, [Ping, "Provide a string to evaluate!"]}}};
-	   (_,ReplyTo,Ping,Params,_) ->
+	fun(_,ReplyTo,Ping,[    ]) -> {irc, {msg, {ReplyTo, [Ping, "Provide a string to evaluate!"]}}};
+	   (_,ReplyTo,Ping,Params) ->
 		Raw = lists:flatten(string:join(Params, " ")),
 		Str = case lists:last(Raw) of
 			$. -> Raw;
@@ -97,8 +92,8 @@ gen_eval(Func) ->
 	end.
 
 gen_eval_str(Func) ->
-	fun(_,ReplyTo,Ping,[    ],_) -> {irc, {msg, {ReplyTo, [Ping, "Provide a string to evaluate!"]}}};
-	   (_,ReplyTo,Ping,Params,_) ->
+	fun(_,ReplyTo,Ping,[    ]) -> {irc, {msg, {ReplyTo, [Ping, "Provide a string to evaluate!"]}}};
+	   (_,ReplyTo,Ping,Params) ->
 		Raw = lists:flatten(string:join(Params, " ")),
 		Str = case lists:last(Raw) of
 			$. -> Raw;

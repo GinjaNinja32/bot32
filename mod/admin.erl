@@ -5,51 +5,33 @@
 
 get_commands() ->
 	[
-%		{"admin", fun admin/5, admin},
-%		{"deadmin", fun deadmin/5, admin},
-		{"setrank", fun setrank/5, host},
-		{"getrank", fun getrank/5, admin},
-		{"whorank", fun whorank/5, admin},
-		{"editrank", fun editrank/5, host},
-		{"loadranks", fun loadranks/5, host},
-		{"getchanperm", fun gchanperm/5, admin},
-		{"chanperm", fun chanperm/5, host},
-		{"join", fun join/5, admin},
-		{"part", fun part/5, admin},
-		{"nick", fun nick/5, admin},
-		{"quit", fun quit/5, host},
-		{"speak", fun speak/5, admin},
-		{"notice", fun notice/5, admin},
-		{"action", fun action/5, admin},
-		{"prefix", fun prefix/5, host},
-		{"addprefix", fun addprefix/5, host},
-		{"remprefix", fun remprefix/5, host},
-		{"cmode", fun mode/5, admin},
-		{"kick", fun kick/5, admin},
-		{"raw", fun raw/5, host}
+		{"setrank", fun setrank/4, host},
+		{"getrank", fun getrank/4, admin},
+		{"whorank", fun whorank/4, admin},
+		{"editrank", fun editrank/4, host},
+		{"getchanperm", fun gchanperm/4, admin},
+		{"chanperm", fun chanperm/4, host},
+		{"join", fun join/4, admin},
+		{"part", fun part/4, admin},
+		{"nick", fun nick/4, admin},
+		{"quit", fun quit/4, host},
+		{"speak", fun speak/4, admin},
+		{"notice", fun notice/4, admin},
+		{"action", fun action/4, admin},
+		{"prefix", fun prefix/4, host},
+		{"cmode", fun mode/4, admin},
+		{"kick", fun kick/4, admin},
+		{"raw", fun raw/4, host}
 	].
 
-initialise(T) -> T.
-deinitialise(T) -> T.
-
-tuplefor(N,U,H) ->
-	{list_to_binary(string:to_lower(N)), list_to_binary(U), list_to_binary(H)}.
-
-loadranks(_, ReplyTo, Ping, _, State) ->
-	case file:consult("permissions.crl") of
-		{ok, [Perms]} ->
-			core ! {irc, {msg, {ReplyTo, [Ping, "Permissions loaded successfully."]}}},
-			{state, State#state{permissions=Perms}};
-		{ok, _} -> {irc, {msg, {ReplyTo, [Ping, "Incorrect permission file format."]}}};
-		{error, T} -> {irc, {msg, {ReplyTo, [Ping, io_lib:format("Unable to read file: ~p", [T])]}}}
-	end.
+tuplefor(N,U,H) -> {list_to_binary(string:to_lower(N)), list_to_binary(U), list_to_binary(H)}.
 
 cleandict(Dict) ->
-	orddict:filter(fun(_, V) -> V /= [user] end, Dict).	
+	orddict:filter(fun(_, V) -> V /= [user] end, Dict).
 
-chanperm(_, ReplyTo, Ping, [], _) -> {irc, {msg, {ReplyTo, [Ping, "Provide a rank to set and one or more channels"]}}};
-chanperm(_, ReplyTo, Ping, [_], _) -> {irc, {msg, {ReplyTo, [Ping, "Provide one or more channels"]}}};
-chanperm(_, ReplyTo, Ping, [Rank | Chans], State) ->
+chanperm(_, ReplyTo, Ping, []) -> {irc, {msg, {ReplyTo, [Ping, "Provide a rank to set and one or more channels"]}}};
+chanperm(_, ReplyTo, Ping, [_]) -> {irc, {msg, {ReplyTo, [Ping, "Provide one or more channels"]}}};
+chanperm(_, ReplyTo, Ping, [Rank | Chans]) ->
 	NewDict = lists:foldl(fun(Chan, Dict) ->
 		CRank = bot:rankof_chan(Chan, Dict),
 		NewList = case Rank of
@@ -63,18 +45,15 @@ chanperm(_, ReplyTo, Ping, [Rank | Chans], State) ->
 		end,
 		core ! {irc, {msg, {ReplyTo, [Ping, "Changed the permissions in ",Chan," to ",io_lib:format("~w", [NewList])]}}},
 		orddict:store(list_to_binary(Chan), NewList, Dict)
-	end, State#state.permissions, Chans),
-	NewState = State#state{permissions=cleandict(NewDict)},
-	X = file:write_file("permissions.crl", io_lib:format("~p.~n", [NewState#state.permissions])),
-	logging:log(info, "BOT", "permissions save: ~p", [X]),
-	{state, NewState}.
+	end, config:require_value(config, [permissions]), Chans),
+	config:set_value(config, [permissions], cleandict(NewDict)).
 
-gchanperm(_, ReplyTo, Ping, [Channel], State) -> {irc, {msg, {ReplyTo, [Ping, Channel, io_lib:format(" has the default permissions: ~p", [bot:rankof_chan(Channel, State#state.permissions)])]}}};
-gchanperm(_, ReplyTo, Ping, _, _) -> {irc, {msg, {ReplyTo, [Ping, "Provide exactly one channel!"]}}}.
+gchanperm(_, ReplyTo, Ping, [Channel]) -> {irc, {msg, {ReplyTo, [Ping, Channel, io_lib:format(" has the default permissions: ~p", [bot:rankof_chan(Channel)])]}}};
+gchanperm(_, ReplyTo, Ping, _) -> {irc, {msg, {ReplyTo, [Ping, "Provide exactly one channel!"]}}}.
 
-editrank(_, ReplyTo, Ping, [], _) -> {irc, {msg, {ReplyTo, [Ping, "Provide a rank to edit and one or more nicks (+ users/masks)"]}}};
-editrank(_, ReplyTo, Ping, [_], _) -> {irc, {msg, {ReplyTo, [Ping, "Provide one or more nicks (+ users/masks)"]}}};
-editrank(_, ReplyTo, Ping, [Rank | Masks], State) ->
+editrank(_, ReplyTo, Ping, []) -> {irc, {msg, {ReplyTo, [Ping, "Provide a rank to edit and one or more nicks (+ users/masks)"]}}};
+editrank(_, ReplyTo, Ping, [_]) -> {irc, {msg, {ReplyTo, [Ping, "Provide one or more nicks (+ users/masks)"]}}};
+editrank(_, ReplyTo, Ping, [Rank | Masks]) ->
 	NewDict = lists:foldl(fun(Mask, Dict) ->
 		case re:run(Mask, "^([^!@]+)!([^!@]+)@([^!@]+)$", [{capture, all_but_first, list}]) of
 			nomatch ->
@@ -96,15 +75,12 @@ editrank(_, ReplyTo, Ping, [Rank | Masks], State) ->
 				end,
 				core ! {irc, {msg, {ReplyTo, [Ping, "Changed the permissions of ",N,$!,U,$@,H," to ",io_lib:format("~w", [NewList]),$.]}}},
 				orddict:store(tuplefor(N,U,H), NewList, Dict)
-		end end, State#state.permissions, Masks),
-	NewState = State#state{permissions=cleandict(NewDict)},
-	X = file:write_file("permissions.crl", io_lib:format("~p.~n", [NewState#state.permissions])),
-	logging:log(info, "BOT", "permissions save: ~p", [X]),
-	{state, NewState}.	
+		end end, config:require_value(config, [permissions]), Masks),
+	config:set_value(config, [permissions], cleandict(NewDict)).
 
-setrank(_, ReplyTo, Ping, [], _) -> {irc, {msg, {ReplyTo, [Ping, "Please provide a rank to grant and one or more nicks!"]}}};
-setrank(_, ReplyTo, Ping, [Rank], _) -> {irc, {msg, {ReplyTo, [Ping, "Please provide one or more nicks to grant ", Rank, " to!"]}}};
-setrank(_, ReplyTo, Ping, [Rank | Nicks], State) ->
+setrank(_, ReplyTo, Ping, []) -> {irc, {msg, {ReplyTo, [Ping, "Please provide a rank to grant and one or more nicks!"]}}};
+setrank(_, ReplyTo, Ping, [Rank]) -> {irc, {msg, {ReplyTo, [Ping, "Please provide one or more nicks to grant ", Rank, " to!"]}}};
+setrank(_, ReplyTo, Ping, [Rank | Nicks]) ->
 	try
 	NewDict = lists:foldl(fun(Nick, Dict) ->
 		timer:sleep(1000), % Avoid spamming the server with WHOIS requests, forcing it to throttle us and kill the loop
@@ -122,7 +98,7 @@ setrank(_, ReplyTo, Ping, [Rank | Nicks], State) ->
 										case lists:member(list_to_atom(R), CRank) of
 											true -> CRank;
 											false -> [list_to_atom(R) | CRank]
-										end;	
+										end;
 									"-" ++ R -> lists:delete(list_to_atom(R), CRank);
 									"user" -> [user];
 									R -> [user, list_to_atom(R)]
@@ -140,21 +116,18 @@ setrank(_, ReplyTo, Ping, [Rank | Nicks], State) ->
 				core ! {irc, {msg, {ReplyTo, [Ping, "No user with nick ",Nick," found!"]}}}, Dict;
 			brkloop -> throw(return)
 		after 1000 -> throw(return)
-		end end, State#state.permissions, Nicks),
-	NewState = State#state{permissions=cleandict(NewDict)},
-	X = file:write_file("permissions.crl", io_lib:format("~p.~n", [NewState#state.permissions])),
-	logging:log(info, "BOT", "permissions save: ~p", [X]),
-	{state, NewState}
+		end end, config:require_value(config, [permissions]), Nicks),
+	config:set_value(config, [permissions], cleandict(NewDict))
 	catch
 		throw:return -> {irc, {msg, {ReplyTo, [Ping, "Loop cancelled."]}}}
 	end.
 
-getrank(_, ReplyTo, Ping, [], _) -> {irc, {msg, {ReplyTo, [Ping, "Please provide a user to check rank for!"]}}};
-getrank(_, ReplyTo, Ping, [Mask], State) ->
+getrank(_, ReplyTo, Ping, []) -> {irc, {msg, {ReplyTo, [Ping, "Please provide a user to check rank for!"]}}};
+getrank(_, ReplyTo, Ping, [Mask]) ->
 	Reply = case re:run(Mask, "([^!@]+)(!([^!@]+)@([^!@]+))?", [{capture, all_but_first, list}]) of
 		nomatch -> "Invalid mask!";
 		{match, [N]} ->
-			Matching = orddict:filter(fun({Nick,_,_},_) -> re:run(N, util:regex_star(Nick), [{capture, none}, caseless]) == match; (_,_) -> false end, State#state.permissions),
+			Matching = orddict:filter(fun({Nick,_,_},_) -> re:run(N, util:regex_star(Nick), [{capture, none}, caseless]) == match; (_,_) -> false end, config:require_value(config, [permissions])),
 			if
 				length(Matching) == 0 -> "No results.";
 				length(Matching) > 4 -> "Too many results.";
@@ -164,96 +137,64 @@ getrank(_, ReplyTo, Ping, [Mask], State) ->
 				true ->	string:join(lists:map(fun({{Nx,Ux,Hx},_}) -> [Nx,$!,Ux,$@,Hx] end, Matching), ", ")
 			end;
 		{match, [N,_,U,H]} ->
-			R = bot:rankof(#user{nick=N,username=U,host=H}, State#state.permissions),
+			R = bot:rankof(#user{nick=N,username=U,host=H}),
 			io_lib:format("Rank of ~s!~s@~s: ~w", [N,U,H,R])
 	end,
 	{irc, {msg, {ReplyTo, [Ping, Reply]}}}.
 
-whorank(_, ReplyTo, Ping, _, State) ->
-	Reply = util:binary_join(lists:map(fun({N,_,_})->N; (C) -> <<"CH:", C/binary>> end, orddict:fetch_keys(State#state.permissions)), <<",">>),
+whorank(_, ReplyTo, Ping, _) ->
+	Reply = util:binary_join(lists:map(fun({N,_,_})->N; (C) -> <<"CH:", C/binary>> end, orddict:fetch_keys(config:require_value(config, [permissions]))), <<",">>),
 	{irc, {msg, {ReplyTo, [Ping, Reply]}}}.
 
-join(_, ReplyTo, Ping, [], _) ->
+join(_, ReplyTo, Ping, []) ->
 	{irc, {msg, {ReplyTo, [Ping, "Please provide a channel to join."]}}};
-join(_, ReplyTo, Ping, Params, _) ->
+join(_, ReplyTo, Ping, Params) ->
 	{multi, [
 		{irc, {msg, {ReplyTo, [Ping, "Joining ", hd(Params), "."]}}},
 		{irc, {join, hd(Params)}}
 	]}.
 
-part(_, ReplyTo, Ping, [], _) ->
+part(_, ReplyTo, Ping, []) ->
 	{irc, {msg, {ReplyTo, [Ping, "Please provide a channel to part."]}}};
-part(_, ReplyTo, Ping, Params, _) ->
+part(_, ReplyTo, Ping, Params) ->
 	{multi, [
 		{irc, {msg, {ReplyTo, [Ping, "Parting ", hd(Params), "."]}}},
 		{irc, {part, {hd(Params), string:join(tl(Params), " ")}}}
 	]}.
 
-nick(_, RT, Ping, [], _) -> {irc, {msg, {RT, [Ping, "Please provide a nick for me."]}}};
-nick(_, _, _, Params, _) -> {irc, {nick, hd(Params)}}.
+nick(_, RT, Ping, []) -> {irc, {msg, {RT, [Ping, "Please provide a nick for me."]}}};
+nick(_, _, _, Params) -> {irc, {nick, hd(Params)}}.
 
-quit(_, _, _, Params, _) -> {irc, {quit, string:join(Params, " ")}}.
+quit(_, _, _, Params) -> {irc, {quit, string:join(Params, " ")}}.
 
-speak (_, RT, Ping, [], _) -> {irc, {msg, {RT, [Ping, "Please provide a channel and message."]}}};
-speak (_, RT, Ping, [_], _) -> {irc, {msg, {RT, [Ping, "Please provide a message."]}}};
-speak (_, _, _, Params, _) -> {irc, {msg,          {hd(Params), string:join(tl(Params), " ")}}}.
+speak (_, RT, Ping, []) -> {irc, {msg, {RT, [Ping, "Please provide a channel and message."]}}};
+speak (_, RT, Ping, [_]) -> {irc, {msg, {RT, [Ping, "Please provide a message."]}}};
+speak (_, _, _, Params) -> {irc, {msg,          {hd(Params), string:join(tl(Params), " ")}}}.
 
-notice(_, RT, Ping, [_], _) -> {irc, {msg, {RT, [Ping, "Please provide a message."]}}};
-notice(_, RT, Ping, [], _) -> {irc, {msg, {RT, [Ping, "Please provide a channel and message."]}}};
-notice(_, _, _, Params, _) -> {irc, {notice,       {hd(Params), string:join(tl(Params), " ")}}}.
+notice(_, RT, Ping, [_]) -> {irc, {msg, {RT, [Ping, "Please provide a message."]}}};
+notice(_, RT, Ping, []) -> {irc, {msg, {RT, [Ping, "Please provide a channel and message."]}}};
+notice(_, _, _, Params) -> {irc, {notice,       {hd(Params), string:join(tl(Params), " ")}}}.
 
-action(_, RT, Ping, [_], _) -> {irc, {msg, {RT, [Ping, "Please provide an action."]}}};
-action(_, RT, Ping, [], _) -> {irc, {msg, {RT, [Ping, "Please provide a channel and action."]}}};
-action(_, _, _, Params, _) -> {irc, {ctcp, {action, hd(Params), string:join(tl(Params), " ")}}}.
+action(_, RT, Ping, [_]) -> {irc, {msg, {RT, [Ping, "Please provide an action."]}}};
+action(_, RT, Ping, []) -> {irc, {msg, {RT, [Ping, "Please provide a channel and action."]}}};
+action(_, _, _, Params) -> {irc, {ctcp, {action, hd(Params), string:join(tl(Params), " ")}}}.
 
 
-prefix(_, ReplyTo, Ping, [], _) -> {irc, {msg, {ReplyTo, [Ping, "Please provide a prefix to use for commands."]}}};
-prefix(_, ReplyTo, Ping, Params, State=#state{}) ->
-	<<Prefix/utf8, _/binary>> = list_to_binary(hd(Params)),
-	self() ! {state, State#state{prefix=[Prefix]}},
-	{irc, {msg, {ReplyTo, [Ping, <<"Prefix set to ", Prefix/utf8>>]}}}.
+prefix(_, ReplyTo, Ping, []) -> {irc, {msg, {ReplyTo, [Ping, "Please provide a prefix to use for commands."]}}};
+prefix(_, ReplyTo, Ping, Params) ->
+	Prefix = hd(Params),
+	config:set_value(config, [bot, prefix], Prefix),
+	{irc, {msg, {ReplyTo, [Ping, "Prefix set to ", Prefix]}}}.
 
-addprefix(_, ReplyTo, Ping, [], _) -> {irc, {msg, {ReplyTo, [Ping, "Please provide an additional prefix to use for commands."]}}};
-addprefix(_, ReplyTo, Ping, Params, State=#state{}) ->
-	<<Prefix/utf8, _/binary>> = list_to_binary(hd(Params)),
-	Reply = case State#state.prefix of
-		Old when is_number(Old) -> New = [Prefix, Old], [<<"Prefix set to ">>, format_prefixes(New)];
-		Old when is_list(Old)   -> New = [Prefix | Old], [<<"Prefix set to ">>,format_prefixes(New)];
-		_ -> New = [Prefix], io_lib:format(<<"Unknown prefix format ~w">>, [State#state.prefix])
-	end,
-	self() ! {state, State#state{prefix=New}},
-	{irc, {msg, {ReplyTo, [Ping, Reply]}}}.
+mode(ReplyTo, ReplyTo, Ping, _) -> {irc, {msg, {ReplyTo, [Ping, "Use this in a channel, not query."]}}};
+mode(_, ReplyTo, _, Params) -> {irc, {mode, {ReplyTo, string:join(Params, " ")}}}.
 
-remprefix(_, ReplyTo, Ping, [], _) -> {irc, {msg, {ReplyTo, [Ping, <<"Please provide a prefix to stop using for commands.">>]}}};
-remprefix(_, ReplyTo, Ping, Params, State=#state{}) ->
-	<<ToRemove/utf8, _/binary>> = list_to_binary(hd(Params)),
-	Reply = case State#state.prefix of
-		Old when is_number(Old) ->
-			if
-				ToRemove == Old -> New = [];
-				true -> New = [Old]
-			end,
-			[<<"Prefix set to ">>, format_prefixes(New)];
-		Old when is_list(Old) ->
-			New = lists:delete(ToRemove, Old),
-			[<<"Prefix set to ">>, format_prefixes(New)];
-		Old ->
-			New = Old, io_lib:format(<<"Unknown prefix format ~w">>, [Old])
-	end,
-	self() ! {state, State#state{prefix=New}},
-	{irc, {msg, {ReplyTo, [Ping, Reply]}}}.
-
-format_prefixes(List) -> lists:foldr(fun(T,B) -> <<T/utf8, B/binary>> end, <<>>, List).
-
-mode(ReplyTo, ReplyTo, Ping, _, _) -> {irc, {msg, {ReplyTo, [Ping, "Use this in a channel, not query."]}}};
-mode(_, ReplyTo, _, Params, _) -> {irc, {mode, {ReplyTo, string:join(Params, " ")}}}.
-
-kick(_, Chan, _, [User | Reason], _) ->
+kick(_, Chan, _, [User | Reason]) ->
 	core ! {irc, {kick, {Chan, User, Reason}}},
 	ok;
-kick(_, RT, P, _, _) ->
+kick(_, RT, P, _) ->
 	{irc, {msg, {RT, [P, "Provide a user to kick and an optional reason"]}}}.
-	
-raw(_, _, _, Params, _) ->
+
+raw(_, _, _, Params) ->
 	core ! {raw, string:join(Params, " ")},
 	ok.

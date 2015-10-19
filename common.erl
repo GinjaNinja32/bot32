@@ -28,13 +28,13 @@ proper(A) -> A.
 % Spawn this method to have your code compiled and reloaded.
 purge_call(Module, Function, Param) ->
 	code:purge(Module),
-	compile:file(Module),
+	compile:file(Module, [report_errors, report_warnings, {outdir, "./bin"}]),
 	code:load_file(Module),
 	Module:Function(Param).
 
 purge_call_report(Module, Function, Param, Channel) ->
 	code:purge(Module),
-	Reply = case compile:file(Module, [return]) of
+	Reply = case compile:file(Module, [return, report_errors, report_warnings, {outdir, "./bin"}]) of
 		{ok,_} -> "Update complete.";
 		{ok,_,[]} -> "Update complete.";
 		{ok,_,Warnings} -> io_lib:format("Update complete; ~b warning(s).",[length(Warnings)]);

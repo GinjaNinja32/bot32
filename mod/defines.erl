@@ -10,23 +10,16 @@ get_commands() ->
 		{"defined", fun defined/5, user}
 	].
 
-initialise(T) -> set_data(T, make_defs()).
-deinitialise(T) -> T#state{moduledata=orddict:erase(defines, T#state.moduledata)}.
-
-get_data(#state{moduledata=M}) ->
-	case orddict:find(defines, M) of
-		{ok, Value} -> Value;
-		error -> make_defs()
-	end.
-
-set_data(S=#state{moduledata=M}, Data) ->
-	S#state{moduledata=orddict:store(defines, Data, M)}.
+initialise() ->
+	config:set_value(temp, [defines], make_defs()).
+deinitialise() ->
+	config:delete_value(temp, [defines]).
 
 %
 
-defined(_, RT, P, [], _) -> {irc, {msg, {RT, [P, "Provide a string to find definitions for!"]}}};
-defined(_, RT, P, Params, S) ->
-	{M,DF,D,KP} = get_data(S),
+defined(_, RT, P, []) -> {irc, {msg, {RT, [P, "Provide a string to find definitions for!"]}}};
+defined(_, RT, P, Params) ->
+	{M,DF,D,KP} = config:get_value(temp, [defines], {[],[],[],[]}),
 	{UseDefs, UseParams} = case string:to_lower(hd(Params)) of
 		"master" -> {M, tl(Params)};
 		"dev-freeze" -> {DF, tl(Params)};
