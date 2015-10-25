@@ -19,39 +19,37 @@ get_aliases() ->
 
 get_commands() ->
 	[
-		{"pm", fun pm/5, server},
-		{"msg", fun pm/5, server},
-		{"age", fun age/5, server},
-		{"notes", fun notes/5, server},
-		{"notify", fun notify/5, user},
-		{"setserverrank", fun serverrank/5, host},
-		{"getserverrank", fun gsr/5, server},
-		{"info", fun info/5, server}
+		{"pm", fun pm/4, server},
+		{"msg", fun pm/4, server},
+		{"age", fun age/4, server},
+		{"notes", fun notes/4, server},
+		{"notify", fun notify/4, user},
+		{"setserverrank", fun serverrank/4, host},
+		{"getserverrank", fun gsr/4, server},
+		{"info", fun info/4, server}
 	].
 
-initialise(T) ->
-	case file:consult("server.crl") of
-		{ok, [{Server, Port, Pwd}]} -> spawn(server, sloop, [Server, Port, 45678, Pwd]);
-		{error, E} -> logging:log(error, "SERVER", "~p", [E]), error
-	end,
-	T.
+initialise() ->
+	case config:get_value(config, [?MODULE]) of
+		{Server, Port, Pwd} -> spawn(server, sloop, [Server, Port, 45678, Pwd]);
+		_ -> logging:log(error, "SERVER", "Loaded with no or incorrect config!")
+	end.
 
-deinitialise(T) ->
+deinitialise() ->
 	case whereis(server) of
 		undefined -> ok;
 		Pid -> Pid ! stop
 	end,
-	waitfor_gone(server),
-	T.
+	waitfor_gone(server).
 
 %
 
-gsr(_, RT, P, [], _) ->
+gsr(_, RT, P, []) ->
 	case file:consult("ranks.crl") of
 		{ok, [Dict]} -> {irc, {msg, {RT, [P, string:join(lists:map(fun({A,_})-> [hd(A),160,tl(A)] end, Dict), "; ")]}}};
 		_ -> {irc, {msg, {RT, [P, "Failed to read file!"]}}}
 	end;
-gsr(_, RT, P, List, _) ->
+gsr(_, RT, P, List) ->
 	case file:consult("ranks.crl") of
 		{ok, [Dict]} ->
 			{irc, {msg, {RT, [P, string:join(lists:map(fun(A)-> grank(string:to_lower(A),Dict) end, List), "; ")]}}};
@@ -64,7 +62,7 @@ grank(N, Dict) ->
 	end.
 
 
-serverrank(_, RT, Ping, [Rank | RWho], _) when RWho /= [] ->
+serverrank(_, RT, Ping, [Rank | RWho]) when RWho /= [] ->
 	case file:consult("ranks.crl") of
 		{ok, [Dict]} ->
 			Who = string:to_lower(string:join(RWho, " ")),
@@ -81,39 +79,39 @@ serverrank(_, RT, Ping, [Rank | RWho], _) when RWho /= [] ->
 		error ->
 			{irc, {msg, {RT, [Ping, "Failed to read file!"]}}}
 	end;
-serverrank(_, RT, Ping, _, _) -> {irc, {msg, {RT, [Ping, "Provide a rank and a nick; e.g. 'setserverrank Admin CoolGuy3000'."]}}}.
+serverrank(_, RT, Ping, _) -> {irc, {msg, {RT, [Ping, "Provide a rank and a nick; e.g. 'setserverrank Admin CoolGuy3000'."]}}}.
 
 
-pm(_, RT, Ping, [], _) -> {irc, {msg, {RT, [Ping, "Provide a user to PM and a message."]}}};
-pm(_, RT, Ping, [_], _) -> {irc, {msg, {RT, [Ping, "Provide a message."]}}};
-pm(N, RT, Ping, Params, _) ->
+pm(_, RT, Ping, []) -> {irc, {msg, {RT, [Ping, "Provide a user to PM and a message."]}}};
+pm(_, RT, Ping, [_]) -> {irc, {msg, {RT, [Ping, "Provide a message."]}}};
+pm(N, RT, Ping, Params) ->
 	server ! {pm, N, RT, Ping, string:to_lower(hd(Params)), string:join(tl(Params), " ")},
 	ok.
 
-notes(_, RT, Ping, [], _) -> {irc, {msg, {RT, [Ping, "Provide a user to find notes for."]}}};
-notes(N, RT, Ping, [Key], #state{permissions=P}) ->
+notes(_, RT, Ping, []) -> {irc, {msg, {RT, [Ping, "Provide a user to find notes for."]}}};
+notes(N, RT, Ping, [Key]) ->
 	case RT of
 		N -> server ! {notes, N, RT, Ping, string:to_lower(Key)};
-		_ -> case lists:member(server, bot:rankof_chan(RT, P)) of
+		_ -> case lists:member(server, bot:rankof_chan(RT)) of
 			true -> server ! {notes, N, RT, Ping, string:to_lower(Key)};
 			false -> server ! {notes, N, N, "", string:to_lower(Key)}
 		end
 	end,
 	ok;
-notes(_, RT, Ping, _, _) -> {irc, {msg, {RT, [Ping, "Provide a single key."]}}}.
+notes(_, RT, Ping, _) -> {irc, {msg, {RT, [Ping, "Provide a single key."]}}}.
 
-age(_, RT, Ping, [], _) -> {irc, {msg, {RT, [Ping, "Provide a key to check the age of."]}}};
-age(_, RT, Ping, [Key], _) ->
+age(_, RT, Ping, []) -> {irc, {msg, {RT, [Ping, "Provide a key to check the age of."]}}};
+age(_, RT, Ping, [Key]) ->
 	server ! {age, RT, Ping, Key},
 	ok;
-age(_, RT, Ping, _, _) -> {irc, {msg, {RT, [Ping, "Provide a single key."]}}}.
+age(_, RT, Ping, _) -> {irc, {msg, {RT, [Ping, "Provide a single key."]}}}.
 
-notify(N, RT, Ping, _, _) ->
+notify(N, RT, Ping, _) ->
 	server ! {notify, N, RT, Ping},
 	ok.
 
-info(_, RT, P, [], _) -> {irc, {msg, {RT, [P, "Provide something to find info on!"]}}};
-info(_, RT, P, Params, _) ->
+info(_, RT, P, []) -> {irc, {msg, {RT, [P, "Provide something to find info on!"]}}};
+info(_, RT, P, Params) ->
 	server ! {info, RT, P, string:join(Params, " ")},
 	ok.
 
