@@ -24,16 +24,13 @@ get_commands() ->
 		{"manifest", generic(manifest), user}
 	].
 
-initialise(T) -> T.
-deinitialise(T) -> T.
-
 generic(Func) ->
-	fun(O,RT,P,[],_) ->
+	fun(O,RT,P,[]) ->
 		case orddict:find(defaultserver(RT), servers()) of
 			{ok, {Addr,Port,Name}} -> spawn(status, Func, [RT, P, O, Addr, Port, Name]), ok;
 			error -> {irc, {msg, {RT, [P, "Failed to find default server for this channel!"]}}}
 		end;
-	   (O,RT,P,[ServerID],_) ->
+	   (O,RT,P,[ServerID]) ->
 		case orddict:find(ServerID, servers()) of
 			{ok, {Addr,Port,Name}} -> spawn(status, Func, [RT, P, O, Addr, Port, Name]), ok;
 			error -> {irc, {msg, {RT, [P, "Illegal argument!"]}}}

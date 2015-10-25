@@ -3,10 +3,10 @@
 
 get_commands() ->
 	[
-		{"timer", fun timer/5, user}
+		{"timer", fun timer/4, user}
 	].
 
-initialise(T) ->
+initialise() ->
 	case whereis(?MODULE) of
 		undefined -> ok;
 		Pid ->
@@ -14,20 +14,19 @@ initialise(T) ->
 			common:waitfor_gone(?MODULE)
 	end,
 	spawn(?MODULE, init, []),
-	T.
+	ok.
 
-deinitialise(T) ->
+deinitialise() ->
 	case whereis(?MODULE) of
 		undefined -> ok;
 		Pid ->
 			Pid ! quit,
 			common:waitfor_gone(?MODULE)
-	end,
-	T.
+	end.
 
 
-timer(_, ReplyTo, Ping, [    ], _) -> {irc, {msg, {ReplyTo, [Ping, <<"Provide a timer duration in either seconds, minutes:seconds, or hours:minutes:seconds.">>]}}};
-timer(O, ReplyTo, Ping, Params, _) ->
+timer(_, ReplyTo, Ping, [    ]) -> {irc, {msg, {ReplyTo, [Ping, <<"Provide a timer duration in either seconds, minutes:seconds, or hours:minutes:seconds.">>]}}};
+timer(O, ReplyTo, Ping, Params) ->
 	case whereis(?MODULE) of
 		undefined -> {irc, {msg, {ReplyTo, [Ping, <<"Timer is currently not running (errored).">>]}}};
 		TimerPid ->

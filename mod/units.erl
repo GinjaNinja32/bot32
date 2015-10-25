@@ -1,22 +1,17 @@
 -module(units).
 -compile(export_all).
 
-%-include("definitions.hrl").
-
 alt_funcs() ->
 	[
 		fun units_alt/1
 	].
 
-get_commands() -> 
+get_commands() ->
 	[
-		{"units", fun units/5, user}
+		{"units", fun units/4, user}
 	].
 
-initialise(T) -> T.
-deinitialise(T) -> T.
-
-units(_, RT, P, Params, _) ->
+units(_, RT, P, Params) ->
 	case case lists:splitwith(fun(T)->T /= "in" andalso T /= "to" andalso T /= "->" end, Params) of
 		{Src, []} ->
 			os:putenv("units_src", string:join(Src, " ")),

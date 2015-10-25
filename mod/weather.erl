@@ -13,13 +13,10 @@
 
 get_commands() ->
 	[
-		{"weather", fun weather/5, user}
+		{"weather", fun weather/4, user}
 	].
 
-initialise(T) -> T.
-deinitialise(T) -> T.
-
-weather(_, RT, P, Params, _) -> {irc, {msg, {RT, [P, weather(Params)]}}}.
+weather(_, RT, P, Params) -> {irc, {msg, {RT, [P, weather(Params)]}}}.
 
 weather([]) -> "Provide a location to look up weather for.";
 weather(Place) ->
@@ -53,4 +50,3 @@ create_reply(Dict) ->
 				{ok,V} -> [io_lib:format(Format, [string:strip(V)]) | String]
 			end end, [], ?WEATHER_STRINGS),
 	string:join(Str, "; ").
-	
