@@ -129,20 +129,24 @@ eval(String) ->
 
 
 math(String) ->
-	case erl_scan:string(String) of
-		{ok, Tokens, _} ->
-			case erl_parse:parse_exprs(Tokens) of
-				{ok, [Form]} ->
-					case erl_eval:expr(Form, [{'C',299792458}, {'E',2.718281828459}, {'I', {0,1}}, {'Pi', math:pi()}], {eval, fun lmatheval/3}, {value, fun nlmath/2}) of
-						{value, Value, _} -> {ok, Value};
+	case re:run(String, "(^|[^a-zA-Z])fun($|[^a-zA-Z])", [{capture, none}]) of
+		match -> {cerr, "Characters 'fun' detected in your input; quit trying to mess with this."};
+		nomatch ->
+			case erl_scan:string(String) of
+				{ok, Tokens, _} ->
+					case erl_parse:parse_exprs(Tokens) of
+						{ok, [Form]} ->
+							case erl_eval:expr(Form, [{'C',299792458}, {'E',2.718281828459}, {'I', {0,1}}, {'Pi', math:pi()}], {eval, fun lmatheval/3}, {value, fun nlmath/2}) of
+								{value, Value, _} -> {ok, Value};
+								X -> throw(X)
+							end;
+						{ok, _} -> {cerr, "Too many statements!"};
+						{error,{_,_,Reason}} -> {cerr, Reason};
 						X -> throw(X)
 					end;
-				{ok, _} -> {cerr, "Too many statements!"};
-				{error,{_,_,Reason}} -> {cerr, Reason};
+				{error, {_,_,A}, B} -> {cerr, [A, " before '", B, "'"]};
 				X -> throw(X)
-			end;
-		{error, {_,_,A}, B} -> {cerr, [A, " before '", B, "'"]};
-		X -> throw(X)
+			end
 	end.
 
 lmatheval(Func, Args, Bindings) ->

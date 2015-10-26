@@ -45,7 +45,7 @@ compile_all_to(Files, Dir, IgnoreFail) ->
 	lists:foldl(fun
 			(_, false) when not IgnoreFail -> false;
 			(Fname, N) ->
-				case compile:file(Fname, [return_warnings, report_errors, report_warnings, {outdir, Dir}]) of
+				case compile:file(Fname, [return_warnings, return_errors, report_errors, report_warnings, {outdir, Dir}]) of
 					{ok,_} -> N;
 					{ok,_,Warn} -> N+length(Warn);
 					error -> N + 1000000;
