@@ -7,7 +7,7 @@
 
 get_commands() ->
 	[
-		{"defined", fun defined/5, user}
+		{"defined", fun defined/4, user}
 	].
 
 initialise() ->
