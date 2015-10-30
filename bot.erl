@@ -166,7 +166,7 @@ check_utf8(<<>>) -> true;
 check_utf8(<<_/utf8,B/binary>>) -> check_utf8(B);
 check_utf8(X) -> io:fwrite("~p~n", [X]), false.
 
-handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}) ->
+handle_irc(msg, Params={OUser=#user{nick=ONick}, Channel, OTokens}) ->
 	lists:foreach(fun(Module) ->
 			try
 				call_or(Module, handle_event, [msg, Params], null)
@@ -174,6 +174,28 @@ handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}) ->
 				A:B -> logging:log(error, ?MODULE, "Encountered ~p:~p while calling handle_event for ~p!", [A,B,Module])
 			end
 		end, config:get_value(config, [bot, modules])),
+
+	case OUser of
+		{user, "FTBInfinity", "EiraIRC", "sorcery-6jc.qr5.80.151.IP"} ->
+			case OTokens of
+				["***" | Rest] ->
+					Nick = "MC-SERVER",
+					User = OUser#user{nick = Nick},
+					Tokens = lists:reverse(tl(lists:reverse(Rest)));
+				[[$<|R] | Rest] ->
+					Nick = "MC-" ++ lists:reverse(tl(lists:reverse(R))),
+					User = OUser#user{nick = Nick},
+					Tokens = Rest;
+				_ ->
+					Nick = ONick,
+					User = OUser,
+					Tokens = OTokens
+			end;
+		_ ->
+			Nick = ONick,
+			User = OUser,
+			Tokens = OTokens
+	end,
 
 	case lists:all(fun(T) -> check_utf8(list_to_binary(T)) end, Tokens) of
 		false -> logging:log(utf8, ?MODULE, "Ignoring '~s' due to invalid UTF-8", [string:join(Tokens, " ")]);
@@ -195,7 +217,7 @@ handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}) ->
 					ReplyChannel = Channel,
 					ReplyPing = case config:get_value(data, [call, string:to_lower(Nick)]) of
 						'$none' -> Nick ++ ": ";
-						T -> T ++ ": "
+						T -> T ++ "\x0F: "
 					end
 			end,
 			logging:log(debug2, ?MODULE, "Parsing command: ~p", [Tokens]),

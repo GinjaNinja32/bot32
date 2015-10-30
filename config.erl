@@ -203,7 +203,7 @@ offer_raw([Key | Rest], Value, Config) ->
 	end,
 	orddict:store(Key, NewV, Config).
 
-delete_raw([Key], Config) -> orddict:delete(Key, Config);
+delete_raw([Key], Config) -> orddict:erase(Key, Config);
 delete_raw([Key | Rest], Config) ->
 	case orddict:find(Key, Config) of
 		{ok, V} ->
