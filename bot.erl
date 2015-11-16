@@ -176,7 +176,7 @@ handle_irc(msg, Params={OUser=#user{nick=ONick}, Channel, OTokens}) ->
 		end, config:get_value(config, [bot, modules])),
 
 	case OUser of
-		{user, "FTBInfinity", "EiraIRC", "sorcery-6jc.qr5.80.151.IP"} ->
+		{user, "FTBInfinity", "EiraIRC", "sorcery-44j.vvf.254.51.IP"} ->
 			case OTokens of
 				["***" | Rest] ->
 					Nick = "MC-SERVER",

@@ -58,7 +58,7 @@ handle_event(msg, {_, Channel, Msg}) ->
 	case config:get_value(config, [bot, nick]) of
 		Channel -> ok;
 		Nick ->
-			case re:run(string:join(Msg, " "), [$(, util:regex_escape(Nick) | "|(^|[^a-z0-9])nti([^a-z0-9]|$))"], [caseless, {capture, none}]) of
+			case re:run(string:join(Msg, " "), "(^|[^a-z0-9])nti([^a-z0-9]|$)", [caseless, {capture, none}]) of
 				match -> Func = markovreply;
 				_ -> Func = markov
 			end,

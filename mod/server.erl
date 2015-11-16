@@ -162,7 +162,7 @@ loop(SvrSock, Svr, Prt, SPrt, Pwd, Notify) ->
 							File = re:replace(base64:encode(erlang:md5(T)), "/", "@", [global]),
 							Filename = io_lib:format("/home/bot32/www/~s.txt", [File]),
 							file:write_file(Filename, T),
-							["Following link valid for approximately ten minutes: http://151.80.68.132/admin/", File, ".txt"]
+							["Following link valid for approximately ten minutes: http://nyx.gn32.uk/admin/", File, ".txt"]
 					end
 			end,
 			core ! {irc, {msg, {ReplyChannel, [ReplyPing, Reply]}}},

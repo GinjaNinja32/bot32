@@ -11,7 +11,7 @@ servers() ->
 		{"dev", {"baystation12.net", 8100, "(dev) "}},
 		{"europa", {"server.wetskrell.org", 8080, "(europa) "}},
 		{"main", {"baystation12.net", 8000, ""}},
-		{"test", {"gn32.mooo.com", 3210, "(test) "}}
+		{"test", {"erebus.gn32.uk", 3210, "(test) "}}
 	].
 
 get_commands() ->
