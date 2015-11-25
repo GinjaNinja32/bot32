@@ -13,10 +13,10 @@ get_tuple_for_key(K) ->
 	lists:keyfind(K, 1, get_food_options()).
 
 get_commands() ->
-	lists:map(fun({K,_,_}) -> {atom_to_list(K), genfood(K), user} end, get_food_options())
-	++
 	[
-		{"delfood", fun delfood/4, admin}
+		{"delfood", fun delfood/1, admin}
+	|
+		lists:map(fun({K,_,_}) -> {atom_to_list(K), genfood(K), user} end, get_food_options())
 	].
 
 get_help(String) ->
@@ -31,10 +31,10 @@ get_help(String) ->
 		_ -> unhandled
 	end.
 
-genfood(T) -> fun(O, RT, P, Prms) -> mkfood(T, O, RT, P, Prms) end.
+genfood(T) -> fun(Params) -> mkfood(T, Params) end.
 
-mkfood(_, _, RT, P, ["add",_]) -> {irc, {msg, {RT, [P, "Provide an item!"]}}};
-mkfood(K, _, RT, P, ["add",Key|What]) ->
+mkfood(_, #{reply:=RT, ping:=P, params:=["add",_]}) -> {irc, {msg, {RT, [P, "Provide an item!"]}}};
+mkfood(K, #{reply:=RT, ping:=P, params:=["add",Key|What]}) ->
 	{_,Keys,_} = get_tuple_for_key(K),
 	Food = config:get_value(data, [burger, K], []),
 	case case lists:member(Key, lists:map(fun atom_to_list/1, Keys)) of
@@ -60,7 +60,7 @@ mkfood(K, _, RT, P, ["add",Key|What]) ->
 		Error -> {irc, {msg, {RT, [P, Error]}}}
 	end;
 
-mkfood(K, O, RT, P, _) ->
+mkfood(K, #{nick:=O, reply:=RT, ping:=P}) ->
 	{_,_,String} = get_tuple_for_key(K),
 	Message = case config:get_value(data, [burger, K], []) of
 		[] -> [P, "Can't find my ",atom_to_list(K)," ingredients, sorry."];
@@ -70,8 +70,8 @@ mkfood(K, O, RT, P, _) ->
 	end,
 	{irc, {msg, {RT, Message}}}.
 
-delfood(_, RT, P, Params) when length(Params) < 3 -> {irc, {msg, {RT, [P, "Provide a type, key, and the exact string of what you want to remove."]}}};
-delfood(_, RT, P, [T,K|W]) ->
+delfood(#{reply:=RT, ping:=P, params:=Params}) when length(Params) < 3 -> {irc, {msg, {RT, [P, "Provide a type, key, and the exact string of what you want to remove."]}}};
+delfood(#{reply:=RT, ping:=P, params:=[T,K|W]}) ->
 	Data = config:get_value(data, [burger], []),
 	Bin = list_to_binary(string:join(W, " ")),
 	Msg = case orddict:find(list_to_atom(T), Data) of

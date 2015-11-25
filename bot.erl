@@ -427,11 +427,14 @@ handle_command(Ranks, User, ReplyTo, Ping, Cmd, Params) ->
 								%core ! {irc, {msg, {Origin, [io_lib:format("~s commands: ",[Rank]), string:join(orddict:fetch_keys(RankCmds), ", "), "."]}}}, unhandled;
 							T -> case orddict:find(T, RankCmds) of
 								{ok, {Mod,Result}} ->
-									UseOrigin = case call_or(Mod, origin_mode, [], basic) of
-										basic -> User#user.nick;
-										full -> User
-									end,
-									apply(Result, [UseOrigin, ReplyTo, Ping, Params]);
+									ParamMap = #{
+											origin => User,
+											nick => User#user.nick,
+											reply => ReplyTo,
+											ping => Ping,
+											params => Params
+										},
+									apply(Result, [ParamMap]);
 								error -> unhandled
 							end
 						end

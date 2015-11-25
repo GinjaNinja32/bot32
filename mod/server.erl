@@ -19,14 +19,14 @@ get_aliases() ->
 
 get_commands() ->
 	[
-		{"pm", fun pm/4, server},
-		{"msg", fun pm/4, server},
-		{"age", fun age/4, server},
-		{"notes", fun notes/4, server},
-		{"notify", fun notify/4, user},
-		{"setserverrank", fun serverrank/4, host},
-		{"getserverrank", fun gsr/4, server},
-		{"info", fun info/4, server}
+		{"pm", fun pm/1, server},
+		{"msg", fun pm/1, server},
+		{"age", fun age/1, server},
+		{"notes", fun notes/1, server},
+		{"notify", fun notify/1, user},
+		{"setserverrank", fun serverrank/1, host},
+		{"getserverrank", fun gsr/1, server},
+		{"info", fun info/1, server}
 	].
 
 initialise() ->
@@ -44,12 +44,12 @@ deinitialise() ->
 
 %
 
-gsr(_, RT, P, []) ->
+gsr(#{reply:=RT, ping:=P, params:=[]}) ->
 	case file:consult("ranks.crl") of
 		{ok, [Dict]} -> {irc, {msg, {RT, [P, string:join(lists:map(fun({A,_})-> [hd(A),160,tl(A)] end, Dict), "; ")]}}};
 		_ -> {irc, {msg, {RT, [P, "Failed to read file!"]}}}
 	end;
-gsr(_, RT, P, List) ->
+gsr(#{reply:=RT, ping:=P, params:=List}) ->
 	case file:consult("ranks.crl") of
 		{ok, [Dict]} ->
 			{irc, {msg, {RT, [P, string:join(lists:map(fun(A)-> grank(string:to_lower(A),Dict) end, List), "; ")]}}};
@@ -62,7 +62,7 @@ grank(N, Dict) ->
 	end.
 
 
-serverrank(_, RT, Ping, [Rank | RWho]) when RWho /= [] ->
+serverrank(#{reply:=RT, ping:=Ping, params:=[Rank | RWho]}) when RWho /= [] ->
 	case file:consult("ranks.crl") of
 		{ok, [Dict]} ->
 			Who = string:to_lower(string:join(RWho, " ")),
@@ -79,17 +79,17 @@ serverrank(_, RT, Ping, [Rank | RWho]) when RWho /= [] ->
 		error ->
 			{irc, {msg, {RT, [Ping, "Failed to read file!"]}}}
 	end;
-serverrank(_, RT, Ping, _) -> {irc, {msg, {RT, [Ping, "Provide a rank and a nick; e.g. 'setserverrank Admin CoolGuy3000'."]}}}.
+serverrank(#{reply:=RT, ping:=Ping}) -> {irc, {msg, {RT, [Ping, "Provide a rank and a nick; e.g. 'setserverrank Admin CoolGuy3000'."]}}}.
 
 
-pm(_, RT, Ping, []) -> {irc, {msg, {RT, [Ping, "Provide a user to PM and a message."]}}};
-pm(_, RT, Ping, [_]) -> {irc, {msg, {RT, [Ping, "Provide a message."]}}};
-pm(N, RT, Ping, Params) ->
+pm(#{reply:=RT, ping:=Ping, params:=[]}) -> {irc, {msg, {RT, [Ping, "Provide a user to PM and a message."]}}};
+pm(#{reply:=RT, ping:=Ping, params:=[_]}) -> {irc, {msg, {RT, [Ping, "Provide a message."]}}};
+pm(#{nick:=N, reply:=RT, ping:=Ping, params:=Params}) ->
 	server ! {pm, N, RT, Ping, string:to_lower(hd(Params)), string:join(tl(Params), " ")},
 	ok.
 
-notes(_, RT, Ping, []) -> {irc, {msg, {RT, [Ping, "Provide a user to find notes for."]}}};
-notes(N, RT, Ping, [Key]) ->
+notes(#{reply:=RT, ping:=Ping, params:=[]}) -> {irc, {msg, {RT, [Ping, "Provide a user to find notes for."]}}};
+notes(#{nick:=N, reply:=RT, ping:=Ping, params:=[Key]}) ->
 	case RT of
 		N -> server ! {notes, N, RT, Ping, string:to_lower(Key)};
 		_ -> case lists:member(server, bot:rankof_chan(RT)) of
@@ -98,20 +98,20 @@ notes(N, RT, Ping, [Key]) ->
 		end
 	end,
 	ok;
-notes(_, RT, Ping, _) -> {irc, {msg, {RT, [Ping, "Provide a single key."]}}}.
+notes(#{reply:=RT, ping:=Ping}) -> {irc, {msg, {RT, [Ping, "Provide a single key."]}}}.
 
-age(_, RT, Ping, []) -> {irc, {msg, {RT, [Ping, "Provide a key to check the age of."]}}};
-age(_, RT, Ping, [Key]) ->
+age(#{reply:=RT, ping:=Ping, params:=[]}) -> {irc, {msg, {RT, [Ping, "Provide a key to check the age of."]}}};
+age(#{reply:=RT, ping:=Ping, params:=[Key]}) ->
 	server ! {age, RT, Ping, Key},
 	ok;
-age(_, RT, Ping, _) -> {irc, {msg, {RT, [Ping, "Provide a single key."]}}}.
+age(#{reply:=RT, ping:=Ping}) -> {irc, {msg, {RT, [Ping, "Provide a single key."]}}}.
 
-notify(N, RT, Ping, _) ->
+notify(#{nick:=N, reply:=RT, ping:=Ping}) ->
 	server ! {notify, N, RT, Ping},
 	ok.
 
-info(_, RT, P, []) -> {irc, {msg, {RT, [P, "Provide something to find info on!"]}}};
-info(_, RT, P, Params) ->
+info(#{reply:=RT, ping:=P, params:=[]}) -> {irc, {msg, {RT, [P, "Provide something to find info on!"]}}};
+info(#{reply:=RT, ping:=P, params:=Params}) ->
 	server ! {info, RT, P, string:join(Params, " ")},
 	ok.
 
@@ -271,6 +271,3 @@ sendmsg(Chan, Msg) when length(Msg) > 350 ->
 	sendmsg(Chan, "<continued> " ++ B);
 sendmsg(Chan, Msg) ->
 	core ! {irc, {msg, {Chan, Msg}}}.
-
-genpasswd() ->
-	base64:encode(crypto:strong_rand_bytes(6)).

@@ -5,14 +5,14 @@
 
 get_commands() ->
 	[
-		{"delnote", fun delnote/4, user},
-		{"remnote", fun delnote/4, user},
-		{"note", fun note/4, user}
+		{"delnote", fun delnote/1, user},
+		{"remnote", fun delnote/1, user},
+		{"note", fun note/1, user}
 	].
 
 %
 
-delnote(O, RT, P, [T]) ->
+delnote(#{nick:=O, reply:=RT, ping:=P, params:=[T]}) ->
 	LO = string:to_lower(O),
 	{Reply, UDict} = case config:get_value(data, [?MODULE, LO]) of
 		'$none' -> {"You have no notes.", []};
@@ -24,10 +24,10 @@ delnote(O, RT, P, [T]) ->
 	end,
 	config:set_value(data, [?MODULE, LO], UDict),
 	{irc, {msg, {RT, [P, Reply]}}};
-delnote(_, RT, P, _) -> {irc, {msg, {RT, [P, "Provide a single note key!"]}}}.
+delnote(#{reply:=RT, ping:=P}) -> {irc, {msg, {RT, [P, "Provide a single note key!"]}}}.
 
-note(O, RT, P, ["list"]) -> notes(O, RT, P, a);
-note(O, RT, P, [T]) ->
+note(P = #{params:=["list"]}) -> notes(P);
+note(#{nick:=O, reply:=RT, ping:=P, params:=[T]}) ->
 	LO = string:to_lower(O),
 	Reply = case config:get_value(data, [?MODULE, LO]) of
 		'$none' -> "You do not have any notes.";
@@ -38,7 +38,7 @@ note(O, RT, P, [T]) ->
 			end
 	end,
 	{irc, {msg, {RT, [P, Reply]}}};
-note(O, RT, P, [T|C]) ->
+note(#{nick:=O, reply:=RT, ping:=P, params:=[T|C]}) ->
 	LO = string:to_lower(O),
 	{Reply, UDict} = case config:get_value(data, [?MODULE, LO]) of
 		'$none' -> {"Note added.", orddict:store(T, string:join(C, " "), orddict:new())};
@@ -56,9 +56,9 @@ note(O, RT, P, [T|C]) ->
 	end,
 	config:set_value(data, [?MODULE, LO], UDict),
 	{irc, {msg, {RT, [P, Reply]}}};
-note(_, RT, P, _) -> {irc, {msg, {RT, [P, "Provide either a key (to retrieve) or a key and a string (to set)!"]}}}.
+note(#{reply:=RT, ping:=P}) -> {irc, {msg, {RT, [P, "Provide either a key (to retrieve) or a key and a string (to set)!"]}}}.
 
-notes(O, RT, P, _) ->
+notes(#{nick:=O, reply:=RT, ping:=P}) ->
 	LO = string:to_lower(O),
 	Reply = case orddict:fetch_keys(config:get_value(data, [?MODULE, LO], [])) of
 		[] -> "You have no notes.";

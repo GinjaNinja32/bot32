@@ -13,13 +13,13 @@
 
 get_commands() ->
 	[
-		{"weather", fun weather/4, user}
+		{"weather", fun weather/1, user}
 	].
 
-weather(_, RT, P, Params) -> {irc, {msg, {RT, [P, weather(Params)]}}}.
+weather(#{reply:=RT, ping:=P, params:=Params}) -> {irc, {msg, {RT, [P, weather2(Params)]}}}.
 
-weather([]) -> "Provide a location to look up weather for.";
-weather(Place) ->
+weather2([]) -> "Provide a location to look up weather for.";
+weather2(Place) ->
 	os:putenv("location", string:join(Place, "+")),
 	Reply = os:cmd("/home/bot32/weather.sh $location"),
 	parse_reply(Reply).

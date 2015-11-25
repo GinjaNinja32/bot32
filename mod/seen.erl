@@ -5,7 +5,7 @@
 
 get_commands() ->
 	[
-		{"seen", fun seen/4, user}
+		{"seen", fun seen/1, user}
 	].
 
 handle_event(quit, {#user{nick=N}, Reason}) -> see(N, "quitting IRC stating '~s'", [string:join(Reason, " ")]);
@@ -26,8 +26,8 @@ handle_event(msg, {#user{nick=N}, Chan, _}) ->
 	end;
 handle_event(_, _) -> ok.
 
-seen(_, RT, P, []) -> {irc, {msg, {RT, [P, "Provide a nick to search for!"]}}};
-seen(_, RT, P, Params) ->
+seen(#{reply:=RT, ping:=P, params:=[]}) -> {irc, {msg, {RT, [P, "Provide a nick to search for!"]}}};
+seen(#{reply:=RT, ping:=P, params:=Params}) ->
 	LParam = string:to_lower(hd(Params)),
 	D = config:get_value(data, [?MODULE]),
 	case orddict:filter(fun(N,_) ->

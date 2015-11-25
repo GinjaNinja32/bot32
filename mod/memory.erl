@@ -3,10 +3,10 @@
 
 get_commands() ->
 	[
-		{"meminfo", fun meminfo/4, host}
+		{"meminfo", fun meminfo/1, host}
 	].
 
-meminfo(_, RT, P, Params) ->
+meminfo(#{reply:=RT, ping:=P, params:=Params}) ->
 	Meminfo = os:cmd("cat /proc/meminfo"),
 	Dict = lists:foldl(fun(Ln, Dict) ->
 			case re:run(Ln, "^([^:]+):[\s\t]*(.+)", [{capture, all_but_first, list}]) of

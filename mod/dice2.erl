@@ -12,12 +12,12 @@ get_aliases() ->
 
 get_commands() ->
 	lists:map(fun({K,F}) ->
-			{K, fun(_, RT, P, Params) -> {irc, {msg, {RT, [P, F(Params)]}}} end, user}
+			{K, fun(#{reply:=RT, ping:=P, params:=Params}) -> {irc, {msg, {RT, [P, F(Params)]}}} end, user}
 		end, special_dice())
 	++ [
-		{"dicemode", fun dicemode/4, admin},
-		{"dice", fun dice/4, user},
-		{"edice",  fun edice/4, user}
+		{"dicemode", fun dicemode/1, admin},
+		{"dice", fun dice/1, user},
+		{"edice",  fun edice/1, user}
 	].
 
 get_help("dice") ->
@@ -99,8 +99,8 @@ get_dicemode() ->
 		_ -> "unknown"
 	end.
 
-dicemode(_, RT, P, []) -> {irc, {msg, {RT, [P, "Dicemode is ", get_dicemode()]}}};
-dicemode(_, RT, P, [Mode]) ->
+dicemode(#{reply:=RT, ping:=P, params:=[]}) -> {irc, {msg, {RT, [P, "Dicemode is ", get_dicemode()]}}};
+dicemode(#{reply:=RT, ping:=P, params:=[Mode]}) ->
 	Reply = case Mode of
 		"random" -> config:set_value(config, [dice2, dicemode], random), "Dicemode set to random.org.";
 		"internal" -> config:set_value(config, [dice2, dicemode], internal), "Dicemode set to internal RNG";
@@ -109,10 +109,10 @@ dicemode(_, RT, P, [Mode]) ->
 	{irc, {msg, {RT, [P, Reply]}}}.
 
 
-dice(_, RT, P, []) -> {irc, {msg, {RT, [P, "Provide some dice to roll, or try 'help dice' for help."]}}};
-dice(_, RT, P, Params) -> {irc, {msg, {RT, [P, dice(string:join(Params, " "), false)]}}}.
-edice(_, RT, P, []) -> {irc, {msg, {RT, [P, "Provide some dice to roll, or try 'help dice' for help."]}}};
-edice(_, RT, P, Params) -> {irc, {msg, {RT, [P, dice(string:join(Params, " "), true)]}}}.
+dice (#{reply:=RT, ping:=P, params:=[]    }) -> {irc, {msg, {RT, [P, "Provide some dice to roll, or try 'help dice' for help."]}}};
+dice (#{reply:=RT, ping:=P, params:=Params}) -> {irc, {msg, {RT, [P, dice(string:join(Params, " "), false)]}}}.
+edice(#{reply:=RT, ping:=P, params:=[]    }) -> {irc, {msg, {RT, [P, "Provide some dice to roll, or try 'help dice' for help."]}}};
+edice(#{reply:=RT, ping:=P, params:=Params}) -> {irc, {msg, {RT, [P, dice(string:join(Params, " "), true)]}}}.
 
 -record(dp, {n=1, min=no, max=no, csl=no, csm=no, cfl=no, cfm=no, show=false}).
 
