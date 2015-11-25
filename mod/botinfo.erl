@@ -16,7 +16,7 @@ sectimestamp() -> calendar:datetime_to_gregorian_seconds(calendar:now_to_univers
 initialise() ->
 	config:set_value(temp, [botinfo], sectimestamp()).
 deinitialise() ->
-	config:delete_value(temp, [botinfo]).
+	config:del_value(temp, [botinfo]).
 
 uptime(#{reply:=RT, ping:=P}) ->
 	config:offer_value(temp, [botinfo], sectimestamp()),

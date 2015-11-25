@@ -233,7 +233,8 @@ handle_irc(msg, Params={OUser=#user{nick=ONick}, Channel, OTokens}) ->
 					end;
 				notcommand ->
 					lists:foreach(fun(Module) ->
-							call_or(Module, do_extras, [Tokens, ReplyChannel, ReplyPing], null)
+							call_or(Module, do_extras, [Tokens, ReplyChannel, ReplyPing], null),
+							call_or(Module, handle_event, [msg_nocommand, Params], null)
 						end, config:require_value(config, [bot, modules]))
 			end
 	end

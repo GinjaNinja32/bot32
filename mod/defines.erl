@@ -13,7 +13,7 @@ get_commands() ->
 initialise() ->
 	config:set_value(temp, [defines], make_defs()).
 deinitialise() ->
-	config:delete_value(temp, [defines]).
+	config:del_value(temp, [defines]).
 
 %
 
