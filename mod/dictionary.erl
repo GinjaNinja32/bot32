@@ -8,11 +8,11 @@ get_aliases() ->
 
 get_commands() ->
 	[
-		{"dictionary", fun dict/4, user}
+		{"dictionary", fun dict/1, user}
 	].
 
 
-dict(_, RT, P, Params) -> {irc, {msg, {RT, [P, dictionary(Params)]}}}.
+dict(#{reply:=RT, ping:=P, params:=Params}) -> {irc, {msg, {RT, [P, dictionary(Params)]}}}.
 
 dictionary([]) -> "Provide a word to look up.";
 dictionary(Words) ->

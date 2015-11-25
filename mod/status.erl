@@ -22,12 +22,12 @@ get_commands() ->
 	].
 
 generic(Func) ->
-	fun(O,RT,P,[]) ->
+	fun(#{nick:=O,reply:=RT,ping:=P,params:=[]}) ->
 		case orddict:find(defaultserver(RT), servers()) of
 			{ok, {Addr,Port,Name}} -> spawn(status, Func, [RT, P, O, Addr, Port, Name]), ok;
 			error -> {irc, {msg, {RT, [P, "Failed to find default server for this channel!"]}}}
 		end;
-	   (O,RT,P,[ServerID]) ->
+	   (#{nick:=O,reply:=RT,ping:=P,params:=[ServerID]}) ->
 		case orddict:find(ServerID, servers()) of
 			{ok, {Addr,Port,Name}} -> spawn(status, Func, [RT, P, O, Addr, Port, Name]), ok;
 			error -> {irc, {msg, {RT, [P, "Illegal argument!"]}}}

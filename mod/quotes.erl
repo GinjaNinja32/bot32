@@ -14,10 +14,10 @@ get_aliases() ->
 
 get_commands() ->
 	[
-		{"quote", fun quote/4, user},
-		{"quotename", fun quotename/4, user},
-		{"quoteword", fun quoteword/4, user},
-		{"addquote",  fun addquote/4, user},
+		{"quote", fun quote/1, user},
+		{"quotename", fun quotename/1, user},
+		{"quoteword", fun quoteword/1, user},
+		{"addquote",  fun addquote/1, user},
 		{"delquote",    gen_delquote(fun gen_genmatch/1  ), admin},
 		{"delquote_c",  gen_delquote(fun gen_catmatch/1  ), admin},
 		{"delquote_e",  gen_delquote(fun gen_exmatch/1   ), admin},
@@ -26,20 +26,20 @@ get_commands() ->
 
 %
 
-quote(_, ReplyTo, Ping, Params) ->
+quote(#{reply:=ReplyTo, ping:=Ping, params:=Params}) ->
 	{irc, {msg, {ReplyTo, [Ping, get_quote(string:strip(string:to_lower(string:join(Params, " "))))]}}}.
 
-quotename(_, ReplyTo, Ping, Params) ->
+quotename(#{reply:=ReplyTo, ping:=Ping, params:=Params}) ->
 	{irc, {msg, {ReplyTo, [Ping, get_quote_name(string:strip(string:to_lower(string:join(Params, " "))))]}}}.
 
-quoteword(_, ReplyTo, Ping, Params) ->
+quoteword(#{reply:=ReplyTo, ping:=Ping, params:=Params}) ->
 	{irc, {msg, {ReplyTo, [Ping, get_quote_word(string:strip(string:join(Params, " ")))]}}}.
 
-addquote(_, ReplyTo, Ping, []) ->
+addquote(#{reply:=ReplyTo, ping:=Ping, params:=[]}) ->
 	{irc, {msg, {ReplyTo, [Ping, "Please provide a category and a quote."]}}};
-addquote(_, ReplyTo, Ping, [_]) ->
+addquote(#{reply:=ReplyTo, ping:=Ping, params:=[_]}) ->
 	{irc, {msg, {ReplyTo, [Ping, "Please provide a quote."]}}};
-addquote(_, ReplyTo, Ping, Params) ->
+addquote(#{reply:=ReplyTo, ping:=Ping, params:=Params}) ->
 	Reply = add_quote(string:to_lower(hd(Params)), string:strip(string:join(tl(Params), " "))),
 	{irc, {msg, {ReplyTo, [Ping, Reply]}}}.
 
@@ -62,8 +62,8 @@ gen_excatmatch(Params) ->
 	fun(T={C,_}) -> Cat == C andalso General(T) end.
 
 gen_delquote(Func) ->
-	fun(_, ReplyTo, Ping, []) -> {irc, {msg, {ReplyTo, [Ping, "Provide a quote to delete!"]}}};
-	   (_, ReplyTo, Ping, Params) ->
+	fun(#{reply:=ReplyTo, ping:=Ping, params:=[]}) -> {irc, {msg, {ReplyTo, [Ping, "Provide a quote to delete!"]}}};
+	   (#{reply:=ReplyTo, ping:=Ping, params:=Params}) ->
 		case remove_quote(Func(Params)) of
 			no_match -> {irc, {msg, {ReplyTo, [Ping, "No matching quotes found."]}}};
 			{multi_match, Num} -> {irc, {msg, {ReplyTo, [Ping, integer_to_list(Num), " matching quotes found."]}}};

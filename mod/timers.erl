@@ -3,7 +3,7 @@
 
 get_commands() ->
 	[
-		{"timer", fun timer/4, user}
+		{"timer", fun timer/1, user}
 	].
 
 initialise() ->
@@ -25,8 +25,8 @@ deinitialise() ->
 	end.
 
 
-timer(_, ReplyTo, Ping, [    ]) -> {irc, {msg, {ReplyTo, [Ping, <<"Provide a timer duration in either seconds, minutes:seconds, or hours:minutes:seconds.">>]}}};
-timer(O, ReplyTo, Ping, Params) ->
+timer(#{reply:=ReplyTo, ping:=Ping, params:=[    ]}) -> {irc, {msg, {ReplyTo, [Ping, <<"Provide a timer duration in either seconds, minutes:seconds, or hours:minutes:seconds.">>]}}};
+timer(#{nick:=O, reply:=ReplyTo, ping:=Ping, params:=Params}) ->
 	case whereis(?MODULE) of
 		undefined -> {irc, {msg, {ReplyTo, [Ping, <<"Timer is currently not running (errored).">>]}}};
 		TimerPid ->

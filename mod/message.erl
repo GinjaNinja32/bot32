@@ -5,26 +5,26 @@
 
 get_commands() ->
 	[
-		{"cm", fun check_messages/4, user},
-		{"tell", fun new_message/4, user},
-		{"sent", fun sent/4, user}
+		{"cm", fun check_messages/1, user},
+		{"tell", fun new_message/1, user},
+		{"sent", fun sent/1, user}
 	].
 
 handle_event(nick, {_,             N}) -> check_messages_for(N);
 handle_event(join, {#user{nick=N}, _}) -> check_messages_for(N);
 handle_event(_,_) -> ok.
 
-check_messages(Origin, ReplyTo, Ping, _) ->
+check_messages(#{nick:=Origin, reply:=ReplyTo, ping:=Ping}) ->
 	case check_messages_for(Origin) of
 		nomessages -> {irc, {msg, {ReplyTo, [Ping, "You have no new messages."]}}};
 		_ -> ok
 	end.
 
-new_message(_, ReplyTo, Ping, []) ->
+new_message(#{reply:=ReplyTo, ping:=Ping, params:=[]}) ->
 	{irc, {msg, {ReplyTo, [Ping, "Please provide a recipient and a message."]}}};
-new_message(_, ReplyTo, Ping, [_]) ->
+new_message(#{reply:=ReplyTo, ping:=Ping, params:=[_]}) ->
 	{irc, {msg, {ReplyTo, [Ping, "Please provide a message."]}}};
-new_message(Origin, ReplyTo, Ping, Params) ->
+new_message(#{nick:=Origin, reply:=ReplyTo, ping:=Ping, params:=Params}) ->
 	{irc, {msg, {ReplyTo, [Ping, create_message(Origin, hd(Params), string:join(tl(Params), " "))]}}}.
 
 check_messages_for(NickR) ->
@@ -45,7 +45,7 @@ check_messages_for(NickR) ->
 				ok
         end.
 
-sent(O, RT, P, _) ->
+sent(#{nick:=O, reply:=RT, ping:=P}) ->
 	Data = config:get_value(data, [?MODULE, messages], []),
 	case lists:flatmap(fun({To,List}) ->
 				lists:filtermap(fun

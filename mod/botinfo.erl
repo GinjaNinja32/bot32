@@ -5,10 +5,10 @@
 
 get_commands() ->
 	[
-		{"uptime", fun uptime/4, user},
-		{"version", fun version/4, user},
-		{"source", fun source/4, user},
-		{"github", fun source/4, user}
+		{"uptime", fun uptime/1, user},
+		{"version", fun version/1, user},
+		{"source", fun source/1, user},
+		{"github", fun source/1, user}
 	].
 
 sectimestamp() -> calendar:datetime_to_gregorian_seconds(calendar:now_to_universal_time(os:timestamp())).
@@ -18,13 +18,13 @@ initialise() ->
 deinitialise() ->
 	config:delete_value(temp, [botinfo]).
 
-uptime(_, RT, P, _) ->
+uptime(#{reply:=RT, ping:=P}) ->
 	config:offer_value(temp, [botinfo], sectimestamp()),
 	StartTime = config:require_value(temp, [botinfo]),
 	NowTime = sectimestamp(),
 	{irc, {msg, {RT, [P, "I have been running for ", common:format_time_difference(NowTime - StartTime)]}}}.
 
-version(_, RT, P, _) ->
+version(#{reply:=RT, ping:=P}) ->
 	% Erlang info
 	ErlVer = erlang:system_info(otp_release),
 
@@ -37,5 +37,5 @@ version(_, RT, P, _) ->
 
 	{irc, {msg, {RT, [P, ?VERSION, " running on Erlang ", ErlVer, " on ", atom_to_list(OSname), $ , OSver, $.]}}}.
 
-source(_, RT, P, _) ->
+source(#{reply:=RT, ping:=P}) ->
 	{irc, {msg, {RT, [P, "http://github.com/GinjaNinja32/bot32"]}}}.

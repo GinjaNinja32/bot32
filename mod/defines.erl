@@ -7,7 +7,7 @@
 
 get_commands() ->
 	[
-		{"defined", fun defined/4, user}
+		{"defined", fun defined/1, user}
 	].
 
 initialise() ->
@@ -17,8 +17,8 @@ deinitialise() ->
 
 %
 
-defined(_, RT, P, []) -> {irc, {msg, {RT, [P, "Provide a string to find definitions for!"]}}};
-defined(_, RT, P, Params) ->
+defined(#{reply:=RT, ping:=P, params:=[]}) -> {irc, {msg, {RT, [P, "Provide a string to find definitions for!"]}}};
+defined(#{reply:=RT, ping:=P, params:=Params}) ->
 	{M,DF,D,KP} = config:get_value(temp, [defines], {[],[],[],[]}),
 	{UseDefs, UseParams} = case string:to_lower(hd(Params)) of
 		"master" -> {M, tl(Params)};

@@ -5,12 +5,12 @@
 
 get_commands() ->
 	[
-		{"unban", fun unban/4, user}
+		{"unban", fun unban/1, user}
 	].
 
 origin_mode() -> full.
 
-unban(User, RT, P, _) ->
+unban(#{origin:=User, reply:=RT, ping:=P}) ->
 	case file:consult("ranks.crl") of
 		{ok, [Dict]} ->
 			Who = string:to_lower(User#user.nick),
