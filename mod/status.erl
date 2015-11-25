@@ -1,18 +1,15 @@
 -module(status).
 -compile(export_all).
 
-defaultserver("#yonaguni") -> "europa";
-defaultserver(_) -> "main".
-
 -define(Sep, 16#feff).
 
-servers() ->
-	[
-		{"dev", {"baystation12.net", 8100, "(dev) "}},
-		{"europa", {"server.wetskrell.org", 8080, "(europa) "}},
-		{"main", {"baystation12.net", 8000, ""}},
-		{"test", {"erebus.gn32.uk", 3210, "(test) "}}
-	].
+defaultserver(T) ->
+	case config:get_value(config, [?MODULE, default, T]) of
+		'$none' -> config:require_value(config, [?MODULE, default, default]);
+		X -> X
+	end.
+
+servers() -> config:require_value(config, [?MODULE, servers]).
 
 get_commands() ->
 	[

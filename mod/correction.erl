@@ -10,9 +10,12 @@ handle_event(msg, {#user{nick=N}, Chan, Tokens}) ->
 			case config:get_value(temp, [?MODULE, string:to_lower(N)]) of
 				'$none' -> ok;
 				T ->
-					New = re:replace(T, Find, Replace, Options),
-					config:set_value(temp, [?MODULE, string:to_lower(N)], New),
-					core ! {irc, {msg, {Chan, [N, ": ", New]}}}
+					case re:replace(T, Find, Replace, Options) of
+						T -> ok;
+						New ->
+							config:set_value(temp, [?MODULE, string:to_lower(N)], New),
+							core ! {irc, {msg, {Chan, [N, ": ", New]}}}
+					end
 			end;
 		{error, Msg} -> core ! {irc, {msg, {Chan, [N, ": ", Msg]}}};
 		_ -> config:set_value(temp, [?MODULE, string:to_lower(N)], Msg)
