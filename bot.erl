@@ -75,6 +75,7 @@ loop() ->
 	case receive
 		{ircfwd, T} -> {irc, T};
 		{irc, {Type, Params}} ->
+			logging:log(recv, bot, "{~p, ~p}", [Type, Params]),
 			case catch handle_irc(Type, Params) of
 				{'EXIT', {Reason, Stack}} -> logging:log(error, ?MODULE, "handle_irc errored ~p (~p), continuing", [Reason, Stack]), notify_error(Type, Params);
 				{'EXIT', Term} ->  logging:log(error, ?MODULE, "handle_irc exited ~p, continuing",  [Term]), notify_error(Type, Params);
@@ -245,10 +246,13 @@ handle_irc(ctcp, {Type, #user{nick=Nick}, _Message}) ->
 		_ -> logging:log(error, ?MODULE, "Unknown CTCP message ~p, continuing", [Type])
 	end;
 
-handle_irc(nick, {#user{nick=OldNick}, NewNick}) ->
+handle_irc(nick, {U=#user{nick=OldNick}, NewNick}) ->
 	case config:get_value(config, [bot, nick]) of
 		OldNick -> config:set_value(config, [bot, nick], NewNick);
-		_ -> ok
+		_ ->
+			lists:foreach(fun(Module) ->
+					call_or(Module, handle_event, [nick, {U, NewNick}], null)
+				end, config:require_value(config, [bot, modules]))
 	end;
 
 handle_irc(notice, _) -> ok;
