@@ -38,11 +38,11 @@ def exit():
 	s = 0
 	with open("markovstr.txt", "wb") as ouf:
 		for key in pairs.keys():
-			i = i + 1
+			i += 1
 			wk0 = wr(key[0])
 			wk1 = wr(key[1])
 			if type(wk0) == bytes and type(wk1) == bytes:
-				s = s + 1
+				s += 1
 				ouf.write(wk0 + b" " + wk1 + b" " + bytes(str(pairs[key]), 'utf-8') + b"\n")
 			else:
 				log("cannot write key " + str(key) + " at index " + str(i))
@@ -70,9 +70,9 @@ def contexts(chan, ping, word):
 	x = []
 	for (a,b) in pairs.keys():
 		if a == word or b == word:
-			contexts = contexts + 1
+			contexts += 1
 			ab = pairs[(a,b)]
-			n = n + ab
+			n += ab
 			if len(x) < 10:
 				if a == None:
 					a = b"[start]"
@@ -188,7 +188,7 @@ def filter(word):
 def incpair(pair):
 	global pairs
 	if pair in pairs:
-		pairs[pair] = pairs[pair] + 1
+		pairs[pair] += 1
 	else:
 		pairs[pair] = 1
 
