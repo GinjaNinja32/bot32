@@ -188,7 +188,7 @@ def filter(word):
 def incpair(pair):
 	global pairs
 	if pair in pairs:
-		pairs[pair]+ 1
+		pairs[pair] += 1
 	else:
 		pairs[pair] = 1
 
