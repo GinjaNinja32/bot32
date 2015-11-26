@@ -4,7 +4,7 @@ import random
 from erlport.erlterms import Atom
 
 def log(s):
-	print("PYTHON: " + s)
+	print("PYTHON: %s" % (s))
 
 pairs = {}
 replyrate = 0
@@ -27,12 +27,12 @@ def init():
 		log("failed to load file")
 		pass
 
-	log("init done with " + str(len(pairs)) + " pairs")
+	log("init done with %s pairs" % (len(pairs)))
 	return Atom(b'ok')
 
 def exit():
 	global pairs
-	log("exiting with " + str(len(pairs)) + " pairs")
+	log("exiting with %s pairs" % (len(pairs)))
 
 	i = 0
 	s = 0
@@ -45,9 +45,9 @@ def exit():
 				s += 1
 				ouf.write(wk0 + b" " + wk1 + b" " + bytes(str(pairs[key]), 'utf-8') + b"\n")
 			else:
-				log("cannot write key " + str(key) + " at index " + str(i))
+				log("cannot write key %s at index %s" % (key, i))
 
-	log("exit done, wrote " + str(s) + " keys successfully of " + str(i) + " total")
+	log("exit done, wrote %s keys successfully of %s total" % (s, i))
 	return Atom(b'ok')
 
 def rd(a):
@@ -78,8 +78,8 @@ def contexts(chan, ping, word):
 					a = b"[start]"
 				if b == None:
 					b = b"[end]"
-				x.append("'" + a.decode("utf-8") + " " + b.decode("utf-8") + "' (" + str(ab) + ")")
-	return (Atom(b'irc'), (Atom(b'msg'), (chan, ping.to_string() + "I have " + str(contexts) + " contexts totalling " + str(n) +" instances for '" + word.decode("utf-8") + "': '" + ", ".join(x) + "'.")))
+				x.append("'%s %s' (%s)" % (a.decode("utf-8"), b.decode("utf-8"), ab))
+	return (Atom(b'irc'), (Atom(b'msg'), (chan, ping.to_string() + "I have %s contexts totalling %s instances for '%s': '" + ", ".join(x) + "'." % (contexts, n, word.decode("utf-8")))))
 
 def markov(chan, msg):
 	words = msg.to_string().split(" ")
@@ -132,7 +132,7 @@ def reply(chan, msg):
 		else:
 			reply.append(next)
 			if next[-1] == '.':
-				log("next (" + str(next) + ") has . at end, breaking")
+				log("next (%s) has . at end, breaking" % (next))
 				break
 	for _ in range(0,20):
 		prev = get_word(reply[0], lambda x,a,b: x==b, lambda a,b: a)
@@ -140,13 +140,13 @@ def reply(chan, msg):
 			continue
 		else:
 			if prev[-1] == '.':
-				log("prev (" + str(prev) + ") has . at end, breaking")
+				log("prev (%s) has . at end, breaking" % (prev))
 				break
 			reply.insert(0, prev)
 
 	reply_str = fix_string(b" ".join(reply))
 
-	log("markov replying with '" + str(reply_str) + "'")
+	log("markov replying with '%s'" % (reply_str))
 
 	return (Atom(b'irc'), (Atom(b'msg'), (chan, reply_str)))
 
