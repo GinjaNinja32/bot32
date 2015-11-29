@@ -19,9 +19,9 @@ handle_event(nick, {#user{nick=Old}, New}) ->
 	see(New, "changing nicks from ~s", [Old]);
 handle_event(ctcp, {action, Chan, #user{nick=N}, _}) -> see(N, "messaging ~s", [Chan]);
 handle_event(msg, {#user{nick=N}, Chan, _}) ->
-	MyNick = config:get_value(config, [bot, nick]),
+	MyNick = config:require_value(config, [bot, nick]),
 	if
-		N /= MyNick -> see(N, "messaging ~s", [Chan]);
+		Chan /= MyNick -> see(N, "messaging ~s", [Chan]);
 		true -> ok
 	end;
 handle_event(_, _) -> ok.

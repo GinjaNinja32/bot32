@@ -16,6 +16,30 @@ get_commands() ->
 		{"coin", fun coin/1, user}
 	].
 
+alt_funcs() -> [fun alt_eightball/1, fun select_or_string/1].
+
+alt_eightball(Tokens) ->
+	case util:lasttail(util:lasttail(Tokens)) of
+		$? -> util:eightball();
+		_ -> false
+	end.
+
+select_or_string(Tokens) ->
+	case collapse_or_string(Tokens, [], []) of
+		false -> false;
+		[] -> false;
+		[_] -> false;
+		Options -> lists:nth(random:uniform(length(Options)), Options)
+	end.
+
+collapse_or_string([], [], _) -> false;
+collapse_or_string([], COpt, Options) -> [COpt | Options];
+collapse_or_string(["or"|_], [], _) -> false;
+collapse_or_string(["or"|L], COpt, Options) -> collapse_or_string(L, [], [COpt | Options]);
+collapse_or_string([T|L], [], Options) -> collapse_or_string(L, [T], Options);
+collapse_or_string([T|L], COpt, Options) -> collapse_or_string(L, [COpt,32|T], Options).
+
+
 i2l(T, S) when T < 10 -> [S] ++ integer_to_list(T);
 i2l(T, _) -> integer_to_list(T).
 
@@ -26,6 +50,7 @@ colors(#{reply:=ReplyTo, ping:=Ping}) -> {irc, {msg, {ReplyTo, [Ping,
 
 ping(#{reply:=ReplyTo, ping:=Ping}) -> {irc, {msg, {ReplyTo, [Ping, "Pong!"]}}}.
 pong(#{reply:=ReplyTo, ping:=Ping}) -> {irc, {msg, {ReplyTo, [Ping, "Ping!"]}}}.
+
 
 eightball(#{reply:=ReplyTo, ping:=Ping, params:=["add"|Thing]}) ->
 	{irc, {msg, {ReplyTo, [Ping, util:addeightball(list_to_binary(string:join(Thing, " ")))]}}};

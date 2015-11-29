@@ -1,18 +1,22 @@
 An IRC bot, built in Erlang.
 
-Edit the config at `bot_config.erl` before starting the bot.
-If either start method is used and any of a server, port, or transport are *not* supplied, the values in `core_config.crl` will be used; either ensure they are supplied, or edit that file too.
+# Configuration:
+TODO. Currently reliant on manual config editing in nonexistant files; keys for the `bot` side are all offered to the config module at the beginning of `bot:init()`. For `core`, they are passed to `require_value()` in the argument-less form of `core:init()`.
 
 # Starting the bot:
-`$ bot_start -s[SERVER] -p[PORT] -s[TRANSPORT]`  
-SERVER should be the URL or IP of the server  
-PORT should be a numeric port  
-TRANSPORT should be `gen_tcp` (standard TCP connection) or `ssl` (SSL connection)
-
-For example, to connect via SSL to irc.example.com:6697: `bot_start -sirc.example.com -p6697 -tssl`
+TODO. `bot_start` script removed due to being outdated and almost certainly not working any more.
 
 # Starting the bot from the shell:
-Compile all included modules, then call `common:start()` or `common:start(Server, Transport, Port)` (valid values for `Transport` are `ssl` and `gen_tcp`, or any module which is API-compatible with `gen_tcp`)
+```
+1> c(loader).
+{ok,loader}.
+2> loader:load().
+[compilation output]
+ok
+```
+followed by EITHER of
+- `3> common:start()` to use the server address/port/transport mode in the config file
+- `3> common:start(Server, Transport, Port)` to provide these values and skip the configuration. `Server` and `Port` will be passed to the `Transport:connect()` call unchanged. `Transport` should either be the atom `ssl`, the atom `gen_tcp`, or the name of any module which is API-compatible with `gen_tcp` and sends messages of the same format as either `ssl` or `gen_tcp`.
 
 # Licensing
 

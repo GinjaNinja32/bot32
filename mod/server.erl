@@ -14,7 +14,7 @@ waitfor_gone(Ident) ->
 
 get_aliases() ->
 	[
-		{"serverrank", ["getserverrank"]}
+		{"getserverrank", ["serverrank"]}
 	].
 
 get_commands() ->
@@ -30,7 +30,7 @@ get_commands() ->
 	].
 
 initialise() ->
-	case config:get_value(config, [?MODULE]) of
+	case config:get_value(config, [?MODULE, server]) of
 		{Server, Port, Pwd} -> spawn(server, sloop, [Server, Port, 45678, Pwd]);
 		_ -> logging:log(error, "SERVER", "Loaded with no or incorrect config!")
 	end.
@@ -45,16 +45,12 @@ deinitialise() ->
 %
 
 gsr(#{reply:=RT, ping:=P, params:=[]}) ->
-	case file:consult("ranks.crl") of
-		{ok, [Dict]} -> {irc, {msg, {RT, [P, string:join(lists:map(fun({A,_})-> [hd(A),160,tl(A)] end, Dict), "; ")]}}};
-		_ -> {irc, {msg, {RT, [P, "Failed to read file!"]}}}
-	end;
+	Dict = config:get_value(config, [?MODULE, ranks], []),
+	{irc, {msg, {RT, [P, string:join(lists:map(fun({A,_})-> [hd(A),160,tl(A)] end, Dict), "; ")]}}};
 gsr(#{reply:=RT, ping:=P, params:=List}) ->
-	case file:consult("ranks.crl") of
-		{ok, [Dict]} ->
-			{irc, {msg, {RT, [P, string:join(lists:map(fun(A)-> grank(string:to_lower(A),Dict) end, List), "; ")]}}};
-		_ -> {irc, {msg, {RT, [P, "Failed to read file!"]}}}
-	end.
+	Dict = config:get_value(config, [?MODULE, ranks], []),
+	{irc, {msg, {RT, [P, string:join(lists:map(fun(A)-> grank(string:to_lower(A),Dict) end, List), "; ")]}}}.
+
 grank(N, Dict) ->
 	case lists:keyfind(N, 1, Dict) of
 		{_, Rank} -> io_lib:format("~s\xa0~s: ~s", [[hd(N)], tl(N), Rank]);
@@ -63,22 +59,18 @@ grank(N, Dict) ->
 
 
 serverrank(#{reply:=RT, ping:=Ping, params:=[Rank | RWho]}) when RWho /= [] ->
-	case file:consult("ranks.crl") of
-		{ok, [Dict]} ->
-			Who = string:to_lower(string:join(RWho, " ")),
-			case lists:keyfind(Who, 1, Dict) of
-				{_, CRank} -> Message = ["Set rank of ", Who, " to ", Rank, " - was ", CRank];
-				_ ->          Message = ["Set rank of ", Who, " to ", Rank]
-			end,
-			if
-				Rank == "none" -> NewDict = lists:keydelete(Who, 1, Dict);
-				true -> NewDict = lists:keystore(Who, 1, Dict, {Who, Rank})
-			end,
-			file:write_file("ranks.crl", io_lib:format("~p.~n", [NewDict])),
-			{irc, {msg, {RT, [Ping, Message]}}};
-		error ->
-			{irc, {msg, {RT, [Ping, "Failed to read file!"]}}}
-	end;
+	Who = string:to_lower(string:join(RWho, " ")),
+	OldRank = config:get_value(config, [?MODULE, ranks, Who]),
+
+	case OldRank of
+		'$none' -> Message = ["Set rank of ", Who, " to ", Rank];
+		_ -> Message = ["Set rank of ", Who, " to ", Rank, " - was ", OldRank]
+	end,
+	if
+		Rank == "none" -> config:del_value(config, [?MODULE, ranks, Who]);
+		true -> config:set_value(config, [?MODULE, ranks, Who], Rank)
+	end,
+	{irc, {msg, {RT, [Ping, Message]}}};
 serverrank(#{reply:=RT, ping:=Ping}) -> {irc, {msg, {RT, [Ping, "Provide a rank and a nick; e.g. 'setserverrank Admin CoolGuy3000'."]}}}.
 
 
@@ -131,16 +123,7 @@ loop(SvrSock, Svr, Prt, SPrt, Pwd, Notify) ->
 	case receive
 		{pm, Sender, ReplyChannel, ReplyPing, Recipient, Message} ->
 			logging:log(info, "SERVER", "sending PM ~s to ~s", [Message, Recipient]),
-			case file:consult("ranks.crl") of
-				{ok, [RDict]} ->
-					case lists:keyfind(string:to_lower(Sender), 1, RDict) of
-						{_, Rank} -> ok;
-						_ ->
-							common:debug("debug", "dict is ~p without key ~p", [RDict, Sender]),
-							Rank = "Unknown"
-					end;
-				_ -> Rank = "Admin"
-			end,
+			Rank = config:get_value(config, [?MODULE, ranks, string:to_lower(Sender)], "Unknown"),
 			Reply = case byond:send(Svr, Prt, io_lib:format("?adminmsg=~s;msg=~s;key=~s;sender=~s;rank=~s", lists:map(fun byond:vencode/1, [Recipient, Message, Pwd, Sender, Rank]))) of
 				{error, T} -> io_lib:format("Error: ~s", [T]);
 				Dict ->

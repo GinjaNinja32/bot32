@@ -4,14 +4,6 @@
 
 -include("definitions.hrl").
 
-waitfor(Ident) ->
-	case whereis(Ident) of
-		undefined ->
-			timer:sleep(100),
-			waitfor(Ident);
-		_ -> ok
-	end.
-
 init() ->
 	code:add_path("./mod/bin"),
 	register(bot, self()),
@@ -33,7 +25,7 @@ init() ->
 	config:set_value(temp, [bot, aliases], []),
 	config:set_value(temp, [bot, commands], []),
 
-	waitfor(core), % wait for core to startup
+	util:waitfor(core), % wait for core to startup
 	case config:require_value(config, [bot, pass]) of
 		none -> ok;
 		Pass -> core ! {irc, {pass, Pass}}
@@ -57,12 +49,14 @@ init() ->
 	Modules = config:get_value(config, [bot, modules]),
 	config:set_value(config, [bot, modules], []),
 	load_modules(Modules),
-	loop().
+	loop(),
+	logging:log(info, ?MODULE, "stopping").
 
 reinit(_) ->
 	register(bot, self()),
 	logging:log(info, ?MODULE, "starting"),
-	loop().
+	loop(),
+	logging:log(info, ?MODULE, "stopping").
 
 notify_error(msg, {#user{nick=N}, Channel, _}) ->
 	case config:get_value(config, [bot, nick]) of
@@ -98,44 +92,6 @@ loop() ->
 			ok;
 		S -> logging:log(error, ?MODULE, "unknown code ~p, continuing", [S]), bot:loop()
 	end.
-
-message_all_rank(Category, Msg, Rank) ->
-	Permissions = config:require_value(config, [permissions]),
-	logging:log(info, Rank, "~s: ~s", [Category, Msg]),
-	lists:foreach(fun({N,_U,_H}) ->
-			core ! {irc, {msg, {N, [Category, ": ", Msg]}}}
-		end, orddict:fetch_keys(orddict:filter(fun(_,V) -> lists:member(Rank,V) end, Permissions))).
-
-rankof(Usr=#user{}) -> rankof(Usr, none).
-rankof(#user{nick=N,username=U,host=H}, Channel) ->
-	Permissions = config:require_value(config, [permissions]),
-	C = case Channel of
-		none ->	none;
-		_ -> list_to_binary(Channel)
-	end,
-	orddict:fold(fun
-			({Nick,User,Host}, Perms, PermsSoFar) ->
-				case    (re:run(N, util:regex_star(Nick), [{capture, none}, caseless]) == match)
-				andalso (re:run(U, util:regex_star(User), [{capture, none}]) == match)
-				andalso (re:run(H, util:regex_star(Host), [{capture, none}]) == match) of
-					true -> lists:umerge(lists:usort(Perms), PermsSoFar);
-					false -> PermsSoFar
-				end;
-			(Chan, Perms, PermsSoFar) ->
-				if Chan == C -> lists:umerge(lists:usort(Perms), PermsSoFar);
-				   true -> PermsSoFar
-				end
-		end, [user], Permissions).
-
-rankof_chan(Channel) ->
-	case orddict:find(list_to_binary(Channel), config:require_value(config, [permissions])) of
-		{ok, Value} -> Value;
-		error -> [user]
-	end.
-
-hasperm(_, user) -> true;
-hasperm(User=#user{}, Perm) ->
-	lists:member(Perm, rankof(User)).
 
 parse_command([],_) -> notcommand;
 parse_command(Params, IsQuery) ->
@@ -201,7 +157,7 @@ handle_irc(msg, Params={OUser=#user{nick=ONick}, Channel, OTokens}) ->
 	case lists:all(fun(T) -> check_utf8(list_to_binary(T)) end, Tokens) of
 		false -> logging:log(utf8, ?MODULE, "Ignoring '~s' due to invalid UTF-8", [string:join(Tokens, " ")]);
 		true ->
-	case hasperm(User, ignore) of
+	case permissions:hasperm(User, ignore) of
 		true ->
 			logging:log(ignore, ?MODULE, "Ignoring ~s!~s@~s: ~s.", [Nick, User#user.username, User#user.host, string:join(Tokens, " ")]),
 			ok;
@@ -210,9 +166,9 @@ handle_irc(msg, Params={OUser=#user{nick=ONick}, Channel, OTokens}) ->
 				Channel ->
 					ReplyChannel = Nick,
 					ReplyPing = "",
-					case hasperm(User, admin) of
+					case permissions:hasperm(User, admin) of
 						true -> ok;
-						_ -> message_all_rank(["Query from ",Nick], string:join(Tokens, " "), pmlog)
+						_ -> permissions:message_all_rank(["Query from ",Nick], string:join(Tokens, " "), pmlog)
 					end;
 				_ ->
 					ReplyChannel = Channel,
@@ -226,8 +182,8 @@ handle_irc(msg, Params={OUser=#user{nick=ONick}, Channel, OTokens}) ->
 				{RCommand, RArguments} ->
 					logging:log(info, ?MODULE, "Command in ~s from ~s: ~s ~s", [Channel, User#user.nick, RCommand, string:join(RArguments, " ")]),
 					{Command, Arguments} = decode_alias(RCommand, RArguments),
-					Rank = rankof(User, ReplyChannel),
-					case hasperm(User, host) of
+					Rank = permissions:rankof(User, ReplyChannel),
+					case permissions:hasperm(User, host) of
 						true -> handle_host_command(Rank, User, ReplyChannel, ReplyPing, Command, Arguments);
 						false ->     handle_command(Rank, User, ReplyChannel, ReplyPing, Command, Arguments)
 					end;
@@ -238,13 +194,6 @@ handle_irc(msg, Params={OUser=#user{nick=ONick}, Channel, OTokens}) ->
 						end, config:require_value(config, [bot, modules]))
 			end
 	end
-	end;
-
-handle_irc(ctcp, {Type, #user{nick=Nick}, _Message}) ->
-	case Type of
-		version -> {irc, {ctcp_re, {version, Nick, ?VERSION}}};
-		action -> ok;
-		_ -> logging:log(error, ?MODULE, "Unknown CTCP message ~p, continuing", [Type])
 	end;
 
 handle_irc(nick, {U=#user{nick=OldNick}, NewNick}) ->
@@ -431,7 +380,7 @@ handle_command(Ranks, User, ReplyTo, Ping, Cmd, Params) ->
 								unhandled;
 								%core ! {irc, {msg, {Origin, [io_lib:format("~s commands: ",[Rank]), string:join(orddict:fetch_keys(RankCmds), ", "), "."]}}}, unhandled;
 							T -> case orddict:find(T, RankCmds) of
-								{ok, {Mod,Result}} ->
+								{ok, {_Module,Result}} ->
 									ParamMap = #{
 											origin => User,
 											nick => User#user.nick,
@@ -474,32 +423,11 @@ alternate_commands(Tokens, Modules) ->
 				true -> Alt ++ Mod:alt_funcs();
 				false -> Alt
 			end
-		end, [fun select_or_string/1, fun alternate_eightball/1], Modules),
+		end, [], Modules),
 	lists:foldl(fun
 			(Func, false) -> Func(Tokens);
 			(_,Re) -> Re
 		end, false, AltFunctions).
-
-select_or_string(List) ->
-	case collapse_or_string(List, [], []) of
-		false -> false;
-		[] -> false;
-		[_] -> false;
-		Options -> lists:nth(random:uniform(length(Options)), Options)
-	end.
-
-collapse_or_string([], [], _) -> false;
-collapse_or_string([], COpt, Options) -> [COpt | Options];
-collapse_or_string(["or"|_], [], _) -> false;
-collapse_or_string(["or"|L], COpt, Options) -> collapse_or_string(L, [], [COpt | Options]);
-collapse_or_string([T|L], [], Options) -> collapse_or_string(L, [T], Options);
-collapse_or_string([T|L], COpt, Options) -> collapse_or_string(L, [COpt,32|T], Options).
-
-alternate_eightball(List) ->
-	case util:lasttail(util:lasttail(List)) of
-		$? -> util:eightball();
-		_ -> false
-	end.
 
 load_modules(Modules) -> lists:foreach(fun load_module/1, Modules).
 load_module(Module) ->
