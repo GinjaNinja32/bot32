@@ -54,7 +54,7 @@ call(Func, Args, RT) ->
 		Py -> python:call(Py, python, Func, Args)
 	end.
 
-handle_event(msg, {_, Channel, Msg}) ->
+handle_event(msg_nocommand, {_, Channel, Msg}) ->
 	case config:get_value(config, [bot, nick]) of
 		Channel -> ok;
 		_Nick ->

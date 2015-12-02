@@ -22,9 +22,9 @@ rankof(#user{nick=N,username=U,host=H}, Channel) ->
 	end,
 	orddict:fold(fun
 			({Nick, User, Host}, Perms, PermsSoFar) ->
-				case    (re:run(N, util:regex_star(Nick), [{capture,none}, caseless]) == match)
-				andalso (re:run(U, util:regex_star(User), [{capture,none}]) == match)
-				andalso (re:run(H, util:regex_star(Host), [{capture,none}]) == match) of
+				case    (re:run(N, [$^,util:regex_star(Nick),$$], [{capture,none}, caseless]) == match)
+				andalso (re:run(U, [$^,util:regex_star(User),$$], [{capture,none}]) == match)
+				andalso (re:run(H, [$^,util:regex_star(Host),$$], [{capture,none}]) == match) of
 					true -> lists:umerge(lists:usort(Perms), PermsSoFar);
 					false -> PermsSoFar
 				end;

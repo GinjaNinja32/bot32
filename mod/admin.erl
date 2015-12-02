@@ -33,7 +33,7 @@ chanperm(#{reply:=ReplyTo, ping:=Ping, params:=[]}) -> {irc, {msg, {ReplyTo, [Pi
 chanperm(#{reply:=ReplyTo, ping:=Ping, params:=[_]}) -> {irc, {msg, {ReplyTo, [Ping, "Provide one or more channels"]}}};
 chanperm(#{reply:=ReplyTo, ping:=Ping, params:=[Rank | Chans]}) ->
 	NewDict = lists:foldl(fun(Chan, Dict) ->
-		CRank = bot:rankof_chan(Chan, Dict),
+		CRank = permissions:rankof_chan(Chan),
 		NewList = case Rank of
 			"+" ++ R -> case lists:member(list_to_atom(R), CRank) of
 					true -> CRank;
@@ -48,7 +48,7 @@ chanperm(#{reply:=ReplyTo, ping:=Ping, params:=[Rank | Chans]}) ->
 	end, config:require_value(config, [permissions]), Chans),
 	config:set_value(config, [permissions], cleandict(NewDict)).
 
-gchanperm(#{reply:=ReplyTo, ping:=Ping, params:=[Channel]}) -> {irc, {msg, {ReplyTo, [Ping, Channel, io_lib:format(" has the default permissions: ~p", [bot:rankof_chan(Channel)])]}}};
+gchanperm(#{reply:=ReplyTo, ping:=Ping, params:=[Channel]}) -> {irc, {msg, {ReplyTo, [Ping, Channel, io_lib:format(" has the default permissions: ~p", [permissions:rankof_chan(Channel)])]}}};
 gchanperm(#{reply:=ReplyTo, ping:=Ping}) -> {irc, {msg, {ReplyTo, [Ping, "Provide exactly one channel!"]}}}.
 
 editrank(#{reply:=ReplyTo, ping:=Ping, params:=[]}) -> {irc, {msg, {ReplyTo, [Ping, "Provide a rank to edit and one or more nicks (+ users/masks)"]}}};
@@ -61,7 +61,7 @@ editrank(#{reply:=ReplyTo, ping:=Ping, params:=[Rank | Masks]}) ->
 				Dict;
 			{match,[N,U,H]} ->
 				Usr = #user{nick=string:to_lower(N), username=U, host=H},
-				CRank = bot:rankof(Usr, Dict),
+				CRank = permissions:rankof(Usr),
 				NewList = case Rank of
 					"+" ++ R ->
 						case lists:member(list_to_atom(R), CRank) of
@@ -92,7 +92,7 @@ setrank(#{reply:=ReplyTo, ping:=Ping, params:=[Rank | Nicks]}) ->
 						case string:to_lower(N) == string:to_lower(Nick) of
 							true ->
 								Usr = #user{nick=string:to_lower(N),username=U,host=H},
-								CRank = bot:rankof(Usr, Dict),
+								CRank = permissions:rankof(Usr),
 								NewList = case Rank of
 									"+" ++ R ->
 										case lists:member(list_to_atom(R), CRank) of
@@ -137,7 +137,7 @@ getrank(#{reply:=ReplyTo, ping:=Ping, params:=[Mask]}) ->
 				true ->	string:join(lists:map(fun({{Nx,Ux,Hx},_}) -> [Nx,$!,Ux,$@,Hx] end, Matching), ", ")
 			end;
 		{match, [N,_,U,H]} ->
-			R = bot:rankof(#user{nick=N,username=U,host=H}),
+			R = permissions:rankof(#user{nick=N,username=U,host=H}),
 			io_lib:format("Rank of ~s!~s@~s: ~w", [N,U,H,R])
 	end,
 	{irc, {msg, {ReplyTo, [Ping, Reply]}}}.

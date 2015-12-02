@@ -17,9 +17,10 @@ do_extras(Tokens, ReplyChannel, ReplyPing) ->
 		[] -> ok;
 		[URL|_] -> showurl(ReplyChannel, ReplyPing, URL, "~s")
 	end,
+	WikiURL = config:get_value(config, [?MODULE, wiki, ReplyChannel], "http://wiki.baystation12.net/"),
 	case re:run(string:join(Tokens, " "), "\\[\\[([^ ][^\]]+[^ ])\\]\\]", [{capture, all_but_first, binary}]) of
 		{match, [Page]} ->
-			UR = "http://wiki.baystation12.net/" ++ re:replace(Page, " ", "_", [{return, list}, global]),
+			UR = WikiURL ++ re:replace(Page, " ", "_", [{return, list}, global]),
 			showurl(ReplyChannel, ReplyPing, UR, UR ++ " - ~s", "Page not found!");
 		_ -> ok
 	end,
@@ -74,15 +75,11 @@ utf8(B) -> lists:reverse(utf8(B,[])).
 utf8(<<>>, L) -> L;
 utf8(<<A/utf8, B/binary>>, L) -> utf8(B, [A | L]).
 
-default_user_repo("#yonaguni") -> {"Yonaguni", "Baystation12"};
-default_user_repo("#bot32-test") -> {"GinjaNinja32", "bot32"};
-default_user_repo(_) -> {"Baystation12", "Baystation12"}.
-
 do_pr_linking(Tokens, Channel, Ping) ->
 	lists:foreach(fun(T) -> do_pr_link_token(T, Channel, Ping) end, Tokens).
 
 do_pr_link_token(Token, Channel, Ping) ->
-	{DefU, DefR} = default_user_repo(Channel),
+	{DefU, DefR} = config:get_value(config, [?MODULE, github, Channel], {"Baystation12", "Baystation12"}),
 	case case re:run(Token, "^([a-zA-Z0-9_\-]+)?(?:/([a-zA-Z0-9_\-]+))?(?:\\[([1-9][0-9]{0,4})\\]|#([1-9][0-9]{3,4}))(?:$|[^a-zA-Z0-9])", [{capture, all_but_first, list}]) of
 		{match, [ U,  R, "",  N]} -> {   U,    R, N};
 		{match, [ U,  R,      N]} -> {   U,    R, N};

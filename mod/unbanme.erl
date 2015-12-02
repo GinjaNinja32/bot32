@@ -11,26 +11,21 @@ get_commands() ->
 origin_mode() -> full.
 
 unban(#{origin:=User, reply:=RT, ping:=P}) ->
-	case file:consult("ranks.crl") of
-		{ok, [Dict]} ->
-			Who = string:to_lower(User#user.nick),
-			case lists:keyfind(Who, 1, Dict) of
-				{_, Rank} ->
-					logging:log(info, "unban", "~s used unban; rank is ~s", [User#user.nick, Rank]),
-					core ! {raw, ["WHOIS ", User#user.nick]},
-					case read_hostname(none) of
-						none -> {irc, {msg, {RT, [P, "Could not find your hostname; try again?"]}}};
-						Host ->
-							logging:log(info, "unban", "hostname for ~s is ~s (source ~s)", [User#user.nick, Host, User#user.host]),
-							core ! {irc, {mode, {"#bs12staff", ["-b *!*@", Host]}}},
-							core ! {irc, {mode, {"#bs12admin", ["-b *!*@", Host]}}},
-							{irc, {msg, {RT, [P, "Unbanned from #bs12staff and #bs12admin"]}}}
-					end;
-				_ ->
-					logging:log(info, "unban", "~s attempted to use unban, but did not have a rank", [User#user.nick]),
-					{irc, {msg, {RT, [P, "You are not listed as staff."]}}}
-			end;
-		error -> {irc, {msg, {RT, [P, "Error: Failed to read staff rank file!"]}}}
+	case config:get_value(config, [server, ranks, string:to_lower(User#user.nick)]) of
+		'$none' ->
+			logging:log(info, "unban", "~s attempted to use unban, but did not have a rank", [User#user.nick]),
+			{irc, {msg, {RT, [P, "You are not listed as staff."]}}};
+		Rank ->
+			logging:log(info, "unban", "~s used unban; rank is ~s", [User#user.nick, Rank]),
+			core ! {raw, ["WHOIS ", User#user.nick]},
+			case read_hostname(none) of
+				none -> {irc, {msg, {RT, [P, "Could not find your hostname; try again?"]}}};
+				Host ->
+					logging:log(info, "unban", "hostname for ~s is ~s (source ~s)", [User#user.nick, Host, User#user.host]),
+					core ! {irc, {mode, {"#bs12staff", ["-b *!*@", Host]}}},
+					core ! {irc, {mode, {"#bs12admin", ["-b *!*@", Host]}}},
+					{irc, {msg, {RT, [P, "Unbanned from #bs12staff and #bs12admin"]}}}
+			end
 	end.
 
 read_hostname(Current) ->

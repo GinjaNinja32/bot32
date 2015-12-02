@@ -124,14 +124,6 @@ check_utf8(<<_/utf8,B/binary>>) -> check_utf8(B);
 check_utf8(X) -> io:fwrite("~p~n", [X]), false.
 
 handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}) ->
-	lists:foreach(fun(Module) ->
-			try
-				call_or(Module, handle_event, [msg, Params], null)
-			catch
-				A:B -> logging:log(error, ?MODULE, "Encountered ~p:~p while calling handle_event for ~p!", [A,B,Module])
-			end
-		end, config:get_value(config, [bot, modules])),
-
 	case lists:all(fun(T) -> check_utf8(list_to_binary(T)) end, Tokens) of
 		false -> logging:log(utf8, ?MODULE, "Ignoring '~s' due to invalid UTF-8", [string:join(Tokens, " ")]);
 		true ->
@@ -140,6 +132,13 @@ handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}) ->
 			logging:log(ignore, ?MODULE, "Ignoring ~s!~s@~s: ~s.", [Nick, User#user.username, User#user.host, string:join(Tokens, " ")]),
 			ok;
 		false ->
+			lists:foreach(fun(Module) ->
+					try
+						call_or(Module, handle_event, [msg, Params], null)
+					catch
+						A:B -> logging:log(error, ?MODULE, "Encountered ~p:~p while calling handle_event for ~p!", [A,B,Module])
+					end
+				end, config:get_value(config, [bot, modules])),
 			case config:require_value(config, [bot, nick]) of
 				Channel ->
 					ReplyChannel = Nick,

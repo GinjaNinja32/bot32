@@ -29,7 +29,6 @@ dictionary(Words) ->
 	end.
 
 parse_reply(Text, N) ->
-	io:fwrite("reply(~b): ~p", [N, Text]),
 	Lines = string:tokens(Text, "\n"),
 	case lists:prefix("No definitions found for", hd(Lines)) of
 		true ->

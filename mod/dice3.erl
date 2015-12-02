@@ -252,16 +252,16 @@ evaluate(Tree, Expand) ->
 			{AS,AV} = evaluate(A, Expand),
 			{BS,BV} = evaluate(B, Expand),
 			case Op of
-				'+'  when not is_list(AV) andalso not is_list(BV) -> {[AS,$+,   BS], AV+ BV};
-				'-'  when not is_list(AV) andalso not is_list(BV) -> {[AS,$-,   BS], AV- BV};
-				'*'  when not is_list(AV) andalso not is_list(BV) -> {[AS,$*,   BS], AV* BV};
-				'/'  when not is_list(AV) andalso not is_list(BV) -> {[AS,$/,   BS], AV/ BV};
-				'<'  when not is_list(AV) orelse  not is_list(BV) -> comparison(AS, BS, AV, BV, "<", fun erlang:'<'/2);
-				'<=' when not is_list(AV) orelse  not is_list(BV) -> comparison(AS, BS, AV, BV, "<=", fun erlang:'=<'/2);
-				'>'  when not is_list(AV) orelse  not is_list(BV) -> comparison(AS, BS, AV, BV, ">", fun erlang:'>'/2);
-				'>=' when not is_list(AV) orelse  not is_list(BV) -> comparison(AS, BS, AV, BV, ">=", fun erlang:'>='/2);
-				'='  when not is_list(AV) orelse  not is_list(BV) -> comparison(AS, BS, AV, BV, "=", fun erlang:'=='/2);
-				'd' when not is_list(AS) andalso not is_list(BS) ->
+				'+'  when (not is_list(AV)) andalso (not is_list(BV)) -> {[AS,$+,   BS], AV+ BV};
+				'-'  when (not is_list(AV)) andalso (not is_list(BV)) -> {[AS,$-,   BS], AV- BV};
+				'*'  when (not is_list(AV)) andalso (not is_list(BV)) -> {[AS,$*,   BS], AV* BV};
+				'/'  when (not is_list(AV)) andalso (not is_list(BV)) -> {[AS,$/,   BS], AV/ BV};
+				'<'  when (not is_list(AV)) orelse  (not is_list(BV)) -> comparison(AS, BS, AV, BV, "<", fun erlang:'<'/2);
+				'<=' when (not is_list(AV)) orelse  (not is_list(BV)) -> comparison(AS, BS, AV, BV, "<=", fun erlang:'=<'/2);
+				'>'  when (not is_list(AV)) orelse  (not is_list(BV)) -> comparison(AS, BS, AV, BV, ">", fun erlang:'>'/2);
+				'>=' when (not is_list(AV)) orelse  (not is_list(BV)) -> comparison(AS, BS, AV, BV, ">=", fun erlang:'>='/2);
+				'='  when (not is_list(AV)) orelse  (not is_list(BV)) -> comparison(AS, BS, AV, BV, "=", fun erlang:'=='/2);
+				'd'  when (not is_list(AV)) andalso (not is_list(BV)) ->
 					{Stat, Dice, Total} = roll(AV,BV),
 					Display = if
 						Expand andalso AV =< 10 -> io_lib:format("~w=~b", [Dice,Total]);
