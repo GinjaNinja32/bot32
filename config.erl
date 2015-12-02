@@ -168,7 +168,7 @@ loop(Name, Config, SaveToFile) ->
 
 save(Name, Key, Config) ->
 	Filename = ["./", atom_to_list(Name), "/", atom_to_list(Key), ".crl"],
-	case file:write_file(Filename, io_lib:format("~p.~n", [orddict:fetch(Key, Config)])) of
+	case file:write_file(Filename, io_lib:format("~tp.~n", [orddict:fetch(Key, Config)])) of
 		ok -> ok;
 		T -> logging:log(error, ?MODULE, "Error writing file ~s: ~p", [Filename, T])
 	end.

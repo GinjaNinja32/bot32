@@ -3,7 +3,7 @@
 
 get_commands() ->
 	[
-		{"time", fun time/4, user}
+		{"time", fun time/1, user}
 	].
 
 get_help("time") ->
@@ -14,7 +14,7 @@ get_help("time") ->
 	];
 get_help(_) -> unhandled.
 
-time(_, RT, P, Params) -> {irc, {msg, {RT, [P, time_convert(Params)]}}}.
+time(#{reply:=RT, ping:=P, params:=Params}) -> {irc, {msg, {RT, [P, time_convert(Params)]}}}.
 
 time_convert([Dst]) ->
 	{_,{Hr,Min,_}} = calendar:now_to_universal_time(os:timestamp()),

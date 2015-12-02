@@ -5,9 +5,9 @@
 
 get_commands() ->
 	[
-		{"search", fun search/4, user},
-		{"dump_git", fun dump/4, host},
-		{"reload_git", fun reload/4, admin}
+		{"search", fun search/1, user},
+		{"dump_git", fun dump/1, host},
+		{"reload_git", fun reload/1, admin}
 	].
 
 initialise() ->
@@ -17,8 +17,8 @@ deinitialise() ->
 
 %
 
-search(_, RT, Ping, []) -> {irc, {msg, {RT, [Ping, "Please provide a search term."]}}};
-search(_Origin, ReplyTo, Ping, Params) ->
+search(#{reply:=RT, ping:=Ping, params:=[]}) -> {irc, {msg, {RT, [Ping, "Please provide a search term."]}}};
+search(#{reply:=RT, ping:=Ping, params:=Params}) ->
 	{M,DF,D,KP} = config:require_value(temp, [?MODULE]),
 	{Tree,Branch,UseParams} = case string:to_lower(hd(Params)) of
 		"master" -> {M, "master", tl(Params)};
@@ -31,13 +31,13 @@ search(_Origin, ReplyTo, Ping, Params) ->
 		_ -> {M, "master", Params}
 	end,
 	case UseParams of
-		[] -> {irc, {msg, {ReplyTo, [Ping, "Please provide a search term."]}}};
+		[] -> {irc, {msg, {RT, [Ping, "Please provide a search term."]}}};
 		_ ->
 			SearchString = string:to_lower(string:join(UseParams, " ")),
-			{irc, {msg, {ReplyTo, search_tree(Tree, SearchString, Branch)}}}
+			{irc, {msg, {RT, search_tree(Tree, SearchString, Branch)}}}
 	end.
 
-dump(_, RT, P, _) ->
+dump(#{reply:=RT, ping:=P}) ->
 	{M,DF,D,KP} = config:require_value(temp, [?MODULE]),
 	file:write_file("git-master.crl", io_lib:format("~p.~n", [M])),
 	file:write_file("git-devfreeze.crl", io_lib:format("~p.~n", [DF])),
@@ -45,7 +45,7 @@ dump(_, RT, P, _) ->
 	file:write_file("git-kunpeng.crl", io_lib:format("~p.~n", [KP])),
 	{irc, {msg, {RT, [P, "Dumped file trees to text."]}}}.
 
-reload(_, ReplyTo, Ping, _) ->
+reload(#{reply:=ReplyTo, ping:=Ping}) ->
 	config:set_value(temp, [?MODULE], load_trees()),
 	{irc, {msg, {ReplyTo, [Ping, "Reloaded Git file tree"]}}}.
 

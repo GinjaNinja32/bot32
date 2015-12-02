@@ -7,24 +7,24 @@ get_commands() ->
 	[
 		{"eval", gen_eval(fun eval/1), eval},
 		{"evalstr", gen_eval_str(fun eval/1), eval},
-		{"s", fun shl/4, eval},
-		{"sdrop", fun sdrop/4, eval},
-		{"serase", fun serase/4, eval},
-		{"sshow", fun sshow/4, eval},
+		{"s", fun shl/1, eval},
+		{"sdrop", fun sdrop/1, eval},
+		{"serase", fun serase/1, eval},
+		{"sshow", fun sshow/1, eval},
 		{"maths", gen_eval(fun math/1), user},
 		{"math", gen_eval(fun math/1), user},
-		{"sym", fun sym/4, user},
-		{"lsym", fun lsym/4, host}
+		{"sym", fun sym/1, user},
+		{"lsym", fun lsym/1, host}
 	].
 
-sym(_, RT, P, Par) ->
+sym(#{reply:=RT, ping:=P, params:=Par}) ->
 	os:putenv("sym", string:join(Par, " ")),
 	{irc, {msg, {RT, [P, os:cmd("./sympy_eval.sh 5 \"$sym\"")]}}}.
-lsym(_, RT, P, Par) ->
+lsym(#{reply:=RT, ping:=P, params:=Par}) ->
 	os:putenv("sym", string:join(Par, " ")),
 	{irc, {msg, {RT, [P, os:cmd("./sympy_eval.sh 60 \"$sym\"")]}}}.
 
-shl(_, RT, P, Params) ->
+shl(#{reply:=RT, ping:=P, params:=Params}) ->
 	PStr = lists:flatten(string:join(Params, " ")),
 	String = case lists:last(PStr) of
 		$. -> PStr;
@@ -48,14 +48,14 @@ shl(_, RT, P, Params) ->
 		T -> {irc, {msg, {RT, [P, io_lib:format("~p", [T])]}}}
 	end.
 
-sshow(_, RT, P, _) ->
+sshow(#{reply:=RT, ping:=P}) ->
 	case config:get_value(data, [eval, shell]) of
 		'$none' -> {irc, {msg, {RT, [P, "No state found."]}}};
 		V -> {irc, {msg, {RT, [P, io_lib:format("~p", [V])]}}}
 	end.
 
-serase(_, RT, P, A) when length(A) /= 1 -> {irc, {msg, {RT, [P, "Provide a single var name."]}}};
-serase(_, RT, P, [Var]) ->
+serase(#{reply:=RT, ping:=P, params:=A}) when length(A) /= 1 -> {irc, {msg, {RT, [P, "Provide a single var name."]}}};
+serase(#{reply:=RT, ping:=P, params:=[Var]}) ->
 	Msg = case config:get_value(data, [eval, shell]) of
 		'$none' -> "No vars found.";
 		Vars ->
@@ -70,13 +70,13 @@ serase(_, RT, P, [Var]) ->
 	end,
 	{irc, {msg, {RT, [P, Msg]}}}.
 
-sdrop(_, RT, P, _) ->
+sdrop(#{reply:=RT, ping:=P}) ->
 	config:set_value(data, [eval, shell], []),
 	{irc, {msg, {RT, [P, "State dropped."]}}}.
 
 gen_eval(Func) ->
-	fun(_,ReplyTo,Ping,[    ]) -> {irc, {msg, {ReplyTo, [Ping, "Provide a string to evaluate!"]}}};
-	   (_,ReplyTo,Ping,Params) ->
+	fun(#{reply:=ReplyTo,ping:=Ping,params:=[    ]}) -> {irc, {msg, {ReplyTo, [Ping, "Provide a string to evaluate!"]}}};
+	   (#{reply:=ReplyTo,ping:=Ping,params:=Params}) ->
 		Raw = lists:flatten(string:join(Params, " ")),
 		Str = case lists:last(Raw) of
 			$. -> Raw;
@@ -92,8 +92,8 @@ gen_eval(Func) ->
 	end.
 
 gen_eval_str(Func) ->
-	fun(_,ReplyTo,Ping,[    ]) -> {irc, {msg, {ReplyTo, [Ping, "Provide a string to evaluate!"]}}};
-	   (_,ReplyTo,Ping,Params) ->
+	fun(#{reply:=ReplyTo,ping:=Ping,params:=[    ]}) -> {irc, {msg, {ReplyTo, [Ping, "Provide a string to evaluate!"]}}};
+	   (#{reply:=ReplyTo,ping:=Ping,params:=Params}) ->
 		Raw = lists:flatten(string:join(Params, " ")),
 		Str = case lists:last(Raw) of
 			$. -> Raw;

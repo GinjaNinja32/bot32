@@ -120,8 +120,8 @@ parse_htmlentities(<<"&", B/binary>>, X) ->
 	end;
 parse_htmlentities(<<T/utf8, B/binary>>, X) -> parse_htmlentities(B, <<X/binary, T/utf8>>);
 parse_htmlentities(<<T, B/binary>>, X) ->
-	logging:log(error, "UTIL", "T-value is ~p", [T]),
-	parse_htmlentities(B, X).
+	Num = integer_to_binary(T),
+	parse_htmlentities(<<"&#", Num/binary, ";", B/binary>>, X).
 
 charents() ->
 	[

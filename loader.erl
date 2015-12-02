@@ -14,6 +14,7 @@ load() ->
 			lambda,
 			logging,
 			mochijson,
+			permissions,
 			random_org,
 			util
 		]).

@@ -8,10 +8,10 @@ alt_funcs() ->
 
 get_commands() ->
 	[
-		{"units", fun units/4, user}
+		{"units", fun units/1, user}
 	].
 
-units(_, RT, P, Params) ->
+units(#{reply:=RT, ping:=P, params:=Params}) ->
 	case case lists:splitwith(fun(T)->T /= "in" andalso T /= "to" andalso T /= "->" end, Params) of
 		{Src, []} ->
 			os:putenv("units_src", string:join(Src, " ")),

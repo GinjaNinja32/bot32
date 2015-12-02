@@ -5,9 +5,9 @@
 
 get_commands() ->
 	[
-		{"markov", fun markov/4, user},
-		{"pyreload", fun pyreload/4, py},
-		{"contexts", fun contexts/4, user}
+		{"markov", fun markov/1, user},
+		{"pyreload", fun pyreload/1, py},
+		{"contexts", fun contexts/1, user}
 	].
 
 initialise() ->
@@ -26,7 +26,7 @@ deinitialise() ->
 			python:stop(Py)
 	end.
 
-pyreload(_, RT, P, _) ->
+pyreload(#{reply:=RT, ping:=P}) ->
 	case config:get_value(temp, [?MODULE, pypid]) of
 		'$none' -> ok;
 		Py ->
@@ -41,11 +41,11 @@ pyreload(_, RT, P, _) ->
 		_ -> core ! {irc, {msg, {RT, [P, "Python failed to start."]}}}
 	end.
 
-contexts(_, RT, P, [Word]) ->
+contexts(#{reply:=RT, ping:=P, params:=[Word]}) ->
 	call(contexts, [RT, P, Word], RT);
-contexts(_, RT, P, _) -> {irc, {msg, {RT, [P, "Provide a single word!"]}}}.
+contexts(#{reply:=RT, ping:=P}) -> {irc, {msg, {RT, [P, "Provide a single word!"]}}}.
 
-markov(_, RT, _, Params) ->
+markov(#{reply:=RT, params:=Params}) ->
 	call(markovreply, [RT, string:join(Params, " ")], RT).
 
 call(Func, Args, RT) ->
@@ -54,10 +54,10 @@ call(Func, Args, RT) ->
 		Py -> python:call(Py, python, Func, Args)
 	end.
 
-handle_event(msg, {_, Channel, Msg}) ->
+handle_event(msg_nocommand, {_, Channel, Msg}) ->
 	case config:get_value(config, [bot, nick]) of
 		Channel -> ok;
-		Nick ->
+		_Nick ->
 			case re:run(string:join(Msg, " "), "(^|[^a-z0-9])nti([^a-z0-9]|$)", [caseless, {capture, none}]) of
 				match -> Func = markovreply;
 				_ -> Func = markov

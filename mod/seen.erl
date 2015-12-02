@@ -5,7 +5,7 @@
 
 get_commands() ->
 	[
-		{"seen", fun seen/4, user}
+		{"seen", fun seen/1, user}
 	].
 
 handle_event(quit, {#user{nick=N}, Reason}) -> see(N, "quitting IRC stating '~s'", [string:join(Reason, " ")]);
@@ -19,15 +19,15 @@ handle_event(nick, {#user{nick=Old}, New}) ->
 	see(New, "changing nicks from ~s", [Old]);
 handle_event(ctcp, {action, Chan, #user{nick=N}, _}) -> see(N, "messaging ~s", [Chan]);
 handle_event(msg, {#user{nick=N}, Chan, _}) ->
-	MyNick = config:get_value(config, [bot, nick]),
+	MyNick = config:require_value(config, [bot, nick]),
 	if
-		N /= MyNick -> see(N, "messaging ~s", [Chan]);
+		Chan /= MyNick -> see(N, "messaging ~s", [Chan]);
 		true -> ok
 	end;
 handle_event(_, _) -> ok.
 
-seen(_, RT, P, []) -> {irc, {msg, {RT, [P, "Provide a nick to search for!"]}}};
-seen(_, RT, P, Params) ->
+seen(#{reply:=RT, ping:=P, params:=[]}) -> {irc, {msg, {RT, [P, "Provide a nick to search for!"]}}};
+seen(#{reply:=RT, ping:=P, params:=Params}) ->
 	LParam = string:to_lower(hd(Params)),
 	D = config:get_value(data, [?MODULE]),
 	case orddict:filter(fun(N,_) ->
