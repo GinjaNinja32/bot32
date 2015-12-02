@@ -50,7 +50,7 @@ binary_join(List, Sep) ->
 		end
 	end, <<>>, List).
 
-droplast(T) -> lists:reverse(tl(lists:reverse(T))).
+droplast(T) -> lists:droplast(T).
 
 lasttail([T|[]]) -> T;
 lasttail([_|TT]) -> lasttail(TT).
@@ -63,7 +63,7 @@ eightball() ->
 			R = [
 				"It is certain",
 				"It is decidedly so",
-		        	"Without a doubt",
+				"Without a doubt",
 				"Yes - definitely",
 				"You may rely on it",
 				"As I see it, yes",
