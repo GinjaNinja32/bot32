@@ -2,6 +2,10 @@
 import re
 import random
 from erlport.erlterms import Atom
+from erlport.erlang import call as ecall
+
+def atom(a):
+	return Atom(bytes(a, "utf-8"))
 
 def log(s):
 	print("PYTHON: %s" % (s))
@@ -9,7 +13,9 @@ def log(s):
 pairs = {}
 replyrate = 0
 
-def init():
+# Erlang-called functions
+
+def initialise():
 	global pairs
 	log("init")
 
@@ -27,10 +33,13 @@ def init():
 		log("failed to load file")
 		pass
 
+	ecall(atom('pymod'), atom('register_command'), ["markov", atom('markov'), atom('markov_cmd'), atom('user')])
+	ecall(atom('pymod'), atom('register_command'), ["contexts", atom('markov'), atom('contexts_cmd'), atom('user')])
+
 	log("init done with %s pairs" % (len(pairs)))
 	return Atom(b'ok')
 
-def exit():
+def deinitialise():
 	global pairs
 	log("exiting with %s pairs" % (len(pairs)))
 
@@ -47,8 +56,31 @@ def exit():
 			else:
 				log("cannot write key %s at index %s" % (key, i))
 
+	ecall(atom('pymod'), atom('unregister_command'), ["markov", atom('user')])
+	ecall(atom('pymod'), atom('unregister_command'), ["contexts", atom('user')])
+
 	log("exit done, wrote %s keys successfully of %s total" % (s, i))
 	return Atom(b'ok')
+
+def markov_cmd(reply, ping, params):
+	return markovreply(reply.to_string(), " ".join([x.to_string() for x in params]))
+
+def contexts_cmd(reply, ping, params):
+	return contexts(reply.to_string(), ping.to_string(), params[0].to_string())
+
+def handle_event(type, params):
+	if type == atom('msg_nocommand'):
+		channel = params[1].to_string()
+		msg = " ".join([x.to_string() for x in params[2]])
+		if channel != ecall(atom('config'), atom('get_value'), [atom('config'), [atom('bot'), atom('nick')]]):
+			if re.match("(?i)(^|[^a-z0-9])nti([^a-z0-9]|$)", msg):
+				reply = markovreply(channel, msg)
+				ecall(atom('erlang'), atom('!'), [atom('core'), reply])
+			else:
+				markov(channel, msg)
+	return atom('ok')
+
+# Other functions
 
 def rd(a):
 	if a == b"{}":
@@ -64,7 +96,7 @@ def wr(a):
 
 def contexts(chan, ping, word):
 	global pairs
-	word = bytes(filter(word.to_string()), 'utf-8')
+	word = bytes(filter(word), 'utf-8')
 	contexts = 0
 	n = 0
 	x = []
@@ -79,10 +111,10 @@ def contexts(chan, ping, word):
 				if b == None:
 					b = b"[end]"
 				x.append("'%s %s' (%s)" % (a.decode("utf-8"), b.decode("utf-8"), ab))
-	return (Atom(b'irc'), (Atom(b'msg'), (chan, ping.to_string() + "I have %s contexts totalling %s instances for '%s': '" + ", ".join(x) + "'." % (contexts, n, word.decode("utf-8")))))
+	return (Atom(b'irc'), (Atom(b'msg'), (chan, "%sI have %s contexts totalling %s instances for '%s': '%s'." % (ping, contexts, n, word.decode("utf-8"), ", ".join(x)))))
 
 def markov(chan, msg):
-	words = msg.to_string().split(" ")
+	words = msg.split(" ")
 	for i, v in enumerate(words):
 		filtered = filter(v)
 		bytesed = bytes(filtered, 'utf-8')
@@ -103,7 +135,7 @@ def add(msg):
 	incpair((msg[-1],None))
 
 def markovreply(chan, msg):
-	msg = msg.to_string().split(" ")
+	msg = msg.split(" ")
 	for i, v in enumerate(msg):
 		msg[i] = bytes(filter(v), 'utf-8')
 	return reply(chan, msg)
