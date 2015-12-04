@@ -65,16 +65,17 @@ handle_sock(Socket) ->
 					case case case orddict:find('Content-Length', Dict) of
 						{ok, Value} ->
 							inet:setopts(Socket, [{packet, raw}]),
-							Secret = config:require_value(config, [?MODULE, secret]),
-							read_content(Socket, list_to_integer(Value), Signature, Secret);
+				%			Secret = config:require_value(config, [?MODULE, secret]),
+				%			read_content(Socket, list_to_integer(Value), Signature, Secret);
+							receive_content(Socket, list_to_integer(Value));
 						error -> <<"">>
 					end of
-						sigerr -> error;
+				%		sigerr -> error;
 						<<"">> -> ok;
 						{error, T} -> logging:log(error, "GITHUB", "Error: ~p", [T]);
 						Content ->
-							Channels = config:require_value(config, [?MODULE, channels]),
-							decode_content(Content, Channels), ok
+				%			Channels = config:require_value(config, [?MODULE, channels]),
+							decode_content(Content, Signature), ok
 					end of
 						ok ->
 							gen_tcp:send(Socket, "HTTP/1.1 204 No Content\r\n\r\n");
@@ -109,22 +110,22 @@ read_headers(Socket, Dict) ->
 			{error, T}
 	end.
 
-read_content(Socket, Length, Signature, Secret) ->
+receive_content(Socket, Length) ->
 	case gen_tcp:recv(Socket, Length, 10000) of
-		{ok, Data} ->
-			case Secret of
-				'*' -> Data;
-				_ ->
-					% crypto:hmac returns a binary
-					% github inserts 'sha1=' in front of the signature
-					RealSignature = list_to_binary(tl(tl(tl(tl(tl(Signature)))))),
-					case hexit(crypto:hmac(sha, Secret, Data), <<>>) of
-						RealSignature -> Data;
-						X ->
-							io:fwrite("got ~p, expected ~p~n", [X, RealSignature]),
-							sigerr
-					end
-			end;
+		{ok, Data} -> Data;
+%			case Secret of
+%				'*' -> Data;
+%				_ ->
+%					% crypto:hmac returns a binary
+%					% github inserts 'sha1=' in front of the signature
+%					RealSignature = list_to_binary(tl(tl(tl(tl(tl(Signature)))))),
+%					case hexit(crypto:hmac(sha, Secret, Data), <<>>) of
+%						RealSignature -> Data;
+%						X ->
+%							io:fwrite("got ~p, expected ~p~n", [X, RealSignature]),
+%							sigerr
+%					end
+%			end;
 		{error, T} -> {error, T}
 	end.
 
@@ -136,15 +137,44 @@ hexit(<<A,In/binary>>, Out) ->
 	end,
 	hexit(In, <<Out/binary, Bin/binary>>).
 
-decode_content(Content, Channels) ->
+decode_content(Content, Signature) ->
 	case catch mochijson:decode(Content) of
 		{'EXIT', T} -> logging:log(error, "GITHUB", "Error in mochijson: ~p", [T]);
-		NewC ->
-			file:write_file("json.crl", io_lib:format("~p",[NewC])),
-			handle_decoded(NewC, Channels)
+		JSON ->
+			file:write_file("json.crl", io_lib:format("~p",[JSON])),
+			case handle_decoded(JSON) of
+				{User, Repo, Messages} ->
+					case check_signature(Content, Signature, User, Repo) of
+						false -> error;
+						true ->
+							Channels = config:get_value(config, [?MODULE, channels, User, Repo], ["#bot32-test"]),
+							lists:foreach(fun(M) ->
+								lists:foreach(fun(T) ->
+									core ! {irc, {msg, {T, M}}}
+								end, Channels)
+							end, Messages)
+					end;
+				_ -> ok
+			end
 	end.
 
-handle_decoded(JSON, Channels) ->
+check_signature(Content, Signature, User, Repo) ->
+	case config:get_value(config, [?MODULE, secret, User, Repo]) of
+		'$none' ->
+			io:fwrite("rejecting unknown user/repo ~p/~p\n", [User, Repo]),
+			false;
+		'*' -> true;
+		Secret ->
+			RealSignature = list_to_binary(tl(tl(tl(tl(tl(Signature)))))),
+			case hexit(crypto:hmac(sha, Secret, Content), <<>>) of
+				RealSignature -> true;
+				X ->
+					io:fwrite("hashed to ~p, expected ~p\n", [X, RealSignature]),
+					false
+			end
+	end.
+
+handle_decoded(JSON) ->
 	Messages = case {
 				traverse_json(JSON, [struct, "action"]),
 				traverse_json(JSON, [struct, "pull_request"]),
@@ -184,7 +214,7 @@ handle_decoded(JSON, Channels) ->
 					{url, [struct, "pull_request", struct, "html_url"]}
 				])];
 		{"opened", error, _} ->
-			RepoStruct = traverse_json(JSON, [struct, "issue", struct, "repository"]),
+			RepoStruct = traverse_json(JSON, [struct, "repository"]),
 			[create_message(JSON, "[~s] ~s opened issue #~b: ~s ~s", [
 					{reponame, [struct, "repository"]},
 					[struct, "sender", struct, "login"],
@@ -193,7 +223,7 @@ handle_decoded(JSON, Channels) ->
 					{url, [struct, "issue", struct, "html_url"]}
 				])];
 		{"reopened", error, _} ->
-			RepoStruct = traverse_json(JSON, [struct, "issue", struct, "repository"]),
+			RepoStruct = traverse_json(JSON, [struct, "repository"]),
 			[create_message(JSON, "[~s] ~s reopened issue #~b: ~s ~s", [
 					{reponame, [struct, "repository"]},
 					[struct, "sender", struct, "login"],
@@ -202,7 +232,7 @@ handle_decoded(JSON, Channels) ->
 					{url, [struct, "issue", struct, "html_url"]}
 				])];
 		{"closed", error, _} ->
-			RepoStruct = traverse_json(JSON, [struct, "issue", struct, "repository"]),
+			RepoStruct = traverse_json(JSON, [struct, "repository"]),
 			[create_message(JSON, "[~s] ~s closed issue #~b: ~s ~s", [
 					{reponame, [struct, "repository"]},
 					[struct, "sender", struct, "login"],
@@ -266,16 +296,12 @@ handle_decoded(JSON, Channels) ->
 		_ -> true
 	end of
 		true ->
-			UU = traverse_json(RepoStruct, [struct, "owner", struct, "name"]),
+			case traverse_json(RepoStruct, [struct, "owner", struct, "name"]) of
+				error -> UU = traverse_json(RepoStruct, [struct, "owner", struct, "login"]);
+				UU -> ok
+			end,
 			NN = traverse_json(RepoStruct, [struct, "name"]),
-			SendChannels = lists:flatmap(fun({U,N,L}) ->
-					if
-						U == '*' orelse U == UU andalso
-						N == '*' orelse N == NN ->
-							L;
-						true -> []
-					end end, Channels),
-			lists:foreach(fun(M) -> lists:foreach(fun(T) -> core ! {irc, {msg, {T, M}}} end, SendChannels) end, Messages);
+			{UU, NN, Messages};
 		false -> ok
 	end.
 

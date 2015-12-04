@@ -3,14 +3,21 @@
 
 -include("colordefs.hrl").
 
+get_aliases() ->
+	[
+		{{"dice",["d"]}, ["rtd"]},
+		{"dice", ["roll"]},
+		{"edice", ["eroll", "exdice", "exroll"]}
+	].
+
 get_commands() ->
 	[
-		{"dice3", fun dice/1, user},
-		{"edice3", fun edice/1, user},
-		{"gurps3", fun gurps/1, user},
-		{"srun3", fun srun/1, user},
-		{"sredge3", fun sredge/1, user},
-		{"fate3", fun fate/1, user}
+		{"dice", fun dice/1, user},
+		{"edice", fun edice/1, user},
+		{"gurps", fun gurps/1, user},
+		{"srun", fun srun/1, user},
+		{"sredge", fun sredge/1, user},
+		{"fate", fun fate/1, user}
 	].
 
 % GURPS
@@ -18,6 +25,10 @@ get_commands() ->
 gurps(Params=#{params:=[]}) -> edice(Params#{params := ["3d6"]});
 gurps(#{reply:=RT,ping:=P,params:=Params}) ->
 	T = list_to_integer(hd(Params)),
+	Comment = case string:join(tl(Params), " ") of
+		[] -> [];
+		X -> [X,$:,$ ]
+	end,
 	Targets = if
 		T >= 16 -> [6, 16,   17];
 		T == 15 -> [5, 15,   16];
@@ -25,10 +36,10 @@ gurps(#{reply:=RT,ping:=P,params:=Params}) ->
 		true    -> [4,  T, T+10]
 	end,
 	Formatter = fun
-		([false,false,false]) -> "\x036\x02Critical Failure!\x03\x02";
-		([false,false, true]) -> "\x035\x02Failure!\x03\x02";
-		([false, true, true]) -> "\x033\x02Success!\x03\x02";
-		([ true, true, true]) -> "\x0310\x02Critical Success!\x03\x02"
+		([false,false,false]) -> [Comment, "\x036\x02Critical Failure!\x03\x02"];
+		([false,false, true]) -> [Comment, "\x035\x02Failure!\x03\x02"];
+		([false, true, true]) -> [Comment, "\x033\x02Success!\x03\x02"];
+		([ true, true, true]) -> [Comment, "\x0310\x02Critical Success!\x03\x02"]
 	end,
 	{irc, {msg, {RT, [P, dice3(lists:flatten(io_lib:format("3d6<=~w", [Targets])), true, Formatter)]}}}.
 
@@ -97,7 +108,7 @@ dice3(String, Expand, Formatter) ->
 				error -> "Parse error.";
 				Expressions ->
 					{S,V} = evaluate(Expressions, Expand),
-					io_lib:format("~s : ~s~n", [S,Formatter(V)])
+					io_lib:format("~s : ~s~n", [Formatter(V),S])
 			end
 	end.
 

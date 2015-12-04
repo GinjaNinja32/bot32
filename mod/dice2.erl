@@ -3,24 +3,16 @@
 
 -include("colordefs.hrl").
 
-get_aliases() ->
-	[
-		{{"dice", ["d"]}, ["rtd"]},
-		{"dice", ["roll"]},
-		{"edice", ["eroll", "ertd", "exdice", "exroll", "exrtd"]}
-	].
-
 get_commands() ->
 	lists:map(fun({K,F}) ->
 			{K, fun(#{reply:=RT, ping:=P, params:=Params}) -> {irc, {msg, {RT, [P, F(Params)]}}} end, user}
 		end, special_dice())
 	++ [
-		{"dicemode", fun dicemode/1, admin},
-		{"dice", fun dice/1, user},
-		{"edice",  fun edice/1, user}
+		{"dice2", fun dice/1, user},
+		{"edice2",  fun edice/1, user}
 	].
 
-get_help("dice") ->
+get_help("dice2") ->
 	[
 		"'dice XdY' for a basic dice roll, using +/-/* to modify the value.",
 		"Basic comparisons can be done using >, >=, <, <=, and =.",
@@ -28,12 +20,12 @@ get_help("dice") ->
 		"Add an 's' at either end to show a summary rather than all rolls.",
 		"Use 'edice' for an exploded roll, i.e. \"14 : [4,5,5]\" instead of \"14 : 14\"."
 	];
-get_help("edice") -> get_help("dice");
+get_help("edice2") -> get_help("dice2");
 get_help(_) -> unhandled.
 
 special_dice() ->
 	[
-		{"gurps", fun([]) -> dice("3d6", true);
+		{"gurps2", fun([]) -> dice("3d6", true);
 		             ([StrT | _]) ->
 				T = list_to_integer(StrT),
 				{S,F,B} = if
@@ -44,7 +36,7 @@ special_dice() ->
 				end,
 				dice(lists:flatten(io_lib:format("~bc>= ~bf<= 3d6<=~b", [S, F, B])), true)
 			end},
-		{"srun", fun([StrT | _]) ->
+		{"srun2", fun([StrT | _]) ->
 				T = list_to_integer(StrT),
 				{_, Dice} = rollraw(T, 6),
 				{One,FivePlus} = lists:foldl(fun(1, {O,F}) -> {O+1,F}; (N, {O,F}) when N >= 5 -> {O, F+1}; (_, D) -> D end, {0,0}, Dice),
@@ -55,7 +47,7 @@ special_dice() ->
 					true -> Summary
 				end
 			end},
-		{"sredge", fun([StrT | _]) ->
+		{"sredge2", fun([StrT | _]) ->
 				T = list_to_integer(StrT),
 				{ExtraDice, Dice} = get_sr_edge(T, 0, []),
 				{One,FivePlus} = lists:foldl(fun(1, {O,F}) -> {O+1,F}; (N, {O,F}) when N >= 5 -> {O, F+1}; (_, D) -> D end, {0,0}, Dice),
@@ -66,7 +58,7 @@ special_dice() ->
 					true -> Summary
 				end
 			end},
-		{"fate", fun([]) -> fate(0);
+		{"fate2", fun([]) -> fate(0);
 		            ([StrT | _]) -> fate(list_to_integer(StrT))
 			end}
 	].
