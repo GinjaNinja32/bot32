@@ -84,7 +84,7 @@ notes(#{reply:=RT, ping:=Ping, params:=[]}) -> {irc, {msg, {RT, [Ping, "Provide 
 notes(#{nick:=N, reply:=RT, ping:=Ping, params:=[Key]}) ->
 	case RT of
 		N -> server ! {notes, N, RT, Ping, string:to_lower(Key)};
-		_ -> case lists:member(server, bot:rankof_chan(RT)) of
+		_ -> case lists:member(server, permissions:rankof_chan(RT)) of
 			true -> server ! {notes, N, RT, Ping, string:to_lower(Key)};
 			false -> server ! {notes, N, N, "", string:to_lower(Key)}
 		end
