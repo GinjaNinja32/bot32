@@ -4,14 +4,6 @@
 -include("definitions.hrl").
 -define(Timer, 100).
 
-waitfor_gone(Ident) ->
-	case whereis(Ident) of
-		undefined -> ok;
-		_ ->
-			timer:sleep(100),
-			waitfor_gone(Ident)
-	end.
-
 get_aliases() ->
 	[
 		{"getserverrank", ["serverrank"]}
@@ -40,7 +32,7 @@ deinitialise() ->
 		undefined -> ok;
 		Pid -> Pid ! stop
 	end,
-	waitfor_gone(server).
+	util:waitfor_gone(server).
 
 %
 
