@@ -289,7 +289,6 @@ handle_command(Ranks, User, ReplyTo, Ping, Cmd, Params) ->
 	Commands = config:require_value(temp, [bot, commands]),
 	Result = case string:to_lower(Cmd) of
 		"call" ->
-			io:fwrite("~p | ~p | ~p~n", [User, ReplyTo, Ping]),
 			case Params of
 				[] -> {irc, {msg, {ReplyTo, [Ping, "Supply either a nick, or the string 'me', and a name to use!"]}}};
 				[_] -> {irc, {msg, {ReplyTo, [Ping, "Supply a name to use!"]}}};
@@ -307,7 +306,6 @@ handle_command(Ranks, User, ReplyTo, Ping, Cmd, Params) ->
 						ok ->
 							Nickname = string:join(Nick, " "),
 							config:set_value(data, [call, Usr], Nickname),
-							io:fwrite("~p / ~p / ~p~n", [ReplyTo, Ping, Nickname]),
 							{irc, {msg, {ReplyTo, [Ping, "Done."]}}}
 					end
 			end;
