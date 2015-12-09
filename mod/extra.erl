@@ -6,7 +6,7 @@ showurl(Channel, Ping, URL, Format, NotFound) -> spawn(?MODULE, showurl_raw, [Ch
 
 showurl_raw(Channel, Ping, URL, Format, NotFound) ->
 	os:putenv("url", URL),
-	case re:replace(os:cmd("./urltitle.sh $url"), "^[ \\t\\n]+(.*[^ \\t\\n])[ \\t\\n]+$", "\\1", [{return, binary}]) of
+	case re:replace(util:safe_os_cmd("./urltitle.sh $url"), "^[ \\t\\n]+(.*[^ \\t\\n])[ \\t\\n]+$", "\\1", [{return, binary}]) of
 		<<>> when NotFound /= false -> core ! {irc, {msg, {Channel, [Ping, NotFound]}}};
 		<<>> -> ok;
 		Sh -> core ! {irc, {msg, {Channel, [Ping, io_lib:format(Format, [util:parse_htmlentities(Sh)])]}}}
@@ -92,7 +92,7 @@ do_pr_link_token(Token, Channel, Ping) ->
 					if XUser == [] -> User = DefU; true -> User = XUser end,
 					if XRepo == [] -> Repo = DefR; true -> Repo = XRepo end,
 					os:putenv("url", ["http://github.com/", User, $/, Repo, "/issues/", Num]),
-					URLTitle = string:strip(re:replace(os:cmd("/home/bot32/urltitle.sh $url"), "([^·]*·[^·]*) · .*", "\\1", [{return, list}])),
+					URLTitle = string:strip(re:replace(util:safe_os_cmd("/home/bot32/urltitle.sh $url"), "([^·]*·[^·]*) · .*", "\\1", [{return, list}])),
 					case re:run(URLTitle, "Issue #[0-9]+$", [{capture, none}]) of
 						match -> ShowURL = ["http://github.com/", User, $/, Repo, "/issues/", Num];
 						nomatch -> ShowURL = ["http://github.com/", User, $/, Repo, "/pull/", Num]

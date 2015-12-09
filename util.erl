@@ -261,3 +261,10 @@ waitfor_gone(Ident) ->
 			timer:sleep(100),
 			waitfor_gone(Ident)
 	end.
+
+% os:cmd() returns non-strings that re:replace can't handle, this fixes them
+safe_os_cmd(String) ->
+	lists:flatmap(fun
+			(T) when T < 255 -> [T];
+			(T) -> binary_to_list(<<T/utf8>>)
+		end, os:cmd(String)).
