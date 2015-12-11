@@ -18,8 +18,12 @@ handle_event(msg_nocommand, {User, Channel, Tokens}) ->
 	case config:get_value(temp, [?MODULE, locked, User]) of
 		'$none' -> ok;
 		Locked ->
-			io:fwrite("~p\n", [Locked ++ Tokens]),
-			bot ! {irc, {msg, {User, Channel, Locked ++ Tokens}}}
+			case lists:prefix(Locked, Tokens) of
+				true -> ok; % the locked command was already prepended!
+				false ->
+					io:fwrite("~p\n", [Locked ++ Tokens]),
+					bot ! {irc, {msg, {User, Channel, Locked ++ Tokens}}}
+			end
 	end;
 handle_event(_, _) -> ok.
 
