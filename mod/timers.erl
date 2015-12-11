@@ -69,8 +69,19 @@ loop(Timers) ->
 	end.
 
 handle_expiry(Data) ->
-	case Data of
-		{Nick, Message} -> core ! {irc, {msg, {Nick, ["Your timer has expired: ", Message]}}};
-		{Nick} -> core ! {irc, {msg, {Nick, "Your timer has expired."}}};
-		T -> logging:log(error, "timer", "Unknown timer data format: ~p", [T])
-	end.
+	{Nick, Msg} = case Data of
+		{N, M} -> {N, ["Your timer has expired: ", M]};
+		{N} -> {N, "Your timer has expired."}
+	end,
+	bot ! {request_execute, fun() ->
+		core ! {raw, ["WHOIS ", Nick]},
+		receive
+			{irc, {numeric, {{rpl,whois_user}, Params}}} ->
+				core ! {irc, {msg, {Nick, Msg}}};
+			{irc, {numeric, {{err,no_such_nick}, _}}} ->
+				case lists:member(message, config:get_value(config, [bot, modules])) of
+					true -> message:create_message("timer system", Nick, Msg);
+					false -> ok
+				end
+		end
+	end}.

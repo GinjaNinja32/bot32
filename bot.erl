@@ -79,6 +79,9 @@ loop() ->
 		{T, K} when is_atom(T) -> {T, K};
 		T -> logging:log(error, ?MODULE, "unknown receive ~p, continuing", [T])
 	end of
+		{request_execute, Fun} ->
+			catch Fun(),
+			bot:loop();
 		{multi, List} -> lists:foreach(fun(T) -> core ! T end, List), bot:loop();
 		{irc, What} -> core ! {irc,What}, bot:loop();
 		quit -> ok;
