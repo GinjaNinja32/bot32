@@ -38,20 +38,20 @@ shl(#{reply:=RT, ping:=P, params:=Params}) ->
 					case catch erl_eval:exprs(Forms, Bindings) of
 						{value, Value, NewBinds} ->
 							config:set_value(data, [eval, shell], NewBinds),
-							{irc, {msg, {RT, [P, io_lib:format("~tp", [Value])]}}};
+							{irc, {msg, {RT, [P, io_lib:format("~p", [Value])]}}};
 						{'EXIT', {Reason, Stack}} -> {irc, {msg, {RT, [P, format_reasonstack(Reason, Stack)]}}};
-						{'EXIT', Term} -> {irc, {msg, {RT, [P, io_lib:format("Code exited with ~tp", [Term])]}}};
-						Term -> {irc, {msg, {RT, [P, io_lib:format("Code threw ~tp", [Term])]}}}
+						{'EXIT', Term} -> {irc, {msg, {RT, [P, io_lib:format("Code exited with ~p", [Term])]}}};
+						Term -> {irc, {msg, {RT, [P, io_lib:format("Code threw ~p", [Term])]}}}
 					end;
-				T -> {irc, {msg, {RT, [P, io_lib:format("~tp", [T])]}}}
+				T -> {irc, {msg, {RT, [P, io_lib:format("~p", [T])]}}}
 			end;
-		T -> {irc, {msg, {RT, [P, io_lib:format("~tp", [T])]}}}
+		T -> {irc, {msg, {RT, [P, io_lib:format("~p", [T])]}}}
 	end.
 
 sshow(#{reply:=RT, ping:=P}) ->
 	case config:get_value(data, [eval, shell]) of
 		'$none' -> {irc, {msg, {RT, [P, "No state found."]}}};
-		V -> {irc, {msg, {RT, [P, io_lib:format("~tp", [V])]}}}
+		V -> {irc, {msg, {RT, [P, io_lib:format("~p", [V])]}}}
 	end.
 
 serase(#{reply:=RT, ping:=P, params:=A}) when length(A) /= 1 -> {irc, {msg, {RT, [P, "Provide a single var name."]}}};
@@ -63,9 +63,9 @@ serase(#{reply:=RT, ping:=P, params:=[Var]}) ->
 			case orddict:find(Atom, Vars) of
 				{ok, Val} ->
 					config:set_value(data, [eval, shell], orddict:erase(Atom, Vars)),
-					io_lib:format("Dropped value ~tp.", [Val]);
+					io_lib:format("Dropped value ~p.", [Val]);
 				error ->
-					io_lib:format("No variable ~ts found.", [Var])
+					io_lib:format("No variable ~s found.", [Var])
 			end
 	end,
 	{irc, {msg, {RT, [P, Msg]}}}.
@@ -83,11 +83,11 @@ gen_eval(Func) ->
 			_ -> Raw ++ "."
 		end,
 		case catch Func(Str) of
-			{ok, Value} -> {irc, {msg, {ReplyTo, [Ping, re:replace(io_lib:format("~w", [Value]), "[\r\n]", "", [unicode, global])]}}};
+			{ok, Value} -> {irc, {msg, {ReplyTo, [Ping, re:replace(io_lib:format("~w", [Value]), "[\r\n]", "")]}}};
 			{'EXIT', {Reason, Stack}} -> {irc, {msg, {ReplyTo, [Ping, format_reasonstack(Reason, Stack)]}}};
-			{'EXIT', Term} -> {irc, {msg, {ReplyTo, [Ping, io_lib:format("Code exited with ~tp", [Term])]}}};
+			{'EXIT', Term} -> {irc, {msg, {ReplyTo, [Ping, io_lib:format("Code exited with ~p", [Term])]}}};
 			{cerr, Term} -> {irc, {msg, {ReplyTo, [Ping, Term]}}};
-			Term -> {irc, {msg, {ReplyTo, [Ping, io_lib:format("Code threw ~tp", [Term])]}}}
+			Term -> {irc, {msg, {ReplyTo, [Ping, io_lib:format("Code threw ~p", [Term])]}}}
 		end
 	end.
 
@@ -100,16 +100,16 @@ gen_eval_str(Func) ->
 			_ -> Raw ++ "."
 		end,
 		case catch Func(Str) of
-			{ok, Value} -> {irc, {msg, {ReplyTo, [Ping, re:replace(io_lib:format("~ts", [Value]), "[\r\n]", "", [unicode, global])]}}};
+			{ok, Value} -> {irc, {msg, {ReplyTo, [Ping, re:replace(io_lib:format("~ts", [Value]), "[\r\n]", "")]}}};
 			{'EXIT', {Reason, Stack}} -> {irc, {msg, {ReplyTo, [Ping, format_reasonstack(Reason, Stack)]}}};
-			{'EXIT', Term} -> {irc, {msg, {ReplyTo, [Ping, io_lib:format("Code exited with ~tp", [Term])]}}};
+			{'EXIT', Term} -> {irc, {msg, {ReplyTo, [Ping, io_lib:format("Code exited with ~p", [Term])]}}};
 			{cerr, Term} -> {irc, {msg, {ReplyTo, [Ping, Term]}}};
-			Term -> {irc, {msg, {ReplyTo, [Ping, io_lib:format("Code threw ~tp", [Term])]}}}
+			Term -> {irc, {msg, {ReplyTo, [Ping, io_lib:format("Code threw ~p", [Term])]}}}
 		end
 	end.
 
 format_reasonstack(Reason, [TopFrame|_]) ->
-	io_lib:format("Error: ~tp at ~tp", [Reason, TopFrame]).
+	io_lib:format("Error: ~p at ~p", [Reason, TopFrame]).
 
 eval(String) ->
 	case erl_scan:string(String) of

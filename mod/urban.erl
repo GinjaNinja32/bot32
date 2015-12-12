@@ -30,13 +30,13 @@ ud(#{reply:=R, ping:=P, params:=Params}) ->
 		[] -> "No results found.";
 		ResultArray ->
 			Result = lists:nth(N, ResultArray),
-			re:replace(create_message(Result, "(~b of ~b) ~ts: ~ts - ~ts - ~ts", [
+			re:replace(create_message(Result, "(~b of ~b) ~s: ~s - ~s - ~s", [
 					{N}, {length(ResultArray)},
 					[struct, "word"],
 					[struct, "definition"],
 					[struct, "example"],
 					{url, [struct, "permalink"]}
-				]), "\n+", "  ", [global, unicode])
+				]), "\n+", "  ", [global])
 	end,
 	{irc, {msg, {R, [P, Reply]}}}.
 
