@@ -264,11 +264,13 @@ waitfor_gone(Ident) ->
 
 % os:cmd() returns non-strings that re:replace can't handle, this fixes them
 safe_os_cmd(String) ->
+	fix_string(os:cmd(String)).
+
+fix_string(String) ->
 	lists:flatmap(fun
 			(T) when T < 255 -> [T];
 			(T) -> binary_to_list(<<T/utf8>>)
-		end, os:cmd(String)).
-
+		end, lists:flatten(String)).
 
 whois(Nick) ->
 	case whereis(bot) == self() of

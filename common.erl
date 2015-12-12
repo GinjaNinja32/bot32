@@ -49,7 +49,8 @@ purge_call_report(Module, Function, Param, Channel) ->
 raw_send(Sock, Transport, Msg) ->
 %	debug("send", "'~s'", [Msg]),
 	try
-		Raw = re:replace(flatten(Msg), "[\r\n]", "", [global, {return, list}]),
+		Raw0 = re:replace(flatten(Msg), "[\r\n]", "", [global, {return, list}, unicode]),
+		Raw = util:fix_string(Raw0),
 		if
 			length(Raw) > ?MAX_LENGTH ->
 				{T,_} = lists:split(?MAX_LENGTH-3, Raw),
