@@ -268,3 +268,51 @@ safe_os_cmd(String) ->
 			(T) when T < 255 -> [T];
 			(T) -> binary_to_list(<<T/utf8>>)
 		end, os:cmd(String)).
+
+
+whois(Nick) ->
+	case whereis(bot) == self() of
+		true ->
+			core ! {raw, ["WHOIS ", Nick]},
+			receive_whois(#{ % defaults for the optional fields
+					operator => false,
+					cloak => false,
+					registered => false,
+					ssl => false
+				});
+		false ->
+			bot ! {request_execute, {self(), fun() -> whois(Nick) end}},
+			receive
+				{execute_done, Result} ->
+					Result
+			end
+	end.
+
+receive_whois(Map) ->
+	receive
+		{irc, {numeric, {{err,no_such_nick}, _}}} ->
+			receive_whois(no_such_nick); % next reply is an RPL_ENDOFWHOIS which just returns, catch that too to avoid spamming logs
+		{irc, {numeric, {{rpl,whois_user}, [_,N,U,H,_|Real]}}} ->
+			R = string:join([tl(hd(Real)) | tl(Real)], " "),
+			receive_whois(Map#{nick=>N, user=>U, host=>H, real=>R});
+		{irc, {numeric, {{rpl,whois_channels}, [_, _ | Channels]}}} ->
+			receive_whois(Map#{channels=>[tl(hd(Channels)) | tl(Channels)]});
+		{irc, {numeric, {{rpl,whois_server}, [_, _, Server | Tagline]}}} ->
+			receive_whois(Map#{server=>Server, server_tagline=>string:join([tl(hd(Tagline))|tl(Tagline)], " ")});
+		{irc, {numeric, {{rpl,whois_operator}, _}}} ->
+			receive_whois(Map#{operator=>true});
+		{irc, {numeric, {{unknown, 338}, [_, _, TrueHost, ":has", "cloak"]}}} ->
+			receive_whois(Map#{cloak=>TrueHost});
+		{irc, {numeric, {{unknown, 330}, [_, _, Nickserv, ":is", "logged", "in", "as"]}}} ->
+			receive_whois(Map#{nickserv=>Nickserv});
+		{irc, {numeric, {{unknown, 307}, _}}} ->
+			receive_whois(Map#{registered=>true});
+		{irc, {numeric, {{unknown, 671}, _}}} ->
+			receive_whois(Map#{ssl=>true});
+		{irc, {numeric, {{rpl,whois_idle}, [_, _, Idle, Signon, ":seconds", "idle,", "signon", "time"]}}} ->
+			receive_whois(Map#{idle=>Idle, signon=>Signon});
+		{irc, {numeric, {{rpl,end_of_whois}, _}}} ->
+			Map
+	after
+		2000 -> Map
+	end.

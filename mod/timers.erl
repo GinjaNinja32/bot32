@@ -74,14 +74,13 @@ handle_expiry(Data) ->
 		{N} -> {N, "Your timer has expired."}
 	end,
 	bot ! {request_execute, fun() ->
-		core ! {raw, ["WHOIS ", Nick]},
-		receive
-			{irc, {numeric, {{rpl,whois_user}, Params}}} ->
-				core ! {irc, {msg, {Nick, Msg}}};
-			{irc, {numeric, {{err,no_such_nick}, _}}} ->
+		case util:whois(Nick) of
+			no_such_nick ->
 				case lists:member(message, config:get_value(config, [bot, modules])) of
 					true -> message:create_message("timer system", Nick, Msg);
 					false -> ok
 				end
+			_ ->
+				core ! {irc, {msg, {Nick, Msg}}};
 		end
 	end}.

@@ -79,6 +79,9 @@ loop() ->
 		{T, K} when is_atom(T) -> {T, K};
 		T -> logging:log(error, ?MODULE, "unknown receive ~p, continuing", [T])
 	end of
+		{request_execute, {Pid, Fun}} ->
+			Pid ! {execute_done, catch Fun()},
+			bot:loop();
 		{request_execute, Fun} ->
 			catch Fun(),
 			bot:loop();
@@ -112,10 +115,7 @@ parse_command(Params, IsQuery) ->
 								_ -> {hd(tl(Params)), tl(tl(Params))}
 							end;
 						false ->
-							if
-								IsQuery -> {hd(Params), tl(Params)};
-								true -> notcommand
-							end
+							notcommand
 					end;
 				IsQuery -> {hd(Params),tl(Params)};
 				true -> notcommand

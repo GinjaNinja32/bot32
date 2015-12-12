@@ -20,6 +20,18 @@ get_commands() ->
 		{"fate", fun fate/1, user}
 	].
 
+get_help("dice") ->
+	[
+		"'dice XdY' for a basic dice roll, using +, -, *, / to modify the value.",
+		"Comparisons can be performed using >, >=, <, <=, and =.",
+		"Comparisons involving lists (e.g. '[1, 2, 3]' or '[1 2 3]') will compare elementwise, and color-code accordingly.",
+		"Use 'edice' for an exploded roll, showing the individual dice as well as the total.",
+		"Use 'h', 'H', 'l', or 'L' to discard dice (e.g. '4d6H3' to roll 4d6 and keep the highest 3, or '5d10l2' to roll 5d10 and discard the lowest 2); the uppercase forms of these keep N dice, the lowercase discard; L/l from the lower end, H/h from the upper.",
+		"Use '#' to perform the same roll multiple times (e.g. 4#3d6 to roll 3d6, four times)."
+	];
+get_help("edice") -> get_help("dice");
+get_help(_) -> unhandled.
+
 % utils
 
 parse_params([[$@|Nicks] | Params]) -> {string:tokens(Nicks, ":/|"), Params};
@@ -128,12 +140,15 @@ dice (#{reply:=RT,ping:=P,nick:=Nick,params:=OriginalParams}, Expand) ->
 
 dice3(String, Expand) -> dice3(String, Expand, fun(T) -> io_lib:format("~w", [T]) end).
 dice3(String, Expand, Formatter) ->
+	io:fwrite("tokenising ~p\n", [String]),
 	case tokenise(String, []) of
 		error -> "Tokenisation error.";
 		Tokens ->
+			io:fwrite("parsing ~p\n", [lists:reverse(Tokens)]),
 			case parse(lists:reverse(Tokens)) of
 				error -> "Parse error.";
 				Expressions ->
+					io:fwrite("evaluating ~p\n", [Expressions]),
 					{S,V} = evaluate(Expressions, Expand),
 					io_lib:format("~s : ~s~n", [Formatter(V),S])
 			end
@@ -148,9 +163,10 @@ tokens2() ->
 tokens1() ->
 	[{" ", '$none'}, {"	", '$none'},
 	 {">", '>'}, {"<", '<'}, {"=", '='},
-	 {"c", 'c'}, {"f", 'f'}, {"#", '#'}, {"!", '!'},
 	 {"+", '+'}, {"-", '-'}, {"*", '*'}, {"/", '/'},
-	 {"(", '('}, {")", ')'}, {"d", 'd'}, {"s", 's'}].
+	 {"(", '('}, {")", ')'}, {"d", 'd'}, {"#", '#'},
+	 {"h", 'h'}, {"H", 'H'}, {"l", 'l'}, {"L", 'L'}
+	].
 
 tokenise([], T) -> T;
 tokenise([A|R], T) when $0 =< A andalso A =< $9 ->
@@ -205,7 +221,7 @@ parseExpr(Expr) when is_list(Expr) ->
 parseExpr(T) -> T.
 
 parseExpression(Lst) ->
-	Priority = [['d'], ['*','/'], ['+','-'], ['>','>=','<=','<','=']],
+	Priority = [['d'], ['L','l','H','h'], ['*','/'], ['+','-'], ['>','>=','<=','<','='], ['#']],
 	lists:foldl(fun parseLeftAssoc/2, Lst, Priority).
 
 parseLeftAssoc(_, error) -> error;
@@ -238,12 +254,8 @@ parseLeftAssoc(OpList, Toks) ->
 	end.
 
 
-%is_acceptable_left(Op, X) when is_list(X) -> lists:member(Op, ['>', '>=', '<', '<=', '==']);
-is_acceptable_left(_, X) -> is_tuple(X) orelse is_number(X) orelse is_list(X).
-
-%is_acceptable_right(_, X, Y) when is_list(X) andalso is_list(Y) -> false;
-%is_acceptable_right(Op, X, _) when is_list(X) andalso length(X) -> lists:member(Op, ['>', '>=', '<', '<=', '==']);
-is_acceptable_right(_, X, _) -> is_tuple(X) orelse is_number(X) orelse is_list(X).
+is_acceptable_left(_, L) -> is_tuple(L) orelse is_number(L) orelse is_list(L).
+is_acceptable_right(_, R, _) -> is_tuple(R) orelse is_number(R) orelse is_list(R).
 
 default_left('d') -> 1;
 default_left(_) -> error.
@@ -286,6 +298,45 @@ comparison(AS, __, AV, BV, OS, OV) when is_list(BV) ->
 
 evaluate(Tree, Expand) ->
 	case Tree of
+		{'#', A, B} ->
+			{AS, AV} = evaluate(A, Expand),
+			case AV of
+				T when is_number(T) andalso T >= 0 andalso T =< 10 ->
+					{Strings, Totals} = lists:unzip(lists:map(fun(_) -> evaluate(B, Expand) end, lists:duplicate(T, x))),
+					{[AS,$#,$[, string:join(Strings, "; "), $]], Totals};
+				_ -> {"{invalid}", 0}
+			end;
+		{Op, {'d',A,B}, X} when Op=='L' orelse Op=='l' orelse Op=='H' orelse Op=='h' ->
+			{AS,AV} = evaluate(A, Expand),
+			{BS,BV} = evaluate(B, Expand),
+			{XS,XV} = evaluate(X, Expand),
+			if
+				not (is_number(AV) andalso is_number(BV) andalso is_number(XV)) orelse XV > AV -> {"{invalid", 0};
+				true ->
+					{Stat, Dice, _} = roll(AV,BV),
+					{Order, UseDice} = case Op of
+						'L' -> {low,  lists:sublist(lists:sort(Dice), XV)}; % keep lowest
+						'l' -> {high, lists:sublist(lists:sort(Dice), XV+1, length(Dice))}; % drop lowest
+						'H' -> {high, lists:sublist(lists:sort(Dice), 1+length(Dice)-XV, length(Dice))}; % keep highest
+						'h' -> {low,  lists:sublist(lists:sort(Dice), 1, length(Dice)-XV)} % drop highest
+					end,
+					Total = lists:foldl(fun erlang:'+'/2, 0, UseDice),
+					Display = if
+						Expand andalso AV =< 10 ->
+							Accepted = lists:map(fun(T) -> [3,$1,$1,integer_to_list(T),3,2,2] end, UseDice),
+							Denied = lists:map(fun(T) -> [3,$1,$3,integer_to_list(T),3,2,2] end, lists:sort(Dice -- UseDice)),
+							[$[, string:join(case Order of
+									low -> Accepted ++ Denied;
+									high -> Denied ++ Accepted
+								end, ", "), $], $= | integer_to_list(Total)];
+						true -> integer_to_list(Total)
+					end,
+					Str = case Stat of
+						ok -> [$[,     AS,$d,BS,atom_to_list(Op),XS,$=,2,Display,2,$]];
+						_ ->  [$[,Stat,AS,$d,BS,atom_to_list(Op),XS,$=,2,Display,2,$]]
+					end,
+					{Str, Total}
+			end;
 		{Op, A, B} ->
 			{AS,AV} = evaluate(A, Expand),
 			{BS,BV} = evaluate(B, Expand),
