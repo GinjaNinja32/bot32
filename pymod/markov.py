@@ -38,6 +38,7 @@ def initialise():
 
 	ecall(atom('pymod'), atom('register_command'), ["markov", atom('markov'), atom('markov_cmd'), atom('user')])
 	ecall(atom('pymod'), atom('register_command'), ["contexts", atom('markov'), atom('contexts_cmd'), atom('user')])
+	ecall(atom('pymod'), atom('register_command'), ["smarkov", atom('markov'), atom('smarkov_cmd'), atom('user')])
 
 	log("init done with %s pairs" % (len(pairs)))
 	return Atom(b'ok')
@@ -62,6 +63,7 @@ def deinitialise():
 
 	ecall(atom('pymod'), atom('unregister_command'), ["markov", atom('user')])
 	ecall(atom('pymod'), atom('unregister_command'), ["contexts", atom('user')])
+	ecall(atom('pymod'), atom('unregister_command'), ["smarkov", atom('user')])
 
 	log("exit done, wrote %s keys successfully of %s total" % (s, i))
 	return Atom(b'ok')
@@ -70,10 +72,11 @@ def deinitialise():
 def markov_cmd(reply, ping, params):
 	return markovreply(reply.to_string(), " ".join([x.to_string() for x in params]))
 
-
 def contexts_cmd(reply, ping, params):
 	return contexts(reply.to_string(), ping.to_string(), params[0].to_string())
 
+def smarkov_cmd(reply, ping, params):
+	return markovseed(reply.to_string(), " ".join([x.to_string() for x in params]))
 
 def handle_event(type, params):
 	if type == atom('msg_nocommand'):
@@ -153,7 +156,6 @@ def markovreply(chan, msg):
 		msg[i] = bytes(filter(v), 'utf-8')
 	return reply(chan, msg)
 
-
 def reply(chan, msg):
 	global pairs
 	freq = {}
@@ -195,6 +197,29 @@ def reply(chan, msg):
 	log("markov replying with '%s'" % (reply_str))
 
 	return (Atom(b'irc'), (Atom(b'msg'), (chan, reply_str)))
+
+def markovseed(chan, msg):
+	msg = msg.split(" ")
+	for i, v in enumerate(msg):
+		msg[i] = bytes(filter(v), 'utf-8')
+	return seed(chan, msg)
+
+def seed(chan, msg):
+	reply = msg
+	for _ in range(0, 20):
+		next = get_word(reply[-1], lambda x, a, b: x == a, lambda a, b: b)
+		if next is None:
+			continue
+		else:
+			reply.append(next)
+			if next[-1] == '.':
+				log("next (%s) has . at end, breaking" % (next))
+				break
+
+	reply_str = fix_string(b" ".join(reply))
+	log("markov seeded replying with '%s'" % (reply_str))
+
+	return (atom('irc'), (atom('msg'), (chan, reply_str)))
 
 
 def fix_string(string):

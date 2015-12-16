@@ -24,6 +24,13 @@ unban(#{origin:=User, reply:=RT, ping:=P}) ->
 					logging:log(info, "unban", "hostname for ~s is ~s (source ~s)", [User#user.nick, Host, User#user.host]),
 					core ! {irc, {mode, {"#bs12staff", ["-b *!*@", Host]}}},
 					core ! {irc, {mode, {"#bs12admin", ["-b *!*@", Host]}}},
+					if
+						Host /= User#user.host ->
+							core ! {irc, {mode, {"#bs12staff", ["-b *!*@", User#user.host]}}},
+							core ! {irc, {mode, {"#bs12admin", ["-b *!*@", User#user.host]}}};
+						true ->
+							ok
+					end,
 					{irc, {msg, {RT, [P, "Unbanned from #bs12staff and #bs12admin"]}}}
 			end
 	end.

@@ -4,19 +4,21 @@
 -include("definitions.hrl").
 
 get_food_options() ->
-	[
-		{burger, [bun, filling, topping], ["puts ", bun, " on the table, piles on ", filling, ", ", filling, ", and ", filling, ", then tops it with ", topping, ", sliding it over to "]},
-		{antag, [person, cloth, weapon, mission], ["dresses ", person, " into ", cloth, " and ", cloth, ", gives them ", weapon, " and ", weapon, ", and sends them on a mission to ", mission, " "]}
-	].
+	config:offer_value(config, [?MODULE, types], [
+		{antag, {[person, cloth, weapon, mission], ["dresses ", person, " into ", cloth, " and ", cloth, ", gives them ", weapon, " and ", weapon, ", and sends them on a mission to ", mission, " "]}},
+		{burger, {[bun, filling, topping], ["puts ", bun, " on the table, piles on ", filling, ", ", filling, ", and ", filling, ", then tops it with ", topping, ", sliding it over to "]}}
+	]),
+	config:get_value(config, [?MODULE, types]).
 
 get_tuple_for_key(K) ->
-	lists:keyfind(K, 1, get_food_options()).
+	config:get_value(config, [?MODULE, types, K]).
+%	lists:keyfind(K, 1, get_food_options()).
 
 get_commands() ->
 	[
 		{"delfood", fun delfood/1, admin}
 	|
-		lists:map(fun({K,_,_}) -> {atom_to_list(K), genfood(K), user} end, get_food_options())
+		lists:map(fun({K,_}) -> {atom_to_list(K), genfood(K), user} end, get_food_options())
 	].
 
 get_help(String) ->
@@ -35,7 +37,7 @@ genfood(T) -> fun(Params) -> mkfood(T, Params) end.
 
 mkfood(_, #{reply:=RT, ping:=P, params:=["add",_]}) -> {irc, {msg, {RT, [P, "Provide an item!"]}}};
 mkfood(K, #{reply:=RT, ping:=P, params:=["add",Key|What]}) ->
-	{_,Keys,_} = get_tuple_for_key(K),
+	{Keys,_} = get_tuple_for_key(K),
 	Food = config:get_value(data, [burger, K], []),
 	case case lists:member(Key, lists:map(fun atom_to_list/1, Keys)) of
 		true -> list_to_atom(Key);
@@ -61,7 +63,7 @@ mkfood(K, #{reply:=RT, ping:=P, params:=["add",Key|What]}) ->
 	end;
 
 mkfood(K, #{nick:=O, reply:=RT, ping:=P}) ->
-	{_,_,String} = get_tuple_for_key(K),
+	{_,String} = get_tuple_for_key(K),
 	Message = case config:get_value(data, [burger, K], []) of
 		[] -> [P, "Can't find my ",atom_to_list(K)," ingredients, sorry."];
 		Food ->
