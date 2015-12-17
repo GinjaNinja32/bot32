@@ -21,6 +21,22 @@ get_commands() ->
 		{"manifest", generic(manifest), user}
 	].
 
+get_help("address") -> ["Get the address of the specified server." | help()];
+get_help("status") -> ["Check the status of the specified server." | help()];
+get_help("players") -> ["Get an online player list of the specified server." | help()];
+get_help("admins") -> ["Get an online admin list of the specified server." | help()];
+get_help("mode") -> ["Get the mode of the specified server." | help()];
+get_help("manifest") -> ["Get the manifest of the specified server." | help()];
+get_help(_) -> unhandled.
+
+help() ->
+	[
+		["Valid servers are: ",
+		string:join(lists:map(fun({ID, {Addr,Port,_Name}}) ->
+				io_lib:format("'~s' (~s:~b)", [ID, Addr, Port])
+			end, servers()), "; ")]
+	].
+
 generic(Func) ->
 	fun(#{nick:=O,reply:=RT,ping:=P,params:=[]}) ->
 		case orddict:find(defaultserver(RT), servers()) of
