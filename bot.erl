@@ -117,7 +117,7 @@ parse_command(Params, IsQuery) ->
 						false ->
 							notcommand
 					end;
-				IsQuery -> {hd(Params),tl(Params)};
+			%	IsQuery -> {hd(Params),tl(Params)};
 				true -> notcommand
 			end
 	end.
