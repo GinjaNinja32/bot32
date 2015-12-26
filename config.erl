@@ -10,7 +10,8 @@
 		get_value/3,
 		set_value/3,
 		offer_value/3,
-		del_value/2
+		del_value/2,
+		mod_get_value/3
 	]).
 
 is_started(Name) ->
@@ -32,6 +33,13 @@ stop(Name) ->
 	Name ! {self(), stop},
 	receive
 		{Name, stop} -> ok
+	end.
+
+mod_get_value(Name, Key, Func) ->
+	Name ! {self(), mod_get, Key, Func},
+	receive
+		{Name, mod_get, Key, Value} -> Value;
+		{Name, error} -> error
 	end.
 
 get_value(Name, Key) -> get_value(Name, Key, '$none').
@@ -114,6 +122,27 @@ loop(Name, Config, SaveToFile) ->
 			catch
 				A:B ->
 					logging:log(error, ?MODULE, "caught ~p:~p while setting key ~p", [A,B,Key]),
+					Pid ! {Name, error},
+					Config1
+			end,
+			loop(Name, NewConf, SaveToFile);
+		{Pid, mod_get, Key, Func} ->
+			Config1 = case orddict:find(hd(Key), Config) of
+				error -> if SaveToFile -> try_load_key(Name, hd(Key), Config); true -> Config end;
+				{ok, _} -> Config
+			end,
+			NewConf = try
+				CurrentValue = get_raw(Key, '$none', Config1),
+				NC = set_raw(Key, Func(CurrentValue), Config1),
+				if
+					SaveToFile -> save(Name, hd(Key), NC);
+					true -> ok
+				end,
+				Pid ! {Name, mod_get, Key, CurrentValue},
+				NC
+			catch
+				A:B ->
+					logging:log(error, ?MODULE, "caught ~p:~p while mod_get-ing key ~p", [A,B,Key]),
 					Pid ! {Name, error},
 					Config1
 			end,
