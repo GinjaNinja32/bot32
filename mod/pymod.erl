@@ -10,6 +10,8 @@ get_commands() ->
 		{"preload", fun preload/1, host}
 	].
 
+initialise() _>
+	config:set_value(temp, [?MODULE], []).
 
 deinitialise() ->
 	io:fwrite("deinit...\n"),
