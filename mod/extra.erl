@@ -92,14 +92,11 @@ do_pr_link_token(Token, Channel, Ping) ->
 					if XUser == [] -> User = DefU; true -> User = XUser end,
 					if XRepo == [] -> Repo = DefR; true -> Repo = XRepo end,
 					os:putenv("url", ["http://github.com/", User, $/, Repo, "/issues/", Num]),
-					{Title, Type} = case util:safe_os_cmd("/home/bot32/urltitle.sh $url") of
-						[] ->
-							os:putenv("url", ["http://github.com/", User, $/, Repo, "/pull/", Num]),
-							{util:safe_os_cmd("/home/bot32/urltitle.sh $url"), "pull"};
-						T ->	{T, "issues"}
+					URLTitle = string:strip(re:replace(util:safe_os_cmd("/home/bot32/urltitle.sh $url"), "([^·]*·[^·]*) · .*", "\\1", [{return, list}])),
+					case re:run(URLTitle, "Issue #[0-9]+$", [{capture, none}]) of
+						match -> ShowURL = ["http://github.com/", User, $/, Repo, "/issues/", Num];
+						nomatch -> ShowURL = ["http://github.com/", User, $/, Repo, "/pull/", Num]
 					end,
-					URLTitle = string:strip(re:replace(Title, "^(.+) (·[^·]+){3}", "\\1", [{return, list}])),
-					ShowURL = ["http://github.com/", User, $/, Repo, $/, Type, $/, Num],
 					core ! {irc, {msg, {Channel, [Ping, ShowURL, " - ", util:parse_htmlentities(list_to_binary(URLTitle))]}}}
 			end;
 		false -> ok

@@ -9,15 +9,19 @@ get_commands() ->
 		{"tell", fun new_message/1, user},
 		{"showmsg", fun showmsg/1, user},
 		{"delmsg", fun delmsg/1, user},
-		{"sent", fun sent/1, user}
+		{"sent", fun sent/1, user},
+		{"pending", fun pending/1, admin}
 	].
 
 initialise() ->
 	config:offer_value(data, [?MODULE, next_id], 1),
 	ok.
 
-handle_event(nick, {_,             N}) -> check_messages_for(N);
-handle_event(join, {#user{nick=N}, _}) -> check_messages_for(N);
+now_secs() -> calendar:datetime_to_gregorian_seconds(calendar:now_to_universal_time(os:timestamp())).
+
+handle_event(nick, {_,             N}) -> check_presence_for(N);
+handle_event(join, {#user{nick=N}, _}) -> check_presence_for(N);
+handle_event(msg, {#user{nick=N}, _, _}) -> check_presence_for(N);
 handle_event(_,_) -> ok.
 
 check_messages(#{nick:=Origin, reply:=ReplyTo, ping:=Ping}) ->
@@ -32,6 +36,21 @@ new_message(#{reply:=ReplyTo, ping:=Ping, params:=[_]}) ->
 	{irc, {msg, {ReplyTo, [Ping, "Please provide a message."]}}};
 new_message(#{nick:=Origin, reply:=ReplyTo, ping:=Ping, params:=Params}) ->
 	{irc, {msg, {ReplyTo, [Ping, create_message(Origin, hd(Params), string:join(tl(Params), " "))]}}}.
+
+check_presence_for(NickR) ->
+	Nick = string:to_lower(NickR),
+	Time = now_secs(),
+	case config:get_value(temp, [?MODULE, poke, Nick]) of
+		T when T /= '$none' andalso T + 3600 > Time -> ok;
+		_ ->
+			case lists:any(fun({_, {_, Recipient, Del, _, _}}) -> not Del andalso Recipient == Nick end,
+					config:get_value(data, [?MODULE, messages])) of
+				true ->
+					core ! {irc, {msg, {Nick, ["You have pending messages."]}}},
+					config:set_value(temp, [?MODULE, poke, Nick], Time);
+				false -> ok
+			end
+	end.
 
 check_messages_for(NickR) ->
 	Nick = string:to_lower(NickR),
@@ -52,10 +71,11 @@ check_messages_for(NickR) ->
 
 showmsg(#{origin:=User, nick:=Nick, reply:=Reply, ping:=Ping, params:=[ID]}) ->
 	IDN = list_to_integer(ID),
+	NickL = string:to_lower(Nick),
 	case config:get_value(data, [?MODULE, messages, IDN]) of
 		'$none' -> {irc, {msg, {Reply, [Ping, "That message does not exist."]}}};
 		{Sender, Recipient, Delivered, Timestamp, Message} ->
-			case permissions:hasperm(User, admin) orelse Nick == Sender orelse Nick == Recipient of
+			case permissions:hasperm(User, admin) orelse NickL == Sender orelse NickL == Recipient of
 				false -> {irc, {msg, {Reply, [Ping, "You are not authorised to view that message."]}}};
 				true ->
 					{Date,Time} = format_time(Timestamp),
@@ -66,11 +86,12 @@ showmsg(#{reply:=Reply, ping:=Ping}) -> {irc, {msg, {Reply, [Ping, "Provide a si
 
 delmsg(#{origin:=User, nick:=Nick, reply:=Reply, ping:=Ping, params:=[ID]}) ->
 	IDN = list_to_integer(ID),
+	NickL = string:to_lower(Nick),
 	case config:get_value(data, [?MODULE, messages, IDN]) of
 		'$none' -> {irc, {msg, {Reply, [Ping, "That message does not exist."]}}};
 		{_, _, true, _, _} -> {irc, {msg, {Reply, [Ping, "You cannot delete delivered messages."]}}};
 		{Sender, _, _, _, _} ->
-			case permissions:hasperm(User, admin) orelse Nick == Sender of
+			case permissions:hasperm(User, admin) orelse NickL == Sender of
 				false -> {irc, {msg, {Reply, [Ping, "You are not authorised to delete that message."]}}};
 				true ->
 					config:del_value(data, [?MODULE, messages, IDN]),
@@ -112,3 +133,13 @@ create_message(FromR, ToR, Msg) ->
 			config:set_value(data, [?MODULE, messages, ID], {FromL, RealTo, false, Timestamp, Msg}),
 			[2, integer_to_list(ID), 2, " to ", VisTo, $.]
 	end.
+
+pending(#{nick:=Nick, reply:=Reply, ping:=Ping}) ->
+	Pending = util:count(fun({_,{_,_,T,_,_}}) -> not T end, config:get_value(data, [?MODULE, messages])),
+
+	Recipients = lists:umerge(lists:map(
+			fun({_,{_,T,Del,_,_}}) -> if Del -> []; true -> [T] end end,
+		config:get_value(data, [?MODULE, messages]))),
+
+	core ! {irc, {msg, {Nick, ["Recipients with pending messages: ", string:join(Recipients, "; ")]}}},
+	{irc, {msg, {Reply, [Ping, io_lib:format("There are ~b pending messages to ~b recipients.", [Pending, length(Recipients)])]}}}.

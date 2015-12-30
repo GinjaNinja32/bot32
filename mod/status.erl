@@ -24,7 +24,8 @@ get_commands() ->
 		{"players",  generic(players), user},
 		{"admins",   generic(admins), user},
 		{"mode",     generic(mode), user},
-		{"manifest", generic(manifest), user}
+		{"manifest", generic(manifest), user},
+		{"revision", generic(revision), user}
 	].
 
 get_help("address") -> ["Get the address of the specified server." | help()];
@@ -33,6 +34,7 @@ get_help("players") -> ["Get an online player list of the specified server." | h
 get_help("admins") -> ["Get an online admin list of the specified server." | help()];
 get_help("mode") -> ["Get the mode of the specified server." | help()];
 get_help("manifest") -> ["Get the manifest of the specified server." | help()];
+get_help("revision") -> ["Get the revision of the specified server." | help()];
 get_help(_) -> unhandled.
 
 help() ->
@@ -46,20 +48,20 @@ help() ->
 generic(Func) ->
 	fun(#{nick:=O,reply:=RT,ping:=P,params:=[]}) ->
 		case orddict:find(defaultserver(RT), servers()) of
-			{ok, {Addr,Port,Name}} -> spawn(status, Func, [RT, P, O, Addr, Port, Name]), ok;
+			{ok, {Addr,Port,Name}} -> spawn(status, Func, [RT, P, O, Addr, Port, defaultserver(RT), Name]), ok;
 			error -> {irc, {msg, {RT, [P, "Failed to find default server for this channel!"]}}}
 		end;
 	   (#{nick:=O,reply:=RT,ping:=P,params:=[ServerID]}) ->
 		case orddict:find(canonicalise(ServerID), servers()) of
-			{ok, {Addr,Port,Name}} -> spawn(status, Func, [RT, P, O, Addr, Port, Name]), ok;
+			{ok, {Addr,Port,Name}} -> spawn(status, Func, [RT, P, O, Addr, Port, canonicalise(ServerID), Name]), ok;
 			error -> {irc, {msg, {RT, [P, "Illegal argument!"]}}}
 		end
 	end.
 
-address(RT, Ping, _, S, P, Name) ->
+address(RT, Ping, _, S, P, _, Name) ->
 	core ! {irc, {msg, {RT, [Ping, Name, io_lib:format("byond://~s:~b", [S, P])]}}}.
 
-status(RT, _, _, S, P, Name) ->
+status(RT, _, _, S, P, _, Name) ->
         case byond:send(S, P, "status=2") of
                 {error, X} -> core ! {irc, {msg, {RT, io_lib:format("~sError: ~p", [Name, X])}}};
                 Dict ->
@@ -70,7 +72,22 @@ status(RT, _, _, S, P, Name) ->
                         core ! {irc, {msg, {RT, [Name, "Players: ", Players, "; Mode: ", Mode, "; Station Time: ", Time, "; Round Duration: ", Duration]}}}
 	end.
 
-admins(RT, _, _, S, P, Name) ->
+revision(RT, _, _, S, P, ID, Name) ->
+        case byond:send(S, P, "revision") of
+                {error, X} -> core ! {irc, {msg, {RT, io_lib:format("~sError: ~p", [Name, X])}}};
+		[{"unknown","?"}] -> core ! {irc, {msg, {RT, io_lib:format("~sRevision unknown.", [Name])}}};
+                Dict ->
+                        Branch = safeget(Dict, "branch"),
+                        Date = safeget(Dict, "date"),
+                        Rev = safeget(Dict, "revision"),
+			Msg = case config:get_value(config, [?MODULE, github, ID]) of
+				'$none' -> io_lib:format("~sRevision: ~s on ~s at ~s.", [Name, Rev, Branch, Date]);
+				URL -> io_lib:format("~sRevision: ~s on ~s at ~s: ~s", [Name, lists:sublist(Rev, 8), Branch, Date, [URL,Rev]])
+			end,
+			core ! {irc, {msg, {RT, Msg}}}
+	end.
+
+admins(RT, _, _, S, P, _, Name) ->
 	case byond:send(S, P, "status=2") of
 		{error, X} -> core ! {irc, {msg, {RT, io_lib:format("~sError: ~p", [Name,X])}}};
 		Dict ->
@@ -92,7 +109,7 @@ a(<<T/utf8, _/binary>>) ->
 	end;
 a(_) -> <<"a">>.
 
-mode(RT, _, _, S, P, Name) ->
+mode(RT, _, _, S, P, _, Name) ->
         case byond:send(S, P, "status=2") of
                 {error, X} -> core ! {irc, {msg, {RT, io_lib:format("~sError: ~p", [Name,X])}}};
                 Dict ->
@@ -100,7 +117,7 @@ mode(RT, _, _, S, P, Name) ->
                         core ! {irc, {msg, {RT, [Name, "Mode: ", Mode]}}}
         end.
 
-players(RT, _, _, S, P, Name) ->
+players(RT, _, _, S, P, _, Name) ->
 	case byond:send(S, P, "status=2") of
 		{error, X} -> core ! {irc, {msg, {RT, io_lib:format("~sError: ~p", [Name, X])}}};
 		Dict ->
@@ -116,7 +133,7 @@ players(RT, _, _, S, P, Name) ->
 			end
 	end.
 
-manifest(RT, _, O, S, P, Name) ->
+manifest(RT, _, O, S, P, _, Name) ->
 	case byond:send(S, P, "manifest") of
 		{error, X} -> core ! {irc, {msg, {RT, io_lib:format("~sError: ~p", [Name, X])}}};
 		[] -> core ! {irc, {msg, {RT, [Name, "Manifest is empty"]}}};

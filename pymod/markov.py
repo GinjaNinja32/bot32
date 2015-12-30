@@ -41,7 +41,7 @@ def initialise():
 	ecall(atom('pymod'), atom('register_command'), ["smarkov", atom('markov'), atom('smarkov_cmd'), atom('user')])
 
 	log("init done with %s pairs" % (len(pairs)))
-	return Atom(b'ok')
+	return atom('ok')
 
 
 def deinitialise():
@@ -66,7 +66,7 @@ def deinitialise():
 	ecall(atom('pymod'), atom('unregister_command'), ["smarkov", atom('user')])
 
 	log("exit done, wrote %s keys successfully of %s total" % (s, i))
-	return Atom(b'ok')
+	return atom('ok')
 
 
 def markov_cmd(reply, ping, params):
@@ -83,7 +83,7 @@ def handle_event(type, params):
 		channel = params[1].to_string()
 		msg = " ".join([x.to_string() for x in params[2]])
 		if channel != ecall(atom('config'), atom('get_value'), [atom('config'), [atom('bot'), atom('nick')]]):
-			if re.match("(?i)(^|[^a-z0-9])nti([^a-z0-9]|$)", msg):
+			if re.search("(?i)(^|[^a-z0-9])nti([^a-z0-9]|$)", msg):
 				reply = markovreply(channel, msg)
 				ecall(atom('erlang'), atom('!'), [atom('core'), reply])
 			else:
@@ -124,7 +124,7 @@ def contexts(chan, ping, word):
 				if b is None:
 					b = b"[end]"
 				x.append("'%s %s' (%s)" % (a.decode("utf-8"), b.decode("utf-8"), ab))
-	return (Atom(b'irc'), (Atom(b'msg'), (chan, "%sI have %s contexts totalling %s instances for '%s': '%s'." % (ping, contexts, n, word.decode("utf-8"), ", ".join(x)))))
+	return (atom('irc'), (atom('msg'), (chan, "%sI have %s contexts totalling %s instances for '%s': '%s'." % (ping, contexts, n, word.decode("utf-8"), ", ".join(x)))))
 
 
 def markov(chan, msg):
@@ -138,7 +138,7 @@ def markov(chan, msg):
 		return reply(chan, words)
 	else:
 		add(words)
-		return Atom(b'ok')
+		return atom('ok')
 
 
 def add(msg):
@@ -169,7 +169,7 @@ def reply(chan, msg):
 
 	word = pick_inv_weight(freq)
 	if word is None:
-		return Atom(b'ok')
+		return atom('ok')
 
 	reply = [word]
 
@@ -196,7 +196,7 @@ def reply(chan, msg):
 
 	log("markov replying with '%s'" % (reply_str))
 
-	return (Atom(b'irc'), (Atom(b'msg'), (chan, reply_str)))
+	return (atom('irc'), (atom('msg'), (chan, reply_str)))
 
 def markovseed(chan, msg):
 	msg = msg.split(" ")
