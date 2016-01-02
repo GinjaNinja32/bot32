@@ -57,7 +57,7 @@ generic(Cmd, ReqPerm) ->
 		end of
 			{error, Msg} -> {irc, {msg, {Reply, [Ping, Msg]}}};
 			ID ->
-				case ReqPerm == none orelse permissions:hasperm(User, list_to_atom(lists:flatten([ReqPerm,$_|ID]))) of
+				case ReqPerm == none orelse permissions:hasperm(User, Reply, list_to_atom(lists:flatten([ReqPerm,$_|ID]))) of
 					true -> ?MODULE:Cmd(ID, Nick, Reply, Ping, Params);
 					false -> {irc, {msg, {Reply, [Ping, "You are not authorised to do that."]}}}
 				end

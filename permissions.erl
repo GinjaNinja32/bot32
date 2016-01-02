@@ -42,3 +42,6 @@ rankof_chan(Channel) ->
 
 hasperm(_, user) -> true;
 hasperm(User, Perm) -> lists:member(Perm, rankof(User)).
+
+hasperm(_, Chan, user) -> true;
+hasperm(User, Chan, Perm) -> lists:member(Perm, rankof(User, Chan)).
