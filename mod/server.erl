@@ -2,247 +2,285 @@
 -compile(export_all).
 
 -include("definitions.hrl").
--define(Timer, 100).
-
-get_aliases() ->
-	[
-		{"getserverrank", ["serverrank"]}
-	].
 
 get_commands() ->
 	[
-		{"pm", fun pm/1, server},
-		{"msg", fun pm/1, server},
-		{"age", fun age/1, server},
-		{"notes", fun notes/1, server},
-		{"notify", fun notify/1, user},
-		{"setserverrank", fun serverrank/1, host},
-		{"getserverrank", fun gsr/1, server},
-		{"info", fun info/1, server}
+		{"notify", generic(notify, none),    user},
+		{"ssr",    generic(ssr,   "host"),   server},
+		{"gsr",    generic(gsr,   "host"),   server},
+		{"age",    generic(age,   "server"), server},
+		{"notes",  generic(notes, "server"), server},
+		{"info",   generic(info,  "server"), server},
+		{"pm",     generic(pm,    "server"), server}
 	].
 
 initialise() ->
-	case config:get_value(config, [?MODULE, server]) of
-		{Server, Port, Pwd} -> spawn(server, sloop, [Server, Port, 45678, Pwd]);
-		_ -> logging:log(error, "SERVER", "Loaded with no or incorrect config!")
-	end.
+	spawn(?MODULE, sloop, []),
+	ok.
 
 deinitialise() ->
-	case whereis(server) of
-		undefined -> ok;
-		Pid -> Pid ! stop
-	end,
-	util:waitfor_gone(server).
+	Pid = config:get_value(temp, [?MODULE, general]),
+	Pid ! stop,
+	waitfordeath(Pid).
+
+waitfordeath(Pid) ->
+	case is_process_alive(Pid) of
+		true ->
+			timer:sleep(100),
+			waitfordeath(Pid);
+		false -> ok
+	end.
 
 %
 
-gsr(#{reply:=RT, ping:=P, params:=[]}) ->
-	Dict = config:get_value(config, [?MODULE, ranks], []),
-	{irc, {msg, {RT, [P, string:join(lists:map(fun({A,_})-> [hd(A),160,tl(A)] end, Dict), "; ")]}}};
-gsr(#{reply:=RT, ping:=P, params:=List}) ->
-	Dict = config:get_value(config, [?MODULE, ranks], []),
-	{irc, {msg, {RT, [P, string:join(lists:map(fun(A)-> grank(string:to_lower(A),Dict) end, List), "; ")]}}}.
-
-grank(N, Dict) ->
-	case lists:keyfind(N, 1, Dict) of
-		{_, Rank} -> io_lib:format("~s\xa0~s: ~s", [[hd(N)], tl(N), Rank]);
-		_ -> io_lib:format("~s\xa0~s unknown", [[hd(N)], tl(N)])
+generic(Cmd, ReqPerm) ->
+	fun(#{origin:=User, nick:=Nick, reply:=Reply, ping:=Ping, params:=Params, selector:=Selector}) ->
+		case if
+			Selector /= [] ->
+				case config:get_value(config, [?MODULE, servers, string:to_lower(Selector)]) of
+					'$none' -> {error, "Invalid server selector!"};
+					_ -> string:to_lower(Selector)
+				end;
+			true ->
+				Chan = if
+					Nick == Reply -> query;
+					true -> Reply
+				end,
+				case config:get_value(config, [?MODULE, default, Chan]) of
+					'$none' ->
+						case config:get_value(config, [?MODULE, default, default]) of
+							'$none' -> {error, "You must provide a server to use!"};
+							T -> T
+						end;
+					T -> T
+				end
+		end of
+			{error, Msg} -> {irc, {msg, {Reply, [Ping, Msg]}}};
+			ID ->
+				case ReqPerm == none orelse permissions:hasperm(User, list_to_atom(lists:flatten([ReqPerm,$_|ID]))) of
+					true -> ?MODULE:Cmd(ID, Nick, Reply, Ping, Params);
+					false -> {irc, {msg, {Reply, [Ping, "You are not authorised to do that."]}}}
+				end
+		end
 	end.
 
+% Commands
 
-serverrank(#{reply:=RT, ping:=Ping, params:=[Rank | RWho]}) when RWho /= [] ->
-	Who = string:to_lower(string:join(RWho, " ")),
-	OldRank = config:get_value(config, [?MODULE, ranks, Who]),
+gsr(ID, _, Reply, Ping, []) ->
+	{irc, {msg, {Reply, [Ping, string:join(lists:map(fun({A,_}) -> [hd(A),160,tl(A)] end, config:get_value(config, [?MODULE, ranks, ID], [])), "; ")]}}};
+gsr(ID, _, Reply, Ping, Params) ->
+	{irc, {msg, {Reply, [Ping, string:join(lists:map(fun(A) -> grank(ID, string:to_lower(A)) end, Params), "; ")]}}}.
 
-	case OldRank of
-		'$none' -> Message = ["Set rank of ", Who, " to ", Rank];
-		_ -> Message = ["Set rank of ", Who, " to ", Rank, " - was ", OldRank]
+grank(ID, Who) ->
+	config:get_value(config, [?MODULE, ranks, ID, Who]).
+
+ssr(ID, _, Reply, Ping, [Nick,Rank]) ->
+	case Rank of
+		"none" -> config:del_value(config, [?MODULE, ranks, ID, string:to_lower(Nick)]);
+		_ -> config:set_value(config, [?MODULE, ranks, ID, string:to_lower(Nick)], Rank)
 	end,
-	if
-		Rank == "none" -> config:del_value(config, [?MODULE, ranks, Who]);
-		true -> config:set_value(config, [?MODULE, ranks, Who], Rank)
+	{irc, {msg, {Reply, [Ping, io_lib:format("Set rank of ~p to ~p.", [Nick, Rank])]}}};
+ssr(_,  _, Reply, Ping, _) -> {irc, {msg, {Reply, [Ping, "Provide a nick and a rank to set!"]}}}.
+
+pm(ID, Nick, Reply, Ping, [Who | Msg]) when Msg /= [] ->
+	RMsg = case send2server(ID, "?adminmsg=~s;msg=~s;key=~s;sender=~s;rank=~s", [
+					Who,
+					string:join(Msg, " "),
+					config:get_value(config, [?MODULE, servers, ID, pass]),
+					Nick,
+					config:get_value(config, [?MODULE, ranks, ID, string:to_lower(Nick)], "Unknown")
+				]) of
+		{error, T} -> io_lib:format("Error: ~s", [T]);
+		Dict ->
+			case orddict:fetch_keys(Dict) of
+				["Message Successful"] -> "Sent.";
+				[T] -> T
+			end
 	end,
-	{irc, {msg, {RT, [Ping, Message]}}};
-serverrank(#{reply:=RT, ping:=Ping}) -> {irc, {msg, {RT, [Ping, "Provide a rank and a nick; e.g. 'setserverrank Admin CoolGuy3000'."]}}}.
+	{irc, {msg, {Reply, [Ping, RMsg]}}}.
 
+notes(ID, _, Reply, Ping, [Who|_]) ->
+	RMsg = case send2server(ID, "?notes=~s;key=~s", [
+					Who,
+					config:get_value(config, [?MODULE, servers, ID, pass])
+				]) of
+		{error, T} -> io_lib:format("Error: ~s", [T]);
+		Dict ->
+			case hd(orddict:fetch_keys(Dict)) of
+				"No information found on the given key." -> ["No information found on the key '", Who, "'."];
+				T ->
+					File = re:replace(base64:encode(erlang:md5(T)), "/", "@", [global]),
+					Filename = io_lib:format("/home/bot32/www/~s.txt", [File]),
+					file:write_file(Filename, T),
+					["Following link valid for approximately ten minutes: http://nyx.gn32.uk/admin/", File, ".txt"]
+			end
+	end,
+	{irc, {msg, {Reply, [Ping, RMsg]}}}.
 
-pm(#{reply:=RT, ping:=Ping, params:=[]}) -> {irc, {msg, {RT, [Ping, "Provide a user to PM and a message."]}}};
-pm(#{reply:=RT, ping:=Ping, params:=[_]}) -> {irc, {msg, {RT, [Ping, "Provide a message."]}}};
-pm(#{nick:=N, reply:=RT, ping:=Ping, params:=Params}) ->
-	server ! {pm, N, RT, Ping, string:to_lower(hd(Params)), string:join(tl(Params), " ")},
-	ok.
+age(ID, _, Reply, Ping, [Who|_]) ->
+	RMsg = case send2server(ID, "?age=~s;key=~s", [
+					Who,
+					config:get_value(config, [?MODULE, servers, ID, pass])
+				]) of
+		{error, T} -> io_lib:format("Error: ~s", [T]);
+		Dict -> ["Age of ", Who, ": ", hd(orddict:fetch_keys(Dict))]
+	end,
+	{irc, {msg, {Reply, [Ping, RMsg]}}}.
 
-notes(#{reply:=RT, ping:=Ping, params:=[]}) -> {irc, {msg, {RT, [Ping, "Provide a user to find notes for."]}}};
-notes(#{nick:=N, reply:=RT, ping:=Ping, params:=[Key]}) ->
-	case RT of
-		N -> server ! {notes, N, RT, Ping, string:to_lower(Key)};
-		_ -> case lists:member(server, permissions:rankof_chan(RT)) of
-			true -> server ! {notes, N, RT, Ping, string:to_lower(Key)};
-			false -> server ! {notes, N, N, "", string:to_lower(Key)}
+info(ID, _, Reply, Ping, What) ->
+	RMsg = case send2server(ID, "?info=~s;key=~s", [
+					string:join(What, " "),
+					config:get_value(config, [?MODULE, servers, ID, pass])
+				]) of
+		{error, T} -> io_lib:format("Error: ~s", [T]);
+		[{"No matches",_}] -> "No matches found";
+		Dict ->
+			case orddict:find("key", Dict) of
+				{ok,_} -> % specific player
+					D = fun(T) ->
+						case orddict:find(T, Dict) of
+							{ok, V} -> V;
+							error -> "???"
+						end
+					end,
+					Damage = case D("damage") of
+						"non-living" -> "non-living";
+						Dmg -> string:join(lists:map(fun({A,B}) -> [A,": ",B] end, byond:params2dict(Dmg)), ", ")
+					end,
+					[
+						D("key"), "/(", D("name"), ") ", D("role"), $/, D("antag"), case D("hasbeenrev") of "1" -> " (has been rev)"; _ -> "" end,
+						"; loc:\xa0", D("loc"), "; turf:\xa0", D("turf"), "; area:\xa0", lists:filter(fun(T) -> 32 =< T andalso T =< 127 end, D("area")),
+						"; stat:\xa0", D("stat"), ", damage:\xa0[", Damage, $],
+						"; type:\xa0", D("type"), "; gender:\xa0", D("gender")
+					];
+				error -> % key->name
+					string:join(lists:map(fun({Key,Name}) -> io_lib:format("~s/(~s)", [Key,Name]) end, Dict), "; ")
 		end
 	end,
-	ok;
-notes(#{reply:=RT, ping:=Ping}) -> {irc, {msg, {RT, [Ping, "Provide a single key."]}}}.
+	{irc, {msg, {Reply, [Ping, RMsg]}}}.
 
-age(#{reply:=RT, ping:=Ping, params:=[]}) -> {irc, {msg, {RT, [Ping, "Provide a key to check the age of."]}}};
-age(#{reply:=RT, ping:=Ping, params:=[Key]}) ->
-	server ! {age, RT, Ping, Key},
-	ok;
-age(#{reply:=RT, ping:=Ping}) -> {irc, {msg, {RT, [Ping, "Provide a single key."]}}}.
 
-notify(#{nick:=N, reply:=RT, ping:=Ping}) ->
-	server ! {notify, N, RT, Ping},
-	ok.
-
-info(#{reply:=RT, ping:=P, params:=[]}) -> {irc, {msg, {RT, [P, "Provide something to find info on!"]}}};
-info(#{reply:=RT, ping:=P, params:=Params}) ->
-	server ! {info, RT, P, string:join(Params, " ")},
-	ok.
-
-sloop(Svr, Prt, SPrt, Pwd) ->
-	case gen_tcp:listen(SPrt, [list, {packet, http}, {active, false}, {reuseaddr, true}]) of
-		{ok, SvrSock} ->
-			logging:log(info, "SERVER", "Starting loop."),
-			register(server, self()),
-			loop(SvrSock, Svr, Prt, SPrt, Pwd, sets:new()),
-			logging:log(info, "SERVER", "Ending loop."),
-			gen_tcp:close(SvrSock);
-		{error, Reason} ->
-			logging:log(error, "SERVER", "Failed to open listen socket: ~p", [Reason])
+notify(ID, Nick, Reply, Ping, _) ->
+	case lists:member(string:to_lower(Nick), config:get_value(temp, [?MODULE, notify, ID], [])) of
+		true -> {irc, {msg, {Reply, [Ping, "You are already on the list to be notified!"]}}};
+		false ->
+			config:mod_get_value(temp, [?MODULE, notify, ID], fun('$none') -> [string:to_lower(Nick)]; (T) -> [string:to_lower(Nick)|T] end),
+			{irc, {msg, {Reply, [Ping, "You will be notified when the server restarts"]}}}
 	end.
 
-loop(SvrSock, Svr, Prt, SPrt, Pwd, Notify) ->
+% Util
+
+send2server(ID, Msg, FParams) ->
+	Addr = config:get_value(config, [?MODULE, servers, ID, address]),
+	Port = config:get_value(config, [?MODULE, servers, ID, port]),
+	byond:send(Addr, Port, io_lib:format(Msg, lists:map(fun byond:vencode/1, FParams))).
+
+% Receive loop
+
+sloop() ->
+	case gen_tcp:listen(45678, [list, {packet, http}, {active, false}, {reuseaddr, true}]) of
+		{ok, SvrSock} ->
+			config:set_value(temp, [?MODULE, general], self()),
+			logging:log(info, ?MODULE, "Starting loop."),
+			loop(SvrSock),
+			logging:log(info, ?MODULE, "Ending loop."),
+			config:del_value(temp, [?MODULE, general]),
+			gen_tcp:close(SvrSock);
+		{error, Reason} ->
+			logging:log(error, ?MODULE, "Failed to open listen socket: ~p", [Reason])
+	end.
+
+loop(SvrSock) ->
 	case receive
-		{pm, Sender, ReplyChannel, ReplyPing, Recipient, Message} ->
-			logging:log(info, "SERVER", "sending PM ~s to ~s", [Message, Recipient]),
-			Rank = config:get_value(config, [?MODULE, ranks, string:to_lower(Sender)], "Unknown"),
-			Reply = case byond:send(Svr, Prt, io_lib:format("?adminmsg=~s;msg=~s;key=~s;sender=~s;rank=~s", lists:map(fun byond:vencode/1, [Recipient, Message, Pwd, Sender, Rank]))) of
-				{error, T} -> io_lib:format("Error: ~s", [T]);
-				Dict ->
-					case orddict:fetch_keys(Dict) of
-						["Message Successful"] -> "Sent.";
-						[T] -> T
-					end
-			end,
-			core ! {irc, {msg, {ReplyChannel, [ReplyPing, Reply]}}},
-			ok;
-		{notes, _, ReplyChannel, ReplyPing, Lookup} ->
-			logging:log(info, "SERVER", "finding notes for ~s", [Lookup]),
-			Reply = case byond:send(Svr, Prt, io_lib:format("?notes=~s;key=~s", lists:map(fun byond:vencode/1, [Lookup, Pwd]))) of
-				{error, T} -> io_lib:format("Error: ~s", [T]);
-				Dict ->
-					case hd(orddict:fetch_keys(Dict)) of
-						"No information found on the given key." -> ["No information found on the key '", Lookup, "'."];
-						T ->
-							File = re:replace(base64:encode(erlang:md5(T)), "/", "@", [global]),
-							Filename = io_lib:format("/home/bot32/www/~s.txt", [File]),
-							file:write_file(Filename, T),
-							["Following link valid for approximately ten minutes: http://nyx.gn32.uk/admin/", File, ".txt"]
-					end
-			end,
-			core ! {irc, {msg, {ReplyChannel, [ReplyPing, Reply]}}},
-			ok;
-		{age, ReplyChannel, ReplyPing, Key} ->
-			logging:log(info, "SERVER", "finding age for ~s", [Key]),
-			Reply = case byond:send(Svr, Prt, io_lib:format("?age=~s;key=~s", lists:map(fun byond:vencode/1, [Key, Pwd]))) of
-				{error, T} -> io_lib:format("Error: ~s", [T]);
-				Dict -> ["Age of ", Key, ": ", hd(orddict:fetch_keys(Dict))]
-			end,
-			core ! {irc, {msg, {ReplyChannel, [ReplyPing, Reply]}}},
-			ok;
-		{info, ReplyChannel, ReplyPing, Search} ->
-			logging:log(info, "SERVER", "finding info for ~s", [Search]),
-			Reply = case byond:send(Svr, Prt, io_lib:format("?info=~s;key=~s", lists:map(fun byond:vencode/1, [Search, Pwd]))) of
-				{error, T} -> io_lib:format("Error: ~s", [T]);
-				[{"No matches",_}] -> "No matches found";
-				Dict ->
-					case orddict:find("key", Dict) of
-						{ok,_} -> % specific player
-							D = fun(T) ->
-								case orddict:find(T, Dict) of
-									{ok, V} -> V;
-									error -> "???"
-								end
-							end,
-							Damage = case D("damage") of
-									"non-living" -> "non-living";
-									Dmg -> string:join(lists:map(fun({A,B}) -> [A,": ",B] end, byond:params2dict(Dmg)), ", ")
-							end,
-							[
-								D("key"), "/(", D("name"), ") ", D("role"), $/, D("antag"), case D("hasbeenrev") of "1" -> " (has been rev)"; _ -> "" end,
-								"; loc:\xa0", D("loc"), "; turf:\xa0", D("turf"), "; area:\xa0", lists:filter(fun(T) -> 32 =< T andalso T =< 127 end, D("area")),
-								"; stat:\xa0", D("stat"), ", damage:\xa0[", Damage, $],
-								"; type:\xa0", D("type"), "; gender:\xa0", D("gender")
-							];
-						error -> % key->name
-							string:join(lists:map(fun({Key,Name}) -> io_lib:format("~s/(~s)", [Key,Name]) end, Dict), "; ")
-					end
-			end,
-			core ! {irc, {msg, {ReplyChannel, [ReplyPing, Reply]}}},
-			ok;
-		{notify, Who, ReplyChannel, ReplyPing} ->
-			case sets:is_element(string:to_lower(Who), Notify) of
-				true ->
-					core ! {irc, {msg, {ReplyChannel, [ReplyPing, "You are already on the list to be notified!"]}}},
-					ok;
-				false ->
-					core ! {irc, {msg, {ReplyChannel, [ReplyPing, "You will be notified when the server restarts."]}}},
-					{notify, sets:add_element(string:to_lower(Who), Notify)}
-			end;
-		{notify, T} -> {notify, T};
 		stop -> stop
 	after
-		?Timer ->
-			case gen_tcp:accept(SvrSock, ?Timer) of
-				{ok, Socket} -> readsock(Socket, Pwd, Notify), ok;
+		100 ->
+			case gen_tcp:accept(SvrSock, 100) of
+				{ok, Socket} -> readsock(Socket);
 				{error, timeout} -> ok;
 				{error, X} -> {error, X}
 			end
 	end of
-		ok ->         loop(SvrSock, Svr, Prt, SPrt, Pwd, Notify);
-		{notify,N} ->
-			logging:log(info, "SERVER", "setting notify as ~p", [sets:to_list(N)]),
-			loop(SvrSock, Svr, Prt, SPrt, Pwd, N);
+		ok -> loop(SvrSock);
 		stop -> ok;
-		E -> logging:log(error, "SERVER", "received unknown status ~p, exiting", [E])
+		{error, T} -> logging:log(error, ?MODULE, "received error ~p, exiting\n", [T])
 	end.
 
-readsock(Socket, Pwd, Notify) ->
+readsock(Socket) ->
 	% timeout specified just to avoid crashing the bot if bad things happen
 	case gen_tcp:recv(Socket, 0, 20000) of
 		{ok, {http_request, 'GET', URL, _}} ->
-			Plist = tl(URL), % a=x;b=y;c=z
+			Plist = case URL of
+				{abs_path, T} -> tl(tl(T));
+				T -> tl(T)
+			end,
 			Dict = byond:params2dict(Plist),
-			case orddict:find("pwd", Dict) of
-				{ok, Pwd} ->
-					case {orddict:find("chan", Dict), orddict:find("mesg", Dict)} of
-						{{ok, Chan}, {ok, Mesg}} ->
-							Msg = re:replace(Mesg, "[\r\n\t]+", " ", [global, {return, list}]),
-							logging:log(info, "SERVER", "relaying to ~s: ~s", [Chan, Msg]),
-							case string:str(Msg, "Server starting up on ") of
-								1 ->
-									lists:foreach(fun(T) -> core ! {irc, {msg, {T, Msg}}} end, sets:to_list(Notify)),
-									self() ! {notify, sets:new()};
-								_ -> ok
-							end,
-							case string:str(Msg, "A round of ") of
-								1 -> lists:foreach(fun(T) -> core ! {irc, {msg, {T, Msg}}} end, sets:to_list(Notify));
-								_ -> ok
-							end,
-							sendmsg(Chan, Msg);
-						_ -> logging:log(info, "SERVER", "received correctly keyed message with no channel and/or message")
+			case {orddict:find("pwd", Dict), orddict:find("chan", Dict), orddict:find("mesg", Dict)} of
+				{{ok, Pwd}, {ok, Chan}, {ok, Mesg}} ->
+					case check_password_for_channel(Pwd, Chan) of
+						{ok, ID} -> handle_msg(ID, Chan, Mesg);
+						error -> logging:log(error, ?MODULE, "received invalid message ~p\n", [Plist])
 					end;
-				{ok, NotPwd} -> logging:log(info, "SERVER", "received incorrect key ~s", [NotPwd]);
-				error -> logging:log(info, "SERVER", "received non-keyed message '~s'", [Plist])
+				_ -> logging:log(info, ?MODULE, "received invalid message ~p\n", [Plist])
 			end,
 			gen_tcp:send(Socket, "HTTP/1.1 200 OK\r\n\r\n"),
 			gen_tcp:close(Socket);
-		{error, T} -> logging:log(error, "SERVER", "error in readsock: ~p", [T])
+		{error, T} -> logging:log(error, ?MODULE, "error in readsock: ~p", [T])
 	end.
 
-sendmsg(Chan, Msg) when length(Msg) > 350 ->
+get_id_from_pass(Pass) ->
+	case lists:filtermap(fun({ID,Dict}) ->
+				case orddict:find(pass, Dict) of
+					{ok, Pass} -> {true, ID};
+					_ -> false
+				end
+			end, config:get_value(config, [?MODULE, servers])) of
+		[ID] -> ID;
+		_ -> error
+	end.
+
+check_password_for_channel(Pwd, Chan) ->
+	case get_id_from_pass(Pwd) of
+		error -> error;
+		ID ->
+			case lists:member(Chan, config:require_value(config, [?MODULE, servers, ID, channels])) of
+				true -> {ok, ID};
+				false -> error
+			end
+	end.
+
+handle_msg(ID, Chan, Mesg) ->
+	Msg = re:replace(Mesg, "[\r\n\t]+", " ", [global, {return, list}]),
+	logging:log(info, ?MODULE, "relaying to ~s: ~s", [Chan, Msg]),
+	case string:str(Msg, "Server starting up on ") of
+		1 ->
+			lists:foreach(fun(T) -> core ! {irc, {msg, {T, Msg}}} end, config:get_value(temp, [?MODULE, notify, ID])),
+			config:set_value(temp, [?MODULE, notify, ID], []);
+		_ -> ok
+	end,
+	case string:str(Msg, "A round of ") of
+		1 -> lists:foreach(fun(T) -> core ! {irc, {msg, {T, Msg}}} end, config:get_value(temp, [?MODULE, notify, ID]));
+		_ -> ok
+	end,
+	sendmsg(Chan, Msg).
+
+sendmsg(Chan, Msg) when length(Msg) > 400 ->
 	{A,B} = lists:split(350, Msg),
 	core ! {irc, {msg, {Chan, A}}},
-	sendmsg(Chan, "<continued> " ++ B);
+	sendmsg(Chan, "<continued>" ++ B);
 sendmsg(Chan, Msg) ->
 	core ! {irc, {msg, {Chan, Msg}}}.
+
+
+
+
+
+
+
+
+
+
+
+
+
+

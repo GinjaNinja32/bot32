@@ -99,11 +99,17 @@ loop() ->
 		S -> logging:log(error, ?MODULE, "unknown code ~p, continuing", [S]), bot:loop()
 	end.
 
+desel(A,B) ->
+	case lists:splitwith(fun(T)->T /= $@ end, A) of
+		{Cmd, [_|Sel]} -> {Cmd, B, Sel};
+		{Cmd, []} -> {Cmd, B, []}
+	end.
+
 parse_command([],_) -> notcommand;
 parse_command(Params, IsQuery) ->
 	<<FirstChar/utf8, Rest/binary>> = list_to_binary(hd(Params)),
 	case lists:member(FirstChar, config:require_value(config, [bot, prefix])) of
-		true when Rest /= <<>> -> {binary_to_list(Rest), tl(Params)};
+		true when Rest /= <<>> -> desel(binary_to_list(Rest), tl(Params));
 		true -> notcommand;
 		false ->
 			if
@@ -111,8 +117,8 @@ parse_command(Params, IsQuery) ->
 					BotAliases = [config:require_value(config, [bot, nick]) | config:require_value(config, [bot, names])],
 					case lists:any(fun(Alias) -> R=util:regex_escape(Alias), re:run(hd(Params), <<"^", R/binary, "($|[^a-zA-Z0-9])">>, [caseless, {capture, none}]) == match end, BotAliases) of
 						true -> case tl(Params) of
-								[] -> {[], []};
-								_ -> {hd(tl(Params)), tl(tl(Params))}
+								[] -> {[], [], []};
+								_ -> desel(hd(tl(Params)), tl(tl(Params)))
 							end;
 						false ->
 							notcommand
@@ -159,13 +165,13 @@ handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}) ->
 			end,
 			logging:log(debug2, ?MODULE, "Parsing command: ~p", [Tokens]),
 			case parse_command(Tokens, Channel == config:require_value(config, [bot, nick])) of
-				{RCommand, RArguments} ->
+				{RCommand, RArguments, Selector} ->
 					logging:log(info, ?MODULE, "Command in ~s from ~s: ~s ~s", [Channel, User#user.nick, RCommand, string:join(RArguments, " ")]),
 					{Command, Arguments} = decode_alias(RCommand, RArguments),
 					Rank = permissions:rankof(User, ReplyChannel),
 					case permissions:hasperm(User, host) of
-						true -> handle_host_command(Rank, User, ReplyChannel, ReplyPing, Command, Arguments);
-						false ->     handle_command(Rank, User, ReplyChannel, ReplyPing, Command, Arguments)
+						true -> handle_host_command(Rank, User, ReplyChannel, ReplyPing, Command, Arguments, Selector);
+						false ->     handle_command(Rank, User, ReplyChannel, ReplyPing, Command, Arguments, Selector)
 					end;
 				notcommand ->
 					lists:foreach(fun(Module) ->
@@ -195,14 +201,14 @@ handle_irc(Type, Params) ->
 				call_or(Module, handle_event, [Type, Params], null)
 			end, config:require_value(config, [bot, modules])).
 
-handle_host_command(Rank, User, ReplyTo, Ping, Cmd, Params) ->
+handle_host_command(Rank, User, ReplyTo, Ping, Cmd, Params, Selector) ->
 	case string:to_lower(Cmd) of
 		"update" ->		{update, ReplyTo};
 		"help" ->	if Params == [] ->
 						core ! {irc, {msg, {User#user.nick, ["builtin host commands: update, reload_all, drop_all, load_mod, drop_mod, reload_mod"]}}};
 						true -> ok
 					end,
-					handle_command(Rank, User, ReplyTo, Ping, Cmd, Params);
+					handle_command(Rank, User, ReplyTo, Ping, Cmd, Params, Selector);
 
 		"modules" ->
 			{irc, {msg, {ReplyTo, [Ping, string:join(lists:map(fun atom_to_list/1, lists:sort(config:require_value(config, [bot, modules]))), " ")]}}};
@@ -285,10 +291,10 @@ handle_host_command(Rank, User, ReplyTo, Ping, Cmd, Params) ->
 				_ -> {irc, {msg, {ReplyTo, [Ping, "Provide a command and an alias!"]}}}
 			end;
 
-		_ -> handle_command(Rank, User, ReplyTo, Ping, Cmd, Params)
+		_ -> handle_command(Rank, User, ReplyTo, Ping, Cmd, Params, Selector)
 	end.
 
-handle_command(Ranks, User, ReplyTo, Ping, Cmd, Params) ->
+handle_command(Ranks, User, ReplyTo, Ping, Cmd, Params, Selector) ->
 	Commands = config:require_value(temp, [bot, commands]),
 	Result = case string:to_lower(Cmd) of
 		"call" ->
@@ -364,7 +370,8 @@ handle_command(Ranks, User, ReplyTo, Ping, Cmd, Params) ->
 											nick => User#user.nick,
 											reply => ReplyTo,
 											ping => Ping,
-											params => Params
+											params => Params,
+											selector => Selector
 										},
 									apply(Result, [ParamMap]);
 								error -> unhandled
