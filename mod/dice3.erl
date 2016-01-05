@@ -3,13 +3,6 @@
 
 -include("colordefs.hrl").
 
-get_aliases() ->
-	[
-		{{"dice",["d"]}, ["rtd"]},
-		{"dice", ["roll"]},
-		{"edice", ["eroll", "exdice", "exroll"]}
-	].
-
 get_commands() ->
 	[
 		{"dice", fun dice/1, user},

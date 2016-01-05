@@ -316,3 +316,9 @@ receive_whois(Map) ->
 	after
 		2000 -> Map
 	end.
+
+call_or(Mod, Func, Args, Or) ->
+	case lists:member({Func,length(Args)}, Mod:module_info(exports)) of
+		true -> apply(Mod, Func, Args);
+		false -> Or
+	end.

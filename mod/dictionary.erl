@@ -1,11 +1,6 @@
 -module(dictionary).
 -compile(export_all).
 
-get_aliases() ->
-	[
-		{"dictionary", ["definition", "define"]}
-	].
-
 get_commands() ->
 	[
 		{"dictionary", fun dict/1, user}

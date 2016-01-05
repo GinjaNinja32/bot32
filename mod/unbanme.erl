@@ -11,7 +11,7 @@ get_commands() ->
 origin_mode() -> full.
 
 unban(#{origin:=User, reply:=RT, ping:=P}) ->
-	case config:get_value(config, [server, ranks, string:to_lower(User#user.nick)]) of
+	case config:get_value(config, [server, ranks, "main", string:to_lower(User#user.nick)]) of
 		'$none' ->
 			logging:log(info, "unban", "~s attempted to use unban, but did not have a rank", [User#user.nick]),
 			{irc, {msg, {RT, [P, "You are not listed as staff."]}}};
