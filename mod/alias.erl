@@ -1,5 +1,6 @@
 -module(alias).
 -compile(export_all).
+-compile({no_auto_import,[apply/2]}).
 
 get_commands() ->
 	[
@@ -12,7 +13,7 @@ pre_command(Command, Args) ->
 	LCommand = string:to_lower(Command),
 	case config:get_value(data, [?MODULE, aliases, LCommand]) of
 		'$none' -> {Command, Args};
-		{V, Spec} when Args == none -> {V, none};
+		{V, _} when Args == none -> {V, none};
 		{V, Spec} -> {V, apply(Spec, Args)};
 		V -> {V, Args}
 	end.
@@ -71,6 +72,7 @@ parse(Params) ->
 		end
 	end, Params)}.
 
+format_spec([]) -> "[no arguments]";
 format_spec(Spec) ->
 	string:join(lists:map(fun
 			({T}) -> io_lib:format("[~b onwards]", [T]);

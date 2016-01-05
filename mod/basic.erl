@@ -69,17 +69,52 @@ rand(#{reply:=ReplyTo, ping:=Ping, params:=Params}) ->
 pick(#{reply:=ReplyTo, ping:=Ping, params:=[]}) -> {irc, {msg, {ReplyTo, [Ping, "I need some things to pick from!"]}}};
 pick(#{reply:=ReplyTo, ping:=Ping, params:=Params}) -> {irc, {msg, {ReplyTo, [Ping, lists:nth(random:uniform(length(Params)), Params)]}}}.
 
-dance(#{reply:=ReplyTo, ping:=Ping}) ->
-	T = random:uniform(100),
-	if
-		T < 20 -> 	{multi, [
-					{irc, {msg, {ReplyTo, ":D/--<"}}},
-					{irc, {msg, {ReplyTo, ":D|--<"}}},
-					{irc, {msg, {ReplyTo, ":D\\--<"}}}
-				]};
-		T < 60 -> {irc, {msg, {ReplyTo, [Ping, "No."]}}};
-		true -> {irc, {msg, {ReplyTo, [Ping, "What sort of bot do you think I am?!"]}}}
+
+dancereply() ->
+	[
+		[":D/--<", ":D|--<", ":D\\--<"],
+		[[ping, "No."]],
+		[[ping, "What sort of bot do you think I am?!"]],
+		["<(^_^<)", "(>^_^)>", "<(^_^<)"]
+	].
+danceweights(Nick) ->
+	H = h(Nick),
+	put(dance_rng, {H rem 1000000, ((H div 1000000) rem 1000000), H div 1000000000000}),
+	lists:map(fun(_) ->
+			{N, State} = random:uniform_s(10, get(dance_rng)),
+			put(dance_rng, State),
+			N
+		end, dancereply()).
+danceweighted(Nick) ->
+	lists:zip(danceweights(Nick), dancereply()).
+
+h(Nick) -> h(Nick, 0).
+h([],T) -> T;
+h([H|R],T) -> h(R,T*37+H).
+
+dance(#{nick:=Nick, reply:=ReplyTo, ping:=Ping}) ->
+	W = danceweighted(Nick),
+	Total = lists:foldl(fun({K,_},A) -> K+A end, 0, W),
+	Select = random:uniform(Total),
+	case catch lists:foldl(fun
+			({K,T},A) when A+K >= Select -> throw(T);
+			({K,_},A) -> A+K
+		end, 0, W) of
+		Reply when is_list(Reply) ->
+			lists:foreach(fun
+					(T) -> core ! {irc, {msg, {ReplyTo, lists:map(fun(ping)->Ping;(X)->X end, T)}}}
+				end, Reply);
+		X -> io:fwrite("got ~p?\n", [X])
 	end.
+%	if
+%		T > 80 -> {multi, [
+%			          {irc, {msg, {ReplyTo, ":D/--<"}}},
+%			          {irc, {msg, {ReplyTo, ":D|--<"}}},
+%			          {irc, {msg, {ReplyTo, ":D\\--<"}}}
+%		          ]};
+%		T > 40 -> {irc, {msg, {ReplyTo, [Ping, "No."]}}};
+%		true -> {irc, {msg, {ReplyTo, [Ping, "What sort of bot do you think I am?!"]}}}
+%	end.
 
 rot_thirteen(#{reply:=ReplyTo, ping:=Ping, params:=[]}) -> {irc, {msg, {ReplyTo, [Ping, "Supply a string to rot13!"]}}};
 rot_thirteen(#{reply:=ReplyTo, ping:=Ping, params:=Params}) ->
