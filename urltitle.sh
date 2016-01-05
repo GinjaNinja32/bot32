@@ -13,7 +13,7 @@ read_dom () {
 }
 
 d=0
-wget --header="User-Agent: $useragent" -qT 10 -O - $URL | while read_dom; do
+wget -4 --header="User-Agent: $useragent" -qT 10 -O - $URL | while read_dom; do
 	case $ENTITY in
 		title)
 			if [ $d -eq 0 ]; then

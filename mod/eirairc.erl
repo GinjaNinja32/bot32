@@ -17,7 +17,7 @@ handle_event(msg_nocommand, {User, Channel, Tokens}) ->
 			end of
 				false -> ok;
 				{N, T} ->
-					self() ! {irc, {msg, {User#user{nick=N}, Channel, T}}}
+					self() ! {irc, {msg, {User#user{nick=N, username=User#user.username ++ "-user"}, Channel, T}}}
 			end;
 		false -> ok
 	end;

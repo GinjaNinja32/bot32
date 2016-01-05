@@ -20,32 +20,62 @@ get_commands() ->
 		{"fate", fun fate/1, user}
 	].
 
+get_help("dice") ->
+	[
+		"'dice XdY' for a basic dice roll, using +, -, *, / to modify the value.",
+		"Comparisons can be performed using >, >=, <, <=, and =.",
+		"Comparisons involving lists (e.g. '[1, 2, 3]' or '[1 2 3]') will compare elementwise, and color-code accordingly.",
+		"Use 'edice' for an exploded roll, showing the individual dice as well as the total.",
+		"Use 'h', 'H', 'l', or 'L' to discard dice (e.g. '4d6H3' to roll 4d6 and keep the highest 3, or '5d10l2' to roll 5d10 and discard the lowest 2); the uppercase forms of these keep N dice, the lowercase discard; L/l from the lower end, H/h from the upper.",
+		"Use '#' to perform the same roll multiple times (e.g. 4#3d6 to roll 3d6, four times)."
+	];
+get_help("edice") -> get_help("dice");
+get_help(_) -> unhandled.
+
+% utils
+
+parse_params([[$@|Nicks] | Params]) -> {string:tokens(Nicks, ":/|"), Params};
+parse_params(Params) -> {[], Params}.
+
+send_to_all(RT, P, Nick, Others, DiceString, Result) ->
+	core ! {irc, {msg, {RT, [P, Result]}}},
+	lists:foreach(fun(T) ->
+		core ! {irc, {msg, {T, [Nick, " has rolled ", DiceString, ": ", Result]}}}
+	end, Others).
+
 % GURPS
 
-gurps(Params=#{params:=[]}) -> edice(Params#{params := ["3d6"]});
-gurps(#{reply:=RT,ping:=P,params:=Params}) ->
-	T = list_to_integer(hd(Params)),
-	Comment = case string:join(tl(Params), " ") of
-		[] -> [];
-		X -> [X,$:,$ ]
-	end,
-	Targets = if
-		T >= 16 -> [6, 16,   17];
-		T == 15 -> [5, 15,   16];
-		T >=  7 -> [4,  T,   17];
-		true    -> [4,  T, T+10]
-	end,
-	Formatter = fun
-		([false,false,false]) -> [Comment, "\x036\x02Critical Failure!\x03\x02"];
-		([false,false, true]) -> [Comment, "\x035\x02Failure!\x03\x02"];
-		([false, true, true]) -> [Comment, "\x033\x02Success!\x03\x02"];
-		([ true, true, true]) -> [Comment, "\x0310\x02Critical Success!\x03\x02"]
-	end,
-	{irc, {msg, {RT, [P, dice3(lists:flatten(io_lib:format("3d6<=~w", [Targets])), true, Formatter)]}}}.
+gurps(#{reply:=RT,ping:=P,nick:=Nick,params:=OriginalParams}) ->
+	case parse_params(OriginalParams) of
+		{N, []} ->
+			Result = dice3("3d6", true),
+			send_to_all(RT, P, Nick, N, "3d6", Result);
+		{N, Params} ->
+			T = list_to_integer(hd(Params)),
+			Comment = case string:join(tl(Params), " ") of
+				[] -> [];
+				X -> [X,$:,$ ]
+			end,
+			Targets = if
+				T >= 16 -> [6, 16,   17];
+				T == 15 -> [5, 15,   16];
+				T >=  7 -> [4,  T,   17];
+				true    -> [4,  T, T+10]
+			end,
+			Formatter = fun
+				([false,false,false]) -> [Comment, "\x036\x02Critical Failure!\x03\x02"];
+				([false,false, true]) -> [Comment, "\x035\x02Failure!\x03\x02"];
+				([false, true, true]) -> [Comment, "\x033\x02Success!\x03\x02"];
+				([ true, true, true]) -> [Comment, "\x0310\x02Critical Success!\x03\x02"]
+			end,
+			Result = dice3(lists:flatten(io_lib:format("3d6<=~w", [Targets])), true, Formatter),
+			send_to_all(RT, P, Nick, N, io_lib:format("a GURPS test at skill ~b", [T]), Result)
+	end.
 
 % SHADOWRUN
 
-srun(#{reply:=RT,ping:=P,params:=Params}) ->
+srun(#{reply:=RT,ping:=P,nick:=Nick,params:=OriginalParams}) ->
+	{Nicks, Params} = parse_params(OriginalParams),
 	T = list_to_integer(hd(Params)),
 	{_, Dice} = rollraw(T, 6),
 	{One,FivePlus} = lists:foldl(fun(1, {O,F}) -> {O+1,F}; (N, {O,F}) when N >= 5 -> {O, F+1}; (_, D) -> D end, {0,0}, Dice),
@@ -55,8 +85,9 @@ srun(#{reply:=RT,ping:=P,params:=Params}) ->
 		2*One >= T -> [Summary | ": Glitch!"];
 		true -> Summary
 	end,
-	{irc, {msg, {RT, [P, Reply]}}}.
-sredge(#{reply:=RT,ping:=P,params:=Params}) ->
+	send_to_all(RT, P, Nick, Nicks, io_lib:format("a Shadowrun test with ~b dice", [T]), Reply).
+sredge(#{reply:=RT,ping:=P,nick:=Nick,params:=OriginalParams}) ->
+	{Nicks, Params} = parse_params(OriginalParams),
 	T = list_to_integer(hd(Params)),
 	{ExtraDice, Dice} = get_sr_edge(T, 0, []),
 	{One,FivePlus} = lists:foldl(fun(1, {O,F}) -> {O+1,F}; (N, {O,F}) when N >= 5 -> {O, F+1}; (_, D) -> D end, {0,0}, Dice),
@@ -66,7 +97,7 @@ sredge(#{reply:=RT,ping:=P,params:=Params}) ->
 		2*One >= T -> [Summary | ": Glitch!"];
 		true -> Summary
 	end,
-	{irc, {msg, {RT, [P, Reply]}}}.
+	send_to_all(RT, P, Nick, Nicks, io_lib:format("a Shadowrun edge test with ~b dice", [T]), Reply).
 
 get_sr_edge(0, Sixes, D) -> {Sixes, D};
 get_sr_edge(N, Sixes, D) ->
@@ -76,7 +107,8 @@ get_sr_edge(N, Sixes, D) ->
 
 % FATE
 
-fate(#{reply:=RT, ping:=P,params:=Params}) ->
+fate(#{reply:=RT, ping:=P,nick:=Nick,params:=OriginalParams}) ->
+	{Nicks, Params} = parse_params(OriginalParams),
 	N = case Params of
 		[] -> 0;
 		[NS] -> list_to_integer(NS)
@@ -88,7 +120,8 @@ fate(#{reply:=RT, ping:=P,params:=Params}) ->
 	                   (+1) -> ?LGREEN ++ "+" ++ ?RESET
 		end, Dice),
 	Total = lists:foldl(fun erlang:'+'/2, 0, Dice),
-	{irc, {msg, {RT, [P, io_lib:format("[~s|~s] ~s", [Str, show(Total), show(Total+N)])]}}}.
+	Reply = io_lib:format("[~s|~s] ~s", [Str, show(Total), show(Total+N)]),
+	send_to_all(RT, P, Nick, Nicks, io_lib:format("a Fate test at ~s~b", [if N >= 0 -> "+"; true -> "" end, N]), Reply).
 
 show(N) when N < 0 -> io_lib:format("~s~b~s", [?LRED, N, ?RESET]);
 show(N) when N > 0 -> io_lib:format("~s+~b~s", [?LGREEN, N, ?RESET]);
@@ -96,17 +129,26 @@ show(0) -> ?WHITE ++ "+0" ++ ?RESET.
 
 % GENERIC
 
-dice (#{reply:=RT,ping:=P,params:=Params}) -> {irc, {msg, {RT, [P, dice3(string:join(Params, " "), false)]}}}.
-edice(#{reply:=RT,ping:=P,params:=Params}) -> {irc, {msg, {RT, [P, dice3(string:join(Params, " "), true)]}}}.
+dice(X) -> dice(X, false).
+edice(X) -> dice(X, true).
+
+dice (#{reply:=RT,ping:=P,nick:=Nick,params:=OriginalParams}, Expand) ->
+	{Nicks, Params} = parse_params(OriginalParams),
+	DiceString = string:join(Params, " "),
+	Reply = dice3(DiceString, Expand),
+	send_to_all(RT, P, Nick, Nicks, DiceString, Reply).
 
 dice3(String, Expand) -> dice3(String, Expand, fun(T) -> io_lib:format("~w", [T]) end).
 dice3(String, Expand, Formatter) ->
+	io:fwrite("tokenising ~p\n", [String]),
 	case tokenise(String, []) of
 		error -> "Tokenisation error.";
 		Tokens ->
+			io:fwrite("parsing ~p\n", [lists:reverse(Tokens)]),
 			case parse(lists:reverse(Tokens)) of
 				error -> "Parse error.";
 				Expressions ->
+					io:fwrite("evaluating ~p\n", [Expressions]),
 					{S,V} = evaluate(Expressions, Expand),
 					io_lib:format("~s : ~s~n", [Formatter(V),S])
 			end
@@ -121,9 +163,10 @@ tokens2() ->
 tokens1() ->
 	[{" ", '$none'}, {"	", '$none'},
 	 {">", '>'}, {"<", '<'}, {"=", '='},
-	 {"c", 'c'}, {"f", 'f'}, {"#", '#'}, {"!", '!'},
 	 {"+", '+'}, {"-", '-'}, {"*", '*'}, {"/", '/'},
-	 {"(", '('}, {")", ')'}, {"d", 'd'}, {"s", 's'}].
+	 {"(", '('}, {")", ')'}, {"d", 'd'}, {"#", '#'},
+	 {"h", 'h'}, {"H", 'H'}, {"l", 'l'}, {"L", 'L'}
+	].
 
 tokenise([], T) -> T;
 tokenise([A|R], T) when $0 =< A andalso A =< $9 ->
@@ -178,7 +221,7 @@ parseExpr(Expr) when is_list(Expr) ->
 parseExpr(T) -> T.
 
 parseExpression(Lst) ->
-	Priority = [['d'], ['*','/'], ['+','-'], ['>','>=','<=','<','=']],
+	Priority = [['d'], ['L','l','H','h'], ['*','/'], ['+','-'], ['>','>=','<=','<','='], ['#']],
 	lists:foldl(fun parseLeftAssoc/2, Lst, Priority).
 
 parseLeftAssoc(_, error) -> error;
@@ -211,12 +254,8 @@ parseLeftAssoc(OpList, Toks) ->
 	end.
 
 
-%is_acceptable_left(Op, X) when is_list(X) -> lists:member(Op, ['>', '>=', '<', '<=', '==']);
-is_acceptable_left(_, X) -> is_tuple(X) orelse is_number(X) orelse is_list(X).
-
-%is_acceptable_right(_, X, Y) when is_list(X) andalso is_list(Y) -> false;
-%is_acceptable_right(Op, X, _) when is_list(X) andalso length(X) -> lists:member(Op, ['>', '>=', '<', '<=', '==']);
-is_acceptable_right(_, X, _) -> is_tuple(X) orelse is_number(X) orelse is_list(X).
+is_acceptable_left(_, L) -> is_tuple(L) orelse is_number(L) orelse is_list(L).
+is_acceptable_right(_, R, _) -> is_tuple(R) orelse is_number(R) orelse is_list(R).
 
 default_left('d') -> 1;
 default_left(_) -> error.
@@ -259,6 +298,45 @@ comparison(AS, __, AV, BV, OS, OV) when is_list(BV) ->
 
 evaluate(Tree, Expand) ->
 	case Tree of
+		{'#', A, B} ->
+			{AS, AV} = evaluate(A, Expand),
+			case AV of
+				T when is_number(T) andalso T >= 0 andalso T =< 10 ->
+					{Strings, Totals} = lists:unzip(lists:map(fun(_) -> evaluate(B, Expand) end, lists:duplicate(T, x))),
+					{[AS,$#,$[, string:join(Strings, "; "), $]], Totals};
+				_ -> {"{invalid}", 0}
+			end;
+		{Op, {'d',A,B}, X} when Op=='L' orelse Op=='l' orelse Op=='H' orelse Op=='h' ->
+			{AS,AV} = evaluate(A, Expand),
+			{BS,BV} = evaluate(B, Expand),
+			{XS,XV} = evaluate(X, Expand),
+			if
+				not (is_number(AV) andalso is_number(BV) andalso is_number(XV)) orelse XV > AV -> {"{invalid", 0};
+				true ->
+					{Stat, Dice, _} = roll(AV,BV),
+					{Order, UseDice} = case Op of
+						'L' -> {low,  lists:sublist(lists:sort(Dice), XV)}; % keep lowest
+						'l' -> {high, lists:sublist(lists:sort(Dice), XV+1, length(Dice))}; % drop lowest
+						'H' -> {high, lists:sublist(lists:sort(Dice), 1+length(Dice)-XV, length(Dice))}; % keep highest
+						'h' -> {low,  lists:sublist(lists:sort(Dice), 1, length(Dice)-XV)} % drop highest
+					end,
+					Total = lists:foldl(fun erlang:'+'/2, 0, UseDice),
+					Display = if
+						Expand andalso AV =< 10 ->
+							Accepted = lists:map(fun(T) -> [3,$1,$1,integer_to_list(T),3,2,2] end, UseDice),
+							Denied = lists:map(fun(T) -> [3,$1,$3,integer_to_list(T),3,2,2] end, lists:sort(Dice -- UseDice)),
+							[$[, string:join(case Order of
+									low -> Accepted ++ Denied;
+									high -> Denied ++ Accepted
+								end, ", "), $], $= | integer_to_list(Total)];
+						true -> integer_to_list(Total)
+					end,
+					Str = case Stat of
+						ok -> [$[,     AS,$d,BS,atom_to_list(Op),XS,$=,2,Display,2,$]];
+						_ ->  [$[,Stat,AS,$d,BS,atom_to_list(Op),XS,$=,2,Display,2,$]]
+					end,
+					{Str, Total}
+			end;
 		{Op, A, B} ->
 			{AS,AV} = evaluate(A, Expand),
 			{BS,BV} = evaluate(B, Expand),
