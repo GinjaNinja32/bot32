@@ -4,6 +4,11 @@
 
 -include("definitions.hrl").
 
+get_commands() ->
+	[
+		{"update", fun(#{reply:=Reply}) -> {update, Reply} end, host}
+	].
+
 init() ->
 	code:add_path("./mod/bin"),
 	register(bot, self()),
@@ -141,7 +146,7 @@ handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}) ->
 		false ->
 			lists:foreach(fun(Module) ->
 					try
-						call_or(Module, handle_event, [msg, Params], null)
+						util:call_or(Module, handle_event, [msg, Params], null)
 					catch
 						A:B -> logging:log(error, ?MODULE, "Encountered ~p:~p while calling handle_event for ~p!", [A,B,Module])
 					end
@@ -166,17 +171,14 @@ handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}) ->
 				{RCommand, RArguments, Selector} ->
 					logging:log(info, ?MODULE, "Command in ~s from ~s: ~s ~s", [Channel, User#user.nick, RCommand, string:join(RArguments, " ")]),
 					{Command, Arguments} = lists:foldl(fun(Module, {C,A}) ->
-							call_or(Module, pre_command, [C,A], {C,A})
+							util:call_or(Module, pre_command, [C,A], {C,A})
 						end, {RCommand, RArguments}, config:require_value(config, [bot, modules])),
 					Rank = permissions:rankof(User, ReplyChannel),
-					case permissions:hasperm(User, host) of
-						true -> handle_host_command(Rank, User, ReplyChannel, ReplyPing, Command, Arguments, Selector);
-						false ->     handle_command(Rank, User, ReplyChannel, ReplyPing, Command, Arguments, Selector)
-					end;
+					handle_command(Rank, User, ReplyChannel, ReplyPing, Command, Arguments, Selector);
 				notcommand ->
 					lists:foreach(fun(Module) ->
-							call_or(Module, do_extras, [Tokens, ReplyChannel, ReplyPing], null),
-							call_or(Module, handle_event, [msg_nocommand, Params], null)
+							util:call_or(Module, do_extras, [Tokens, ReplyChannel, ReplyPing], null),
+							util:call_or(Module, handle_event, [msg_nocommand, Params], null)
 						end, config:require_value(config, [bot, modules]))
 			end
 	end
@@ -187,7 +189,7 @@ handle_irc(nick, {U=#user{nick=OldNick}, NewNick}) ->
 		OldNick -> config:set_value(config, [bot, nick], NewNick);
 		_ ->
 			lists:foreach(fun(Module) ->
-					call_or(Module, handle_event, [nick, {U, NewNick}], null)
+					util:call_or(Module, handle_event, [nick, {U, NewNick}], null)
 				end, config:require_value(config, [bot, modules]))
 	end;
 
@@ -198,48 +200,15 @@ handle_irc(numeric, {{A,B},Params}) -> logging:log(info, ?MODULE, "Numeric recei
 
 handle_irc(Type, Params) ->
 	lists:foreach(fun(Module) ->
-				call_or(Module, handle_event, [Type, Params], null)
+				util:call_or(Module, handle_event, [Type, Params], null)
 			end, config:require_value(config, [bot, modules])).
-
-handle_host_command(Rank, User, ReplyTo, Ping, Cmd, Params, Selector) ->
-	case string:to_lower(Cmd) of
-		"update" ->		{update, ReplyTo};
-		"help" ->	if Params == [] ->
-						core ! {irc, {msg, {User#user.nick, ["builtin host commands: update, reload_all, drop_all, load_mod, drop_mod, reload_mod"]}}};
-						true -> ok
-					end,
-					handle_command(Rank, User, ReplyTo, Ping, Cmd, Params, Selector);
-
-		_ -> handle_command(Rank, User, ReplyTo, Ping, Cmd, Params, Selector)
-	end.
 
 handle_command(Ranks, User, ReplyTo, Ping, Cmd, Params, Selector) ->
 	Commands = config:require_value(temp, [bot, commands]),
 	Result = case string:to_lower(Cmd) of
-		"call" ->
-			case Params of
-				[] -> {irc, {msg, {ReplyTo, [Ping, "Supply either a nick, or the string 'me', and a name to use!"]}}};
-				[_] -> {irc, {msg, {ReplyTo, [Ping, "Supply a name to use!"]}}};
-				[RawUsr|Nick] ->
-					Usr = case RawUsr of
-						"me" -> string:to_lower(User#user.nick);
-						_ -> string:to_lower(RawUsr)
-					end,
-					case case {lists:member(admin, Ranks), string:to_lower(User#user.nick)} of
-						{true,_} -> ok;
-						{_,Usr} -> ok;
-						_ -> false
-					end of
-						false -> {irc, {msg, {ReplyTo, [Ping, "You are not authorised to do that!"]}}};
-						ok ->
-							Nickname = string:join(Nick, " "),
-							config:set_value(data, [call, Usr], Nickname),
-							{irc, {msg, {ReplyTo, [Ping, "Done."]}}}
-					end
-			end;
 		"help" when Params /= [] ->
 			{HelpCommand, _} = lists:foldl(fun(Module, {C,A}) ->
-					call_or(Module, pre_command, [C,A], {C,A})
+					util:call_or(Module, pre_command, [C,A], {C,A})
 				end, {hd(Params), none}, config:require_value(config, [bot, modules])),
 			HelpTopic = string:join([HelpCommand | tl(Params)], " "),
 			case lists:foldl(fun
@@ -252,7 +221,7 @@ handle_command(Ranks, User, ReplyTo, Ping, Cmd, Params, Selector) ->
 						RankCmds ->
 							case orddict:find(HelpCommand, RankCmds) of
 								{ok, {Mod,_}} ->
-									case call_or(Mod, get_help, [HelpTopic], unhandled) of
+									case util:call_or(Mod, get_help, [HelpTopic], unhandled) of
 										unhandled -> unhandled;
 										Strings ->
 											core ! {irc, {msg, {User#user.nick, ["Help for '", HelpTopic, "':"]}}},
@@ -330,7 +299,3 @@ alternate_commands(Tokens, Modules) ->
 			(Func, false) -> Func(Tokens);
 			(_,Re) -> Re
 		end, false, AltFunctions).
-
-call_or(Mod, Func, Args, Or) ->
-	util:call_or(Mod, Func, Args, Or).
-

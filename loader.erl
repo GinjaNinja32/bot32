@@ -17,6 +17,10 @@ load() ->
 			permissions,
 			random_org,
 			util
+		]),
+	code:add_path("./mod/bin"),
+	compile_to("./mod/bin", [
+			'mod/modules'
 		]).
 
 compile_to(Dir, Files) ->
