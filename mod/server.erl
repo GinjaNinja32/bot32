@@ -99,7 +99,11 @@ pm(ID, Nick, Reply, Ping, [Who | Msg]) when Msg /= [] ->
 	end,
 	{irc, {msg, {Reply, [Ping, RMsg]}}}.
 
-notes(ID, _, Reply, Ping, [Who|_]) ->
+notes(ID, Nick, Reply, Ping, [Who|_]) ->
+	{TrueReply, TruePing} = case lists:member(list_to_atom(lists:flatten(["server_",ID])), permissions:rankof_chan(Reply)) of
+		true -> {Reply, Ping};
+		false -> {Nick, []}
+	end,
 	RMsg = case send2server(ID, "?notes=~s;key=~s", [
 					Who,
 					config:get_value(config, [?MODULE, servers, ID, pass])
@@ -115,7 +119,7 @@ notes(ID, _, Reply, Ping, [Who|_]) ->
 					["Following link valid for approximately ten minutes: http://nyx.gn32.uk/admin/", File, ".txt"]
 			end
 	end,
-	{irc, {msg, {Reply, [Ping, RMsg]}}}.
+	{irc, {msg, {TrueReply, [TruePing, RMsg]}}}.
 
 age(ID, _, Reply, Ping, [Who|_]) ->
 	RMsg = case send2server(ID, "?age=~s;key=~s", [
