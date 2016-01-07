@@ -3,8 +3,20 @@
 
 get_commands() ->
 	[
-		{"call", fun call/1, user}
+		{"call", fun call/1, user},
+		{"call?", fun whatcall/1, user}
 	].
+
+whatcall(#{reply:=Reply, ping:=Ping, params:=Params}) ->
+	case Params of
+		L when length(L) /= 1 -> {irc, {msg, {Reply, [Ping, "Supply a single nick to check!"]}}};
+		[Nick] ->
+			R = case config:get_value(data, [?MODULE, string:to_lower(Nick)]) of
+				'$none' -> ["I don't have a name for ",Nick];
+				T -> [Nick," is known as ",T]
+			end,
+			{irc, {msg, {Reply, [Ping, R]}}}
+	end.
 
 call(#{origin:=User, nick:=OriginNick, reply:=Reply, ping:=Ping, params:=Params}) ->
 	case Params of

@@ -67,9 +67,9 @@ generic(Cmd, ReqPerm) ->
 % Commands
 
 gsr(ID, _, Reply, Ping, []) ->
-	{irc, {msg, {Reply, [Ping, string:join(lists:map(fun({A,_}) -> [hd(A),160,tl(A)] end, config:get_value(config, [?MODULE, ranks, ID], [])), "; ")]}}};
+	{irc, {msg, {Reply, [Ping, ID, $:, $ , string:join(lists:map(fun({A,_}) -> [hd(A),160,tl(A)] end, config:get_value(config, [?MODULE, ranks, ID], [])), "; ")]}}};
 gsr(ID, _, Reply, Ping, Params) ->
-	{irc, {msg, {Reply, [Ping, string:join(lists:map(fun(A) -> grank(ID, string:to_lower(A)) end, Params), "; ")]}}}.
+	{irc, {msg, {Reply, [Ping, ID, $:, $ , string:join(lists:map(fun(A) -> grank(ID, string:to_lower(A)) end, Params), "; ")]}}}.
 
 grank(ID, Who) ->
 	config:get_value(config, [?MODULE, ranks, ID, Who]).
@@ -79,7 +79,7 @@ ssr(ID, _, Reply, Ping, [Nick,Rank]) ->
 		"none" -> config:del_value(config, [?MODULE, ranks, ID, string:to_lower(Nick)]);
 		_ -> config:set_value(config, [?MODULE, ranks, ID, string:to_lower(Nick)], Rank)
 	end,
-	{irc, {msg, {Reply, [Ping, io_lib:format("Set rank of ~p to ~p.", [Nick, Rank])]}}};
+	{irc, {msg, {Reply, [Ping, ID, $:, $ , io_lib:format("Set rank of ~p to ~p.", [Nick, Rank])]}}};
 ssr(_,  _, Reply, Ping, _) -> {irc, {msg, {Reply, [Ping, "Provide a nick and a rank to set!"]}}}.
 
 pm(ID, Nick, Reply, Ping, [Who | Msg]) when Msg /= [] ->
@@ -97,7 +97,7 @@ pm(ID, Nick, Reply, Ping, [Who | Msg]) when Msg /= [] ->
 				[T] -> T
 			end
 	end,
-	{irc, {msg, {Reply, [Ping, RMsg]}}}.
+	{irc, {msg, {Reply, [Ping, ID, $:, $ , RMsg]}}}.
 
 notes(ID, Nick, Reply, Ping, [Who|_]) ->
 	{TrueReply, TruePing} = case lists:member(list_to_atom(lists:flatten(["server_",ID])), permissions:rankof_chan(Reply)) of
@@ -119,7 +119,7 @@ notes(ID, Nick, Reply, Ping, [Who|_]) ->
 					["Following link valid for approximately ten minutes: http://nyx.gn32.uk/admin/", File, ".txt"]
 			end
 	end,
-	{irc, {msg, {TrueReply, [TruePing, RMsg]}}}.
+	{irc, {msg, {TrueReply, [TruePing, ID, $:, $ , RMsg]}}}.
 
 age(ID, _, Reply, Ping, [Who|_]) ->
 	RMsg = case send2server(ID, "?age=~s;key=~s", [
@@ -129,7 +129,7 @@ age(ID, _, Reply, Ping, [Who|_]) ->
 		{error, T} -> io_lib:format("Error: ~s", [T]);
 		Dict -> ["Age of ", Who, ": ", hd(orddict:fetch_keys(Dict))]
 	end,
-	{irc, {msg, {Reply, [Ping, RMsg]}}}.
+	{irc, {msg, {Reply, [Ping, ID, $:, $ , RMsg]}}}.
 
 info(ID, _, Reply, Ping, What) ->
 	RMsg = case send2server(ID, "?info=~s;key=~s", [
@@ -161,15 +161,15 @@ info(ID, _, Reply, Ping, What) ->
 					string:join(lists:map(fun({Key,Name}) -> io_lib:format("~s/(~s)", [Key,Name]) end, Dict), "; ")
 		end
 	end,
-	{irc, {msg, {Reply, [Ping, RMsg]}}}.
+	{irc, {msg, {Reply, [Ping, ID, $:, $ , RMsg]}}}.
 
 
 notify(ID, Nick, Reply, Ping, _) ->
 	case lists:member(string:to_lower(Nick), config:get_value(temp, [?MODULE, notify, ID], [])) of
-		true -> {irc, {msg, {Reply, [Ping, "You are already on the list to be notified!"]}}};
+		true -> {irc, {msg, {Reply, [Ping, ID, $:, $ , "You are already on the list to be notified!"]}}};
 		false ->
 			config:mod_get_value(temp, [?MODULE, notify, ID], fun('$none') -> [string:to_lower(Nick)]; (T) -> [string:to_lower(Nick)|T] end),
-			{irc, {msg, {Reply, [Ping, "You will be notified when the server restarts"]}}}
+			{irc, {msg, {Reply, [Ping, ID, $:, $ , "You will be notified when the server restarts"]}}}
 	end.
 
 % Util
@@ -258,16 +258,17 @@ handle_msg(ID, Chan, Mesg) ->
 	logging:log(info, ?MODULE, "relaying to ~s: ~s", [Chan, Msg]),
 	case string:str(Msg, "Server starting up on ") of
 		1 ->
-			lists:foreach(fun(T) -> core ! {irc, {msg, {T, Msg}}} end, config:get_value(temp, [?MODULE, notify, ID])),
+			lists:foreach(fun(T) -> core ! {irc, {msg, {T, [ID, $:, $ , Msg]}}} end, config:get_value(temp, [?MODULE, notify, ID])),
 			config:set_value(temp, [?MODULE, notify, ID], []);
 		_ -> ok
 	end,
 	case string:str(Msg, "A round of ") of
-		1 -> lists:foreach(fun(T) -> core ! {irc, {msg, {T, Msg}}} end, config:get_value(temp, [?MODULE, notify, ID]));
+		1 -> lists:foreach(fun(T) -> core ! {irc, {msg, {T, [ID, $:, $ , Msg]}}} end, config:get_value(temp, [?MODULE, notify, ID]));
 		_ -> ok
 	end,
 	sendmsg(Chan, Msg).
 
+sendmsg(Chan, none) -> ok;
 sendmsg(Chan, Msg) when length(Msg) > 400 ->
 	{A,B} = lists:split(350, Msg),
 	core ! {irc, {msg, {Chan, A}}},

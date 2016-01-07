@@ -23,8 +23,8 @@ get_commands() ->
 
 get_help(String) ->
 	LString = string:to_lower(String),
-	case lists:filter(fun({K,_,_}) -> LString == atom_to_list(K) end, get_food_options()) of
-		[{_, Options, Format}] ->
+	case lists:filter(fun({K,_}) -> LString == atom_to_list(K) end, get_food_options()) of
+		[{_, {Options, Format}}] ->
 			[
 				["Add with '", String, " add [key] [what]'."],
 				["Key can be: ", string:join(lists:map(fun atom_to_list/1, Options), ", "), $.],
