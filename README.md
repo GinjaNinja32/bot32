@@ -2,7 +2,7 @@ An IRC bot, built in Erlang.
 
 # Configuration:
 `!c <expression> [, <expression> [, <expression [...]]]`
-<expression> is either <path> or <path> = <value>, in Erlang syntax; paths are lists.
+`<expression>` is either `<path>` or `<path> = <value>`, in Erlang syntax; paths are lists.
 
 For example, to instruct the bot to join a list of channels at startup;
 `!c [bot,channels] = ["#channel", "#otherchannel", "#thirdchannel"]`
