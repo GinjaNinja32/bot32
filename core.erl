@@ -24,7 +24,7 @@ init(Server, Transport, Port) ->
 		ssl -> ssl:start();
 		_ -> ok
 	end,
-	{ok, Sock} = Transport:connect(Server, Port, ?SOCK_OPTIONS),
+	{ok, Sock} = Transport:connect(Server, Port, ?SOCK_OPTIONS, 10000),
 	register(core, self()),
 	logging:log(info, "CORE", "starting"),
 	loop(Sock, Transport),

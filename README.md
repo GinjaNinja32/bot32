@@ -1,10 +1,17 @@
 An IRC bot, built in Erlang.
 
 # Configuration:
-TODO. Currently reliant on manual config editing in nonexistant files; keys for the `bot` side are all offered to the config module at the beginning of `bot:init()`. For `core`, they are passed to `require_value()` in the argument-less form of `core:init()`.
+`!c <expression> [, <expression> [, <expression [...]]]`
+<expression> is either <path> or <path> = <value>, in Erlang syntax; paths are lists.
+
+For example, to instruct the bot to join a list of channels at startup;
+`!c [bot,channels] = ["#channel", "#otherchannel", "#thirdchannel"]`
 
 # Starting the bot:
-TODO. `bot_start` script removed due to being outdated and almost certainly not working any more.
+`$ bot_start -s<server> -p<port> -t<transport>`
+Server, port, and transport default to the values in config/core.crl, which should be in the following format (entries can be skipped if desired):
+`[{port,6667}, {server,"irc.example.com"}, {transport,gen_tcp}].` - this is irc.example.com:6667, without SSL
+`[{port,6697}, {server,"irc.whatever.net"}, {transport,ssl}].` - irc.whatever.net:6697, with SSL
 
 # Starting the bot from the shell:
 ```

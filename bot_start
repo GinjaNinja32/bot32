@@ -1,0 +1,42 @@
+#! /usr/bin/env escript
+
+main(Args) ->
+	case catch do_main(Args) of
+		ok -> ok;
+		{invalid_arg, Arg} ->
+			io:fwrite("Invalid argument: ~s\n", [Arg]),
+			halt(1);
+		{required_key_not_found, [core,N]} ->
+			R = case N of
+				server -> "A server address must be specified with -s or inserted into the bot configuration (config/core.crl, key 'server')!";
+				port -> "A server port must be specified with -p or inserted into the bot configuration (config/core.crl, key 'port')!";
+				transport -> "A transport method must be specified with -s or inserted into the bot configuration (config/core.crl, key 'transport')!"
+			end,
+			io:fwrite("~s\n", [R]),
+			halt(2);
+		X ->
+			io:fwrite("~p\n", [X]),
+			halt(3)
+	end.
+
+do_main(Args) ->
+	compile:file(loader),
+	loader:load(),
+	config:start(config),
+	util:waitfor(config),
+	{S,P,T} = get_spt(parse_args(Args)),
+
+	common:start_nospawn(S, T, P).
+
+get_spt({none,P,T}) -> get_spt({config:require_value(config, [core, server]),    P, T});
+get_spt({S,none,T}) -> get_spt({S, config:require_value(config, [core, port]),      T});
+get_spt({S,P,none}) -> get_spt({S, P, config:require_value(config, [core, transport])});
+get_spt(X) -> X.
+
+parse_args(Args) -> parse_args(Args, {none, none, none}).
+
+parse_args([[$-,$s|S]|Rst], {_,P,T}) when S /= [] -> parse_args(Rst,{S,P,T});
+parse_args([[$-,$p|P]|Rst], {S,_,T}) when P /= [] -> parse_args(Rst,{S,P,T});
+parse_args([[$-,$t|T]|Rst], {S,P,_}) when T /= [] -> parse_args(Rst,{S,P,T});
+parse_args([Arg|_], _) -> throw({invalid_arg,Arg});
+parse_args([], SPT) -> SPT.
