@@ -1,16 +1,16 @@
 An IRC bot, built in Erlang.
 
 # Configuration:
-`!c <expression> [, <expression> [, <expression [...]]]`
+`!c <expression> [, <expression> [, <expression [...]]]`  
 `<expression>` is either `<path>` or `<path> = <value>`, in Erlang syntax; paths are lists.
 
-For example, to instruct the bot to join a list of channels at startup;
+For example, to instruct the bot to join a list of channels at startup:  
 `!c [bot,channels] = ["#channel", "#otherchannel", "#thirdchannel"]`
 
 # Starting the bot:
-`$ bot_start -s<server> -p<port> -t<transport>`
-Server, port, and transport default to the values in config/core.crl, which should be in the following format (entries can be skipped if desired):
-`[{port,6667}, {server,"irc.example.com"}, {transport,gen_tcp}].` - this is irc.example.com:6667, without SSL
+`$ bot_start -s<server> -p<port> -t<transport>`  
+Server, port, and transport default to the values in config/core.crl, which should be in the following format (entries can be skipped if desired):  
+`[{port,6667}, {server,"irc.example.com"}, {transport,gen_tcp}].` - this is irc.example.com:6667, without SSL  
 `[{port,6697}, {server,"irc.whatever.net"}, {transport,ssl}].` - irc.whatever.net:6697, with SSL
 
 # Starting the bot from the shell:
