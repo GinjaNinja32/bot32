@@ -322,3 +322,9 @@ call_or(Mod, Func, Args, Or) ->
 		true -> apply(Mod, Func, Args);
 		false -> Or
 	end.
+
+fix_utf8(Str) -> lists:reverse(fix_utf8(Str, [])).
+fix_utf8([A|R], O) when is_integer(A) andalso A > 255 -> fix_utf8(R, [binary_to_list(<<A/utf8>>) | O]);
+fix_utf8([A|R], O) when is_list(A) -> fix_utf8(R, [fix_utf8(A) | O]);
+fix_utf8([A|R], O) -> fix_utf8(R, [A|O]);
+fix_utf8([], O) -> O.

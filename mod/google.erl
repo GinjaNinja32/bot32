@@ -102,11 +102,7 @@ json_handle(RT, P, N, Term, RawJSON, Display) ->
 			core ! {irc, {msg, {RT, [P, Reply]}}}
 	end.
 
-fix(Title) -> lists:reverse(fix(Title, [])).
-fix([A|Rest], Out) when is_integer(A) andalso A > 255 -> fix(Rest, [binary_to_list(<<A/utf8>>) | Out]);
-fix([A|Rest], Out) when is_list(A) -> fix(Rest, [fix(A) | Out]);
-fix([A|Rest], Out) -> fix(Rest, [A | Out]);
-fix([], Out) -> Out.
+fix(Title) -> util:fix_utf8(Title).
 
 traverse_json(JSON, []) -> JSON;
 traverse_json({X,T}, [X|Path]) -> traverse_json(T, Path);

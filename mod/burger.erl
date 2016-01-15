@@ -85,7 +85,7 @@ delfood(#{reply:=RT, ping:=P, params:=[T,K|W]}) ->
 							NewList = lists:delete(Bin, Y),
 							config:set_value(data, [burger, list_to_atom(T), list_to_atom(K)], NewList),
 							"Removed.";
-						false -> "Entry Not found."
+						false -> "Entry not found."
 					end;
 				error -> "Key not found."
 			end;

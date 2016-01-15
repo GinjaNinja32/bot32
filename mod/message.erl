@@ -46,7 +46,7 @@ check_presence_for(NickR) ->
 			case lists:any(fun({_, {_, Recipient, Del, _, _}}) -> not Del andalso Recipient == Nick end,
 					config:get_value(data, [?MODULE, messages])) of
 				true ->
-					core ! {irc, {msg, {Nick, ["You have pending messages."]}}},
+					core ! {irc, {msg, {Nick, ["You have pending messages; use '!cm' to check them."]}}},
 					config:set_value(temp, [?MODULE, poke, Nick], Time);
 				false -> ok
 			end

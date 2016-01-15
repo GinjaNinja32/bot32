@@ -10,7 +10,7 @@ get_commands() ->
 		{"preload", fun preload/1, host}
 	].
 
-initialise() _>
+initialise() ->
 	config:set_value(temp, [?MODULE], []).
 
 deinitialise() ->
@@ -22,7 +22,6 @@ deinitialise() ->
 	io:fwrite("done\n").
 
 pload(#{reply:=R, ping:=P, params:=Params}) ->
-	io:fwrite("~p\n", [Params]),
 	lists:foreach(fun(File) ->
 		case file:open(["./pymod/", File, ".py"], [read]) of
 			{error, T} -> core ! {irc, {msg, {R, [P, io:fwrite("~s: ~p",[File, T])]}}};
@@ -46,7 +45,7 @@ pdrop(#{reply:=R, ping:=P, params:=Params}) ->
 		case config:get_value(temp, [?MODULE, File, pid]) of
 			'$none' -> core ! {irc, {msg, {R, [P, File, " is not loaded"]}}};
 			Pid ->
-				catch python:call(Pid, list_to_atom(File), deinititialise, []),
+				catch python:call(Pid, list_to_atom(File), deinitialise, []),
 				python:stop(Pid),
 				config:del_value(temp, [?MODULE, File]),
 				core ! {irc, {msg, {R, [P, File, " unloaded"]}}}

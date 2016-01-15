@@ -8,11 +8,11 @@ send(Addr, Port, Msg) ->
 				ok ->
 					case recv(Sock) of
 						{ok, V} -> parse(V);
-						{error, T} -> {error, T}
+						{error, T} -> {error, {recv,T}}
 					end;
-				{error, T} -> {error, T}
+				{error, T} -> {error, {send,T}}
 			end;
-		{error, T} -> {error, T}
+		{error, T} -> {error, {connect,T}}
 	end.
 
 encode(Msg) ->
@@ -31,15 +31,15 @@ recv(Sock) ->
 					{ok, lists:reverse(tl(lists:reverse(erlang:binary_to_list(S))))};
 				{error, T} ->
 					gen_tcp:close(Sock),
-					{error, T}
+					{error, {data,T}}
 			end;
 		{error, T} ->
 			gen_tcp:close(Sock),
-			{error, T}
+			{error, {header,T}}
 	end.
 
 parse(Str) ->
-	lists:foldl(fun(T, Dict) -> 
+	lists:foldl(fun(T, Dict) ->
 			case string:tokens(T, "=") of
 				[K,V] -> orddict:store(vdecode(K), vdecode(V), Dict);
 				[K] -> orddict:store(vdecode(K), "?", Dict)
@@ -63,4 +63,4 @@ dict2params(Dict) ->
 			(K,none,Acc) -> [vencode(K), $& | Acc];
 			(K,V,Acc) -> [vencode(K), $=, vencode(V), $& | Acc]
 		end, [], Dict).
-		
+

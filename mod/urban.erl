@@ -48,7 +48,7 @@ create_message(JSON, String, FormatJsonPaths) ->
 				error -> error;
 				URL -> ?CYAN ++ ?UNDERLINE ++ URL ++ ?UNDERLINE ++ ?RESET
 			end;
-		(T) -> traverse_json(JSON, T)
+		(T) -> util:fix_utf8(traverse_json(JSON, T))
 	end, FormatJsonPaths)).
 
 traverse_json(error, _) -> error;

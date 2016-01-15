@@ -38,7 +38,6 @@ time_convert([Time,TZ]) ->
 						{A,B} -> {A + (B div 60),B}
 					end,
 					{H, M} = san(SH, SM),
-					io:fwrite("checking TZ; san(~b, ~b) = {~b, ~b}~n", [SH, SM, H, M]),
 					if
 						H > 12 -> io_lib:format("It was ~b:~s ~s ~s ago.", [Hr, mins(Min), TZName, common:format_time_difference((60-M)*60 + (23-H)*3600)]);
 						true -> io_lib:format("It will be ~b:~s ~s in ~s.", [Hr, mins(Min), TZName, common:format_time_difference(M*60 + H*3600)])

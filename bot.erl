@@ -169,7 +169,7 @@ handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}) ->
 			logging:log(debug2, ?MODULE, "Parsing command: ~p", [Tokens]),
 			case parse_command(Tokens, Channel == config:require_value(config, [bot, nick])) of
 				{RCommand, RArguments, Selector} ->
-					logging:log(info, ?MODULE, "Command in ~s from ~s: ~s ~s", [Channel, User#user.nick, RCommand, string:join(RArguments, " ")]),
+					logging:log(info, ?MODULE, "Command in ~s from ~s: ~s~s ~s", [Channel, User#user.nick, RCommand, if Selector /= [] -> [$@|Selector]; true -> [] end, string:join(RArguments, " ")]),
 					{Command, Arguments} = lists:foldl(fun(Module, {C,A}) ->
 							util:call_or(Module, pre_command, [C,A], {C,A})
 						end, {RCommand, RArguments}, config:require_value(config, [bot, modules])),

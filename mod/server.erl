@@ -5,13 +5,14 @@
 
 get_commands() ->
 	[
-		{"notify", generic(notify, none),    user},
-		{"ssr",    generic(ssr,   "host"),   server},
-		{"gsr",    generic(gsr,   "host"),   server},
-		{"age",    generic(age,   "server"), server},
-		{"notes",  generic(notes, "server"), server},
-		{"info",   generic(info,  "server"), server},
-		{"pm",     generic(pm,    "server"), server}
+		{"notify",   generic(notify,   none),    user},
+		{"unnotify", generic(unnotify, none),    user},
+		{"ssr",      generic(ssr,     "host"),   server},
+		{"gsr",      generic(gsr,     "host"),   server},
+		{"age",      generic(age,     "server"), server},
+		{"notes",    generic(notes,   "server"), server},
+		{"info",     generic(info,    "server"), server},
+		{"pm",       generic(pm,      "server"), server}
 	].
 
 initialise() ->
@@ -39,7 +40,7 @@ generic(Cmd, ReqPerm) ->
 			Selector /= [] ->
 				case config:get_value(config, [?MODULE, servers, string:to_lower(Selector)]) of
 					'$none' -> {error, "Invalid server selector!"};
-					_ -> string:to_lower(Selector)
+					_ -> {string:to_lower(Selector), [string:to_lower(Selector),$:,$ ]}
 				end;
 			true ->
 				Chan = if
@@ -50,15 +51,15 @@ generic(Cmd, ReqPerm) ->
 					'$none' ->
 						case config:get_value(config, [?MODULE, default, default]) of
 							'$none' -> {error, "You must provide a server to use!"};
-							T -> T
+							T -> {T, ""}
 						end;
-					T -> T
+					T -> {T, ""}
 				end
 		end of
 			{error, Msg} -> {irc, {msg, {Reply, [Ping, Msg]}}};
-			ID ->
+			{ID, VID} ->
 				case ReqPerm == none orelse permissions:hasperm(User, Reply, list_to_atom(lists:flatten([ReqPerm,$_|ID]))) of
-					true -> ?MODULE:Cmd(ID, Nick, Reply, Ping, Params);
+					true -> ?MODULE:Cmd(VID, ID, Nick, Reply, Ping, Params);
 					false -> {irc, {msg, {Reply, [Ping, "You are not authorised to do that."]}}}
 				end
 		end
@@ -66,23 +67,29 @@ generic(Cmd, ReqPerm) ->
 
 % Commands
 
-gsr(ID, _, Reply, Ping, []) ->
-	{irc, {msg, {Reply, [Ping, ID, $:, $ , string:join(lists:map(fun({A,_}) -> [hd(A),160,tl(A)] end, config:get_value(config, [?MODULE, ranks, ID], [])), "; ")]}}};
-gsr(ID, _, Reply, Ping, Params) ->
-	{irc, {msg, {Reply, [Ping, ID, $:, $ , string:join(lists:map(fun(A) -> grank(ID, string:to_lower(A)) end, Params), "; ")]}}}.
+gsr(VID,ID, _, Reply, Ping, []) ->
+	{irc, {msg, {Reply, [Ping, VID, string:join(lists:map(fun({A,_}) -> [hd(A),160,tl(A)] end, config:get_value(config, [?MODULE, ranks, ID], [])), "; ")]}}};
+gsr(VID,ID, _, Reply, Ping, Params) ->
+	{irc, {msg, {Reply, [Ping, VID, string:join(lists:map(fun(A) -> [A, " = ", gsrank(ID, string:to_lower(A))] end, Params), "; ")]}}}.
 
 grank(ID, Who) ->
 	config:get_value(config, [?MODULE, ranks, ID, Who]).
+gsrank(ID, Who) ->
+	case grank(ID, Who) of
+		'$none' -> "(none)";
+		T -> T
+	end.
 
-ssr(ID, _, Reply, Ping, [Nick,Rank]) ->
+ssr(VID, ID, _, Reply, Ping, [Nick|RankT]) when RankT /= [] ->
+	Rank = string:join(RankT, " "),
 	case Rank of
 		"none" -> config:del_value(config, [?MODULE, ranks, ID, string:to_lower(Nick)]);
 		_ -> config:set_value(config, [?MODULE, ranks, ID, string:to_lower(Nick)], Rank)
 	end,
-	{irc, {msg, {Reply, [Ping, ID, $:, $ , io_lib:format("Set rank of ~p to ~p.", [Nick, Rank])]}}};
-ssr(_,  _, Reply, Ping, _) -> {irc, {msg, {Reply, [Ping, "Provide a nick and a rank to set!"]}}}.
+	{irc, {msg, {Reply, [Ping, VID, io_lib:format("Set rank of ~p to ~p.", [Nick, Rank])]}}};
+ssr(_, _, _, Reply, Ping, _) -> {irc, {msg, {Reply, [Ping, "Provide a nick and a rank to set!"]}}}.
 
-pm(ID, Nick, Reply, Ping, [Who | Msg]) when Msg /= [] ->
+pm(VID, ID, Nick, Reply, Ping, [Who | Msg]) when Msg /= [] ->
 	RMsg = case send2server(ID, "?adminmsg=~s;msg=~s;key=~s;sender=~s;rank=~s", [
 					Who,
 					string:join(Msg, " "),
@@ -97,9 +104,9 @@ pm(ID, Nick, Reply, Ping, [Who | Msg]) when Msg /= [] ->
 				[T] -> T
 			end
 	end,
-	{irc, {msg, {Reply, [Ping, ID, $:, $ , RMsg]}}}.
+	{irc, {msg, {Reply, [Ping, VID, RMsg]}}}.
 
-notes(ID, Nick, Reply, Ping, [Who|_]) ->
+notes(VID, ID, Nick, Reply, Ping, [Who|_]) ->
 	{TrueReply, TruePing} = case lists:member(list_to_atom(lists:flatten(["server_",ID])), permissions:rankof_chan(Reply)) of
 		true -> {Reply, Ping};
 		false -> {Nick, []}
@@ -119,9 +126,9 @@ notes(ID, Nick, Reply, Ping, [Who|_]) ->
 					["Following link valid for approximately ten minutes: http://nyx.gn32.uk/admin/", File, ".txt"]
 			end
 	end,
-	{irc, {msg, {TrueReply, [TruePing, ID, $:, $ , RMsg]}}}.
+	{irc, {msg, {TrueReply, [TruePing, VID, RMsg]}}}.
 
-age(ID, _, Reply, Ping, [Who|_]) ->
+age(VID, ID, _, Reply, Ping, [Who|_]) ->
 	RMsg = case send2server(ID, "?age=~s;key=~s", [
 					Who,
 					config:get_value(config, [?MODULE, servers, ID, pass])
@@ -129,9 +136,9 @@ age(ID, _, Reply, Ping, [Who|_]) ->
 		{error, T} -> io_lib:format("Error: ~s", [T]);
 		Dict -> ["Age of ", Who, ": ", hd(orddict:fetch_keys(Dict))]
 	end,
-	{irc, {msg, {Reply, [Ping, ID, $:, $ , RMsg]}}}.
+	{irc, {msg, {Reply, [Ping, VID, RMsg]}}}.
 
-info(ID, _, Reply, Ping, What) ->
+info(VID, ID, _, Reply, Ping, What) ->
 	RMsg = case send2server(ID, "?info=~s;key=~s", [
 					string:join(What, " "),
 					config:get_value(config, [?MODULE, servers, ID, pass])
@@ -161,15 +168,23 @@ info(ID, _, Reply, Ping, What) ->
 					string:join(lists:map(fun({Key,Name}) -> io_lib:format("~s/(~s)", [Key,Name]) end, Dict), "; ")
 		end
 	end,
-	{irc, {msg, {Reply, [Ping, ID, $:, $ , RMsg]}}}.
+	{irc, {msg, {Reply, [Ping, VID, RMsg]}}}.
 
 
-notify(ID, Nick, Reply, Ping, _) ->
+notify(VID, ID, Nick, Reply, Ping, _) ->
 	case lists:member(string:to_lower(Nick), config:get_value(temp, [?MODULE, notify, ID], [])) of
-		true -> {irc, {msg, {Reply, [Ping, ID, $:, $ , "You are already on the list to be notified!"]}}};
+		true -> {irc, {msg, {Reply, [Ping, VID, "You are already on the list to be notified!"]}}};
 		false ->
 			config:mod_get_value(temp, [?MODULE, notify, ID], fun('$none') -> [string:to_lower(Nick)]; (T) -> [string:to_lower(Nick)|T] end),
-			{irc, {msg, {Reply, [Ping, ID, $:, $ , "You will be notified when the server restarts"]}}}
+			{irc, {msg, {Reply, [Ping, VID, "You will be notified when the server restarts."]}}}
+	end.
+
+unnotify(VID, ID, Nick, Reply, Ping, _) ->
+	case lists:member(string:to_lower(Nick), config:get_value(temp, [?MODULE, notify, ID], [])) of
+		false -> {irc, {msg, {Reply, [Ping, VID, "You are not on the list to be notified!"]}}};
+		true ->
+			config:mod_get_value(temp, [?MODULE, notify, ID], fun(T) -> lists:delete(string:to_lower(Nick), T) end),
+			{irc, {msg, {Reply, [Ping, VID, "You have been removed from the notify list."]}}}
 	end.
 
 % Util
@@ -268,24 +283,20 @@ handle_msg(ID, Chan, Mesg) ->
 	end,
 	sendmsg(Chan, Msg).
 
-sendmsg(Chan, none) -> ok;
-sendmsg(Chan, Msg) when length(Msg) > 400 ->
-	{A,B} = lists:split(350, Msg),
-	core ! {irc, {msg, {Chan, A}}},
-	sendmsg(Chan, "<continued>" ++ B);
+sendmsg(none, _) -> ok;
 sendmsg(Chan, Msg) ->
-	core ! {irc, {msg, {Chan, Msg}}}.
+	sendmsg(Chan, lists:map(fun list_to_binary/1, string:tokens(Msg, " ")), <<>>).
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+sendmsg(Chan, [], Bin) ->
+	core ! {irc, {msg, {Chan, Bin}}};
+sendmsg(Chan, [Fst|Rst], Bin) ->
+	NewBin = case byte_size(Bin) + byte_size(Fst) of
+		T when T > 380 ->
+			core ! {irc, {msg, {Chan, Bin}}},
+			<<"<continued> ">>;
+		_ when Bin == <<>> ->
+			<<>>;
+		_ ->
+			<<Bin/binary, 32>>
+	end,
+	sendmsg(Chan, Rst, <<NewBin/binary, Fst/binary>>).

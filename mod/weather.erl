@@ -47,6 +47,6 @@ create_reply(Dict) ->
 	Str = lists:foldr(fun({Key,Format}, String) ->
 			case orddict:find(Key, Dict) of
 				error -> String;
-				{ok,V} -> [io_lib:format(Format, [string:strip(V)]) | String]
+				{ok,V} -> [io_lib:format(Format, [string:strip(util:fix_utf8(V))]) | String]
 			end end, [], ?WEATHER_STRINGS),
 	string:join(Str, "; ").

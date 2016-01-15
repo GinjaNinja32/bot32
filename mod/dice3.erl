@@ -27,23 +27,27 @@ get_help(_) -> unhandled.
 
 % utils
 
-parse_params([[$@|Nicks] | Params]) -> {string:tokens(Nicks, ":/|"), Params};
-parse_params(Params) -> {[], Params}.
+nicks(Sel) ->
+	string:tokens(Sel, ":/|").
 
 send_to_all(RT, P, Nick, Others, DiceString, Result) ->
-	core ! {irc, {msg, {RT, [P, Result]}}},
-	lists:foreach(fun(T) ->
-		core ! {irc, {msg, {T, [Nick, " has rolled ", DiceString, ": ", Result]}}}
+	case lists:member("-", Others) of
+		false -> core ! {irc, {msg, {RT, [P, Result]}}};
+		true -> ok
+	end,
+	lists:foreach(fun
+		("-") -> ok;
+		(T) -> core ! {irc, {msg, {T, [Nick, " has rolled ", DiceString, ": ", Result]}}}
 	end, Others).
 
 % GURPS
 
-gurps(#{reply:=RT,ping:=P,nick:=Nick,params:=OriginalParams}) ->
-	case parse_params(OriginalParams) of
-		{N, []} ->
+gurps(#{reply:=RT, ping:=P, nick:=Nick, params:=Params, selector:=Selector}) ->
+	case Params of
+		[] ->
 			Result = dice3("3d6", true),
-			send_to_all(RT, P, Nick, N, "3d6", Result);
-		{N, Params} ->
+			send_to_all(RT, P, Nick, nicks(Selector), "3d6", Result);
+		_ ->
 			T = list_to_integer(hd(Params)),
 			Comment = case string:join(tl(Params), " ") of
 				[] -> [];
@@ -62,13 +66,12 @@ gurps(#{reply:=RT,ping:=P,nick:=Nick,params:=OriginalParams}) ->
 				([ true, true, true]) -> [Comment, "\x0310\x02Critical Success!\x03\x02"]
 			end,
 			Result = dice3(lists:flatten(io_lib:format("3d6<=~w", [Targets])), true, Formatter),
-			send_to_all(RT, P, Nick, N, io_lib:format("a GURPS test at skill ~b", [T]), Result)
+			send_to_all(RT, P, Nick, nicks(Selector), io_lib:format("a GURPS test at skill ~b", [T]), Result)
 	end.
 
 % SHADOWRUN
 
-srun(#{reply:=RT,ping:=P,nick:=Nick,params:=OriginalParams}) ->
-	{Nicks, Params} = parse_params(OriginalParams),
+srun(#{reply:=RT,ping:=P,nick:=Nick,params:=Params,selector:=Selector}) ->
 	T = list_to_integer(hd(Params)),
 	{_, Dice} = rollraw(T, 6),
 	{One,FivePlus} = lists:foldl(fun(1, {O,F}) -> {O+1,F}; (N, {O,F}) when N >= 5 -> {O, F+1}; (_, D) -> D end, {0,0}, Dice),
@@ -78,9 +81,8 @@ srun(#{reply:=RT,ping:=P,nick:=Nick,params:=OriginalParams}) ->
 		2*One >= T -> [Summary | ": Glitch!"];
 		true -> Summary
 	end,
-	send_to_all(RT, P, Nick, Nicks, io_lib:format("a Shadowrun test with ~b dice", [T]), Reply).
-sredge(#{reply:=RT,ping:=P,nick:=Nick,params:=OriginalParams}) ->
-	{Nicks, Params} = parse_params(OriginalParams),
+	send_to_all(RT, P, Nick, nicks(Selector), io_lib:format("a Shadowrun test with ~b dice", [T]), Reply).
+sredge(#{reply:=RT,ping:=P,nick:=Nick,params:=Params, selector:=Selector}) ->
 	T = list_to_integer(hd(Params)),
 	{ExtraDice, Dice} = get_sr_edge(T, 0, []),
 	{One,FivePlus} = lists:foldl(fun(1, {O,F}) -> {O+1,F}; (N, {O,F}) when N >= 5 -> {O, F+1}; (_, D) -> D end, {0,0}, Dice),
@@ -90,7 +92,7 @@ sredge(#{reply:=RT,ping:=P,nick:=Nick,params:=OriginalParams}) ->
 		2*One >= T -> [Summary | ": Glitch!"];
 		true -> Summary
 	end,
-	send_to_all(RT, P, Nick, Nicks, io_lib:format("a Shadowrun edge test with ~b dice", [T]), Reply).
+	send_to_all(RT, P, Nick, nicks(Selector), io_lib:format("a Shadowrun edge test with ~b dice", [T]), Reply).
 
 get_sr_edge(0, Sixes, D) -> {Sixes, D};
 get_sr_edge(N, Sixes, D) ->
@@ -100,8 +102,7 @@ get_sr_edge(N, Sixes, D) ->
 
 % FATE
 
-fate(#{reply:=RT, ping:=P,nick:=Nick,params:=OriginalParams}) ->
-	{Nicks, Params} = parse_params(OriginalParams),
+fate(#{reply:=RT, ping:=P,nick:=Nick,params:=Params, selector:=Selector}) ->
 	N = case Params of
 		[] -> 0;
 		[NS] -> list_to_integer(NS)
@@ -114,7 +115,7 @@ fate(#{reply:=RT, ping:=P,nick:=Nick,params:=OriginalParams}) ->
 		end, Dice),
 	Total = lists:foldl(fun erlang:'+'/2, 0, Dice),
 	Reply = io_lib:format("[~s|~s] ~s", [Str, show(Total), show(Total+N)]),
-	send_to_all(RT, P, Nick, Nicks, io_lib:format("a Fate test at ~s~b", [if N >= 0 -> "+"; true -> "" end, N]), Reply).
+	send_to_all(RT, P, Nick, nicks(Selector), io_lib:format("a Fate test at ~s~b", [if N >= 0 -> "+"; true -> "" end, N]), Reply).
 
 show(N) when N < 0 -> io_lib:format("~s~b~s", [?LRED, N, ?RESET]);
 show(N) when N > 0 -> io_lib:format("~s+~b~s", [?LGREEN, N, ?RESET]);
@@ -125,11 +126,10 @@ show(0) -> ?WHITE ++ "+0" ++ ?RESET.
 dice(X) -> dice(X, false).
 edice(X) -> dice(X, true).
 
-dice (#{reply:=RT,ping:=P,nick:=Nick,params:=OriginalParams}, Expand) ->
-	{Nicks, Params} = parse_params(OriginalParams),
+dice (#{reply:=RT,ping:=P,nick:=Nick,params:=Params, selector:=Selector}, Expand) ->
 	DiceString = string:join(Params, " "),
 	Reply = dice3(DiceString, Expand),
-	send_to_all(RT, P, Nick, Nicks, DiceString, Reply).
+	send_to_all(RT, P, Nick, nicks(Selector), DiceString, Reply).
 
 dice3(String, Expand) -> dice3(String, Expand, fun(T) -> io_lib:format("~w", [T]) end).
 dice3(String, Expand, Formatter) ->
