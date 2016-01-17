@@ -36,7 +36,7 @@ get_spt(X) -> X.
 parse_args(Args) -> parse_args(Args, {none, none, none}).
 
 parse_args([[$-,$s|S]|Rst], {_,P,T}) when S /= [] -> parse_args(Rst,{S,P,T});
-parse_args([[$-,$p|P]|Rst], {S,_,T}) when P /= [] -> parse_args(Rst,{S,P,T});
-parse_args([[$-,$t|T]|Rst], {S,P,_}) when T /= [] -> parse_args(Rst,{S,P,T});
+parse_args([[$-,$p|P]|Rst], {S,_,T}) when P /= [] -> parse_args(Rst,{S,list_to_integer(P),T});
+parse_args([[$-,$t|T]|Rst], {S,P,_}) when T /= [] -> parse_args(Rst,{S,P,list_to_atom(T)});
 parse_args([Arg|_], _) -> throw({invalid_arg,Arg});
 parse_args([], SPT) -> SPT.
