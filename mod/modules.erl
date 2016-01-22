@@ -118,7 +118,10 @@ drop_module(Module) ->
 			logging:log(info, ?MODULE, "dropping ~p", [Module]),
 
 			Cleaned = orddict:map(fun(_,RankCmds) ->
-					orddict:filter(fun(_,{Mod,_}) -> Mod /= Module end, RankCmds)
+					orddict:filter(fun
+							(_,{Mod,_,_}) -> Mod /= Module;
+							(_,{Mod,_}) -> Mod /= Module
+						end, RankCmds)
 				end, config:require_value(temp, [bot, commands])),
 			Removed = orddict:filter(fun(_,V) -> V /= [] end, Cleaned),
 			config:set_value(temp, [bot, commands], Removed),
@@ -140,6 +143,11 @@ load_module(Module) ->
 						orddict:store(Restrict, case orddict:find(Restrict, Commands) of
 								{ok, CmdList} -> orddict:store(Cmd, {Module, Fun}, CmdList);
 								error ->         orddict:store(Cmd, {Module, Fun}, [     ])
+							end, Commands);
+					({Cmd, Fun, Args, Restrict}, Commands) ->
+						orddict:store(Restrict, case orddict:find(Restrict, Commands) of
+								{ok, CmdList} -> orddict:store(Cmd, {Module, Fun, Args}, CmdList);
+								error ->         orddict:store(Cmd, {Module, Fun, Args}, [     ])
 							end, Commands)
 				end, config:require_value(temp, [bot, commands]), util:call_or(Module, get_commands, [], [])),
 			config:set_value(temp, [bot, commands], NewCmds),

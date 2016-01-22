@@ -102,38 +102,9 @@ loop() ->
 		S -> logging:log(error, ?MODULE, "unknown code ~p, continuing", [S]), bot:loop()
 	end.
 
-desel(A,B) ->
-	case lists:splitwith(fun(T)->T /= $@ end, A) of
-		{Cmd, [_|Sel]} -> {Cmd, B, Sel};
-		{Cmd, []} -> {Cmd, B, []}
-	end.
-
-parse_command([],_) -> notcommand;
-parse_command(Params, IsQuery) ->
-	<<FirstChar/utf8, Rest/binary>> = list_to_binary(hd(Params)),
-	case lists:member(FirstChar, config:require_value(config, [bot, prefix])) of
-		true when Rest /= <<>> -> desel(binary_to_list(Rest), tl(Params));
-		true -> notcommand;
-		false ->
-			if
-				length(Params) > 1 ->
-					BotAliases = [config:require_value(config, [bot, nick]) | config:require_value(config, [bot, names])],
-					case lists:any(fun(Alias) -> R=util:regex_escape(Alias), re:run(hd(Params), <<"^", R/binary, "($|[^a-zA-Z0-9])">>, [caseless, {capture, none}]) == match end, BotAliases) of
-						true -> case tl(Params) of
-								[] -> {[], [], []};
-								_ -> desel(hd(tl(Params)), tl(tl(Params)))
-							end;
-						false ->
-							notcommand
-					end;
-			%	IsQuery -> {hd(Params),tl(Params)};
-				true -> notcommand
-			end
-	end.
-
 check_utf8(<<>>) -> true;
-check_utf8(<<_/utf8,B/binary>>) -> check_utf8(B);
-check_utf8(X) -> io:fwrite("~p~n", [X]), false.
+check_utf8(<<_/utf8, B/binary>>) -> check_utf8(B);
+check_utf8(_) -> false.
 
 handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}) ->
 	case lists:all(fun(T) -> check_utf8(list_to_binary(T)) end, Tokens) of
@@ -145,41 +116,19 @@ handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}) ->
 			ok;
 		false ->
 			lists:foreach(fun(Module) ->
-					try
-						util:call_or(Module, handle_event, [msg, Params], null)
-					catch
-						A:B -> logging:log(error, ?MODULE, "Encountered ~p:~p while calling handle_event for ~p!", [A,B,Module])
+					case catch util:call_or(Module, handle_event, [msg, Params], null) of
+						{'EXIT', X} -> logging:log(error, ?MODULE, "handle_event for ~p exited ~p", [Module, X]);
+						{'EXIT', RS, X} -> logging:log(error, ?MODULE, "handle_event for ~p errored ~p (~p)", [Module, X, RS]);
+						_ -> ok
 					end
 				end, config:get_value(config, [bot, modules])),
 			case config:require_value(config, [bot, nick]) of
 				Channel ->
-					ReplyChannel = Nick,
-					ReplyPing = "",
 					case permissions:hasperm(User, admin) of
 						true -> ok;
 						_ -> permissions:message_all_rank(["Query from ",Nick], string:join(Tokens, " "), pmlog)
 					end;
-				_ ->
-					ReplyChannel = Channel,
-					ReplyPing = case config:get_value(data, [call, string:to_lower(Nick)]) of
-						'$none' -> Nick ++ ": ";
-						T -> T ++ "\x0F: "
-					end
-			end,
-			logging:log(debug2, ?MODULE, "Parsing command: ~p", [Tokens]),
-			case parse_command(Tokens, Channel == config:require_value(config, [bot, nick])) of
-				{RCommand, RArguments, Selector} ->
-					logging:log(info, ?MODULE, "Command in ~s from ~s: ~s~s ~s", [Channel, User#user.nick, RCommand, if Selector /= [] -> [$@|Selector]; true -> [] end, string:join(RArguments, " ")]),
-					{Command, Arguments} = lists:foldl(fun(Module, {C,A}) ->
-							util:call_or(Module, pre_command, [C,A], {C,A})
-						end, {RCommand, RArguments}, config:require_value(config, [bot, modules])),
-					Rank = permissions:rankof(User, ReplyChannel),
-					handle_command(Rank, User, ReplyChannel, ReplyPing, Command, Arguments, Selector);
-				notcommand ->
-					lists:foreach(fun(Module) ->
-							util:call_or(Module, do_extras, [Tokens, ReplyChannel, ReplyPing], null),
-							util:call_or(Module, handle_event, [msg_nocommand, Params], null)
-						end, config:require_value(config, [bot, modules]))
+				_ -> ok
 			end
 	end
 	end;
@@ -203,99 +152,3 @@ handle_irc(Type, Params) ->
 				util:call_or(Module, handle_event, [Type, Params], null)
 			end, config:require_value(config, [bot, modules])).
 
-handle_command(Ranks, User, ReplyTo, Ping, Cmd, Params, Selector) ->
-	Commands = config:require_value(temp, [bot, commands]),
-	Result = case string:to_lower(Cmd) of
-		"help" when Params /= [] ->
-			{HelpCommand, _} = lists:foldl(fun(Module, {C,A}) ->
-					util:call_or(Module, pre_command, [C,A], {C,A})
-				end, {hd(Params), none}, config:require_value(config, [bot, modules])),
-			HelpTopic = string:join([HelpCommand | tl(Params)], " "),
-			case lists:foldl(fun
-				(Rank, unhandled) ->
-					case case orddict:find(Rank, Commands) of
-						{ok, X} -> X;
-						error -> orddict:new()
-					end of
-						[] -> unhandled;
-						RankCmds ->
-							case orddict:find(HelpCommand, RankCmds) of
-								{ok, {Mod,_}} ->
-									case util:call_or(Mod, get_help, [HelpTopic], unhandled) of
-										unhandled -> unhandled;
-										Strings ->
-											core ! {irc, {msg, {User#user.nick, ["Help for '", HelpTopic, "':"]}}},
-											lists:foreach(fun(T) -> core ! {irc, {msg, {User#user.nick, T}}} end, Strings), ok
-									end;
-								error -> unhandled
-							end
-					end;
-				(_, Result) -> Result
-			end, unhandled, Ranks) of
-				unhandled -> core ! {irc, {msg, {ReplyTo, [Ping, "No help found for '", HelpTopic, "'."]}}};
-				_ -> ok
-			end,
-			ok;
-		_ -> lists:foldl(fun
-			(Rank, unhandled) ->
-				case case orddict:find(Rank, Commands) of
-					{ok, X} -> X;
-					error -> orddict:new()
-				end of
-					[] -> unhandled;
-					RankCmds ->
-						case string:to_lower(Cmd) of
-							"help" ->
-								do_help_for(User#user.nick, Rank, orddict:fetch_keys(RankCmds)),
-								unhandled;
-								%core ! {irc, {msg, {Origin, [io_lib:format("~s commands: ",[Rank]), string:join(orddict:fetch_keys(RankCmds), ", "), "."]}}}, unhandled;
-							T -> case orddict:find(T, RankCmds) of
-								{ok, {_Module,Result}} ->
-									ParamMap = #{
-											origin => User,
-											nick => User#user.nick,
-											reply => ReplyTo,
-											ping => Ping,
-											params => Params,
-											selector => Selector
-										},
-									apply(Result, [ParamMap]);
-								error -> unhandled
-							end
-						end
-				end;
-			(_, Result) -> Result
-		end, unhandled, Ranks)
-	end,
-	case string:to_lower(Cmd) of
-		"help" -> ok;
-		_ ->
-			case Result of
-				unhandled ->
-					case alternate_commands([Cmd | Params], config:get_value(config, [bot, modules])) of
-						false -> ok; % {irc, {msg, {ReplyTo, [Ping, "Unknown command '",Cmd,"'!"]}}};
-						R -> {irc, {msg, {ReplyTo, [Ping, R]}}}
-					end;
-				_ -> Result
-			end
-	end.
-
-do_help_for(_, _, []) -> ok;
-do_help_for(Origin, Rank, Cmds) when length(Cmds) < 35 -> core ! {irc, {msg, {Origin, [io_lib:format("~s commands: ",[Rank]), string:join(Cmds, ", "), "."]}}};
-do_help_for(Origin, Rank, Cmds) ->
-	{A,B} = lists:split(35, Cmds),
-	core ! {irc, {msg, {Origin, [io_lib:format("~s commands: ",[Rank]), string:join(A, ", "), "."]}}},
-	do_help_for(Origin, Rank, B).
-
-
-alternate_commands(Tokens, Modules) ->
-	AltFunctions = lists:foldl(fun(Mod,Alt) ->
-			case lists:member({alt_funcs, 0}, Mod:module_info(exports)) of
-				true -> Alt ++ Mod:alt_funcs();
-				false -> Alt
-			end
-		end, [], Modules),
-	lists:foldl(fun
-			(Func, false) -> Func(Tokens);
-			(_,Re) -> Re
-		end, false, AltFunctions).
