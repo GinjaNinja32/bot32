@@ -9,7 +9,12 @@ get_commands() ->
 		{"c", fun c/1, host}
 	].
 
-c(#{reply:=Reply, ping:=Ping, params:=Params}) ->
+c(#{reply:=Reply, ping:=Ping, params:=Params, selector:=Selector}) ->
+	C = case Selector of
+		"data" -> data;
+		"temp" -> temp;
+		_ -> config
+	end,
 	case erl_scan:string(string:join(Params, " ") ++ ".") of
 		{ok, TokLst, _} ->
 			case erl_parse:parse_exprs(TokLst) of
@@ -19,11 +24,11 @@ c(#{reply:=Reply, ping:=Ping, params:=Params}) ->
 								{match,_ , PA = {cons,_,_,_}, VA} ->
 									Path = erl_parse:normalise(PA),
 									Val = erl_parse:normalise(VA),
-									config:set_value(config, Path, Val),
-									core ! {irc, {msg, {Reply, [Ping, io_lib:format("Set config:~p to ~p.", [Path, Val])]}}};
+									config:set_value(C, Path, Val),
+									core ! {irc, {msg, {Reply, [Ping, io_lib:format("Set ~p:~p to ~p.", [C, Path, Val])]}}};
 								PA = {cons,_,_,_} ->
 									Path = erl_parse:normalise(PA),
-									core ! {irc, {msg, {Reply, [Ping, io_lib:format("Value of config:~p: ~p", [Path, config:get_value(config, Path)])]}}};
+									core ! {irc, {msg, {Reply, [Ping, io_lib:format("Value of ~p:~p: ~p", [C, Path, config:get_value(C, Path)])]}}};
 								X ->
 									core ! {irc, {msg, {Reply, [Ping, io_lib:format("Unknown abstract expression ~p", [X])]}}}
 							end

@@ -6,7 +6,7 @@
 get_commands() ->
 	[
 		{"setrank", fun setrank/1, host},
-		{"getrank", fun getrank/1, admin},
+		{"getrank", fun getrank/1, [{"mask",short}], admin},
 		{"whorank", fun whorank/1, admin},
 		{"editrank", fun editrank/1, host},
 		{"getchanperm", fun gchanperm/1, admin},
@@ -122,7 +122,6 @@ setrank(#{reply:=ReplyTo, ping:=Ping, params:=[Rank | Nicks]}) ->
 		throw:return -> {irc, {msg, {ReplyTo, [Ping, "Loop cancelled."]}}}
 	end.
 
-getrank(#{reply:=ReplyTo, ping:=Ping, params:=[]}) -> {irc, {msg, {ReplyTo, [Ping, "Please provide a user to check rank for!"]}}};
 getrank(#{reply:=ReplyTo, ping:=Ping, params:=[Mask]}) ->
 	Reply = case re:run(Mask, "([^!@]+)(!([^!@]+)@([^!@]+))?", [{capture, all_but_first, list}]) of
 		nomatch -> "Invalid mask!";

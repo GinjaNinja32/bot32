@@ -6,9 +6,9 @@
 get_commands() ->
 	[
 		{"cm", fun check_messages/1, user},
-		{"tell", fun new_message/1, user},
-		{"showmsg", fun showmsg/1, user},
-		{"delmsg", fun delmsg/1, user},
+		{"tell", fun new_message/1, [{"target",short}, {"message",long}], user},
+		{"showmsg", fun showmsg/1, [{"id", integer}], user},
+		{"delmsg", fun delmsg/1, [{"id", integer}], user},
 		{"sent", fun sent/1, user},
 		{"pending", fun pending/1, admin}
 	].
@@ -30,12 +30,8 @@ check_messages(#{nick:=Origin, reply:=ReplyTo, ping:=Ping}) ->
 		_ -> ok
 	end.
 
-new_message(#{reply:=ReplyTo, ping:=Ping, params:=[]}) ->
-	{irc, {msg, {ReplyTo, [Ping, "Please provide a recipient and a message."]}}};
-new_message(#{reply:=ReplyTo, ping:=Ping, params:=[_]}) ->
-	{irc, {msg, {ReplyTo, [Ping, "Please provide a message."]}}};
-new_message(#{nick:=Origin, reply:=ReplyTo, ping:=Ping, params:=Params}) ->
-	{irc, {msg, {ReplyTo, [Ping, create_message(Origin, hd(Params), string:join(tl(Params), " "))]}}}.
+new_message(#{nick:=Origin, reply:=ReplyTo, ping:=Ping, params:=[Target, Message]}) ->
+	{irc, {msg, {ReplyTo, [Ping, create_message(Origin, Target, Message)]}}}.
 
 check_presence_for(NickR) ->
 	Nick = string:to_lower(NickR),
@@ -70,35 +66,31 @@ check_messages_for(NickR) ->
 	end, nomessages, config:get_value(data, [?MODULE, messages])).
 
 showmsg(#{origin:=User, nick:=Nick, reply:=Reply, ping:=Ping, params:=[ID]}) ->
-	IDN = list_to_integer(ID),
 	NickL = string:to_lower(Nick),
-	case config:get_value(data, [?MODULE, messages, IDN]) of
+	case config:get_value(data, [?MODULE, messages, ID]) of
 		'$none' -> {irc, {msg, {Reply, [Ping, "That message does not exist."]}}};
 		{Sender, Recipient, Delivered, Timestamp, Message} ->
 			case permissions:hasperm(User, admin) orelse NickL == Sender orelse NickL == Recipient of
 				false -> {irc, {msg, {Reply, [Ping, "You are not authorised to view that message."]}}};
 				true ->
 					{Date,Time} = format_time(Timestamp),
-					{irc, {msg, {Reply, [Ping, io_lib:format("~s - ~b from ~s to ~s at ~s ~s UTC - ~s", [Message, IDN, Sender, Recipient, Date, Time, case Delivered of true -> "Delivered"; false -> "Pending" end])]}}}
+					{irc, {msg, {Reply, [Ping, io_lib:format("~s - ~b from ~s to ~s at ~s ~s UTC - ~s", [Message, ID, Sender, Recipient, Date, Time, case Delivered of true -> "Delivered"; false -> "Pending" end])]}}}
 			end
-	end;
-showmsg(#{reply:=Reply, ping:=Ping}) -> {irc, {msg, {Reply, [Ping, "Provide a single numeric message ID to look up."]}}}.
+	end.
 
 delmsg(#{origin:=User, nick:=Nick, reply:=Reply, ping:=Ping, params:=[ID]}) ->
-	IDN = list_to_integer(ID),
 	NickL = string:to_lower(Nick),
-	case config:get_value(data, [?MODULE, messages, IDN]) of
+	case config:get_value(data, [?MODULE, messages, ID]) of
 		'$none' -> {irc, {msg, {Reply, [Ping, "That message does not exist."]}}};
 		{_, _, true, _, _} -> {irc, {msg, {Reply, [Ping, "You cannot delete delivered messages."]}}};
 		{Sender, _, _, _, _} ->
 			case permissions:hasperm(User, admin) orelse NickL == Sender of
 				false -> {irc, {msg, {Reply, [Ping, "You are not authorised to delete that message."]}}};
 				true ->
-					config:del_value(data, [?MODULE, messages, IDN]),
-					{irc, {msg, {Reply, [Ping, io_lib:format("Message ~b deleted.", [IDN])]}}}
+					config:del_value(data, [?MODULE, messages, ID]),
+					{irc, {msg, {Reply, [Ping, io_lib:format("Message ~b deleted.", [ID])]}}}
 			end
-	end;
-delmsg(#{reply:=Reply, ping:=Ping}) -> {irc, {msg, {Reply, [Ping, "Provide a single numeric message ID to delete."]}}}.
+	end.
 
 sent(#{nick:=O, reply:=RT, ping:=P}) ->
 	OL = string:to_lower(O),

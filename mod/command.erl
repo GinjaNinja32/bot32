@@ -81,7 +81,7 @@ describe_spec(Command, Spec) ->
 				({_,ignore}) -> "(ignored)";
 				(ignore) -> "(ignored)";
 				({Name,_}) -> [$<,Name,$>];
-				(Type) -> [$[,Type,$]]
+				(Type) -> [$[,atom_to_list(Type),$]]
 			end, Spec), " ")].
 
 purespec(Spec) ->
@@ -100,13 +100,20 @@ get_args(Spec, Args) ->
 get_args([], [], X) -> X;
 get_args([], _, _) -> {error, "Too many arguments provided."};
 get_args(_, [], _) -> {error, "Not enough arguments provided."};
+
 get_args([short|SRst],   [T|ARst], X) -> get_args(SRst,ARst,[T|X]);
+
 get_args([ignore], _, X) -> X;
 get_args([ignore|SRst], [_|ARst], X) -> get_args(SRst, ARst, X);
+
+get_args([long], [], _) -> {error, "Not enough arguments provided."};
 get_args([long], Rst, X) -> [string:join(Rst, " ") | X];
 get_args([long|_], _, _) -> {error, "Invalid argument specification (bot bug)"};
+
+get_args([list], [], _) -> {error, "Not enough arguments provided."};
 get_args([list], Rst, X) -> [Rst | X];
 get_args([list|_], _, _) -> {error, "Invalid argument specification (bot bug)"};
+
 get_args([integer|SRst], [T|ARst], X) ->
 	try
 		Z = list_to_integer(T),
