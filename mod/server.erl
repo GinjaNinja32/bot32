@@ -273,12 +273,12 @@ handle_msg(ID, Chan, Mesg) ->
 	logging:log(info, ?MODULE, "relaying to ~s: ~s", [Chan, Msg]),
 	case string:str(Msg, "Server starting up on ") of
 		1 ->
-			lists:foreach(fun(T) -> core ! {irc, {msg, {T, [ID, $:, $ , Msg]}}} end, config:get_value(temp, [?MODULE, notify, ID])),
+			lists:foreach(fun(T) -> core ! {irc, {msg, {T, [ID, $:, $ , Msg]}}} end, config:get_value(temp, [?MODULE, notify, ID], [])),
 			config:set_value(temp, [?MODULE, notify, ID], []);
 		_ -> ok
 	end,
 	case string:str(Msg, "A round of ") of
-		1 -> lists:foreach(fun(T) -> core ! {irc, {msg, {T, [ID, $:, $ , Msg]}}} end, config:get_value(temp, [?MODULE, notify, ID]));
+		1 -> lists:foreach(fun(T) -> core ! {irc, {msg, {T, [ID, $:, $ , Msg]}}} end, config:get_value(temp, [?MODULE, notify, ID], []));
 		_ -> ok
 	end,
 	sendmsg(Chan, Msg).
