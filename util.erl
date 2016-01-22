@@ -102,7 +102,7 @@ addeightball(TRaw) ->
 
 parse_htmlentities(Binary) -> parse_htmlentities(Binary, <<>>).  
 
-parse_htmlentities(<<              >>, X) -> X;  
+parse_htmlentities(<<	      >>, X) -> X;  
 %parse_htmlentities(<<"&quot;", B/binary>>, X) -> parse_htmlentities(B, <<X/binary, "\"">>);  
 %parse_htmlentities(<<"&amp;",  B/binary>>, X) -> parse_htmlentities(B, <<X/binary, "&">>);  
 %parse_htmlentities(<<"&apos;", B/binary>>, X) -> parse_htmlentities(B, <<X/binary, "'">>);  
@@ -130,6 +130,10 @@ charents() ->
 		{<<"lt"  >>, $<},
 		{<<"quot">>, $"},
 		{<<"apos">>, $'},
+
+		{<<"bull">>, 8226},
+		{<<"ndash">>, 8211},
+
 		{<<"acute">>, 180},
 		{<<"cedil">>, 184},
 		{<<"circ">>, 710},
@@ -137,7 +141,6 @@ charents() ->
 		{<<"middot">>, 183},
 		{<<"tilde">>, 732},
 		{<<"uml">>, 168},
-
 		{<<"Aacute">>, 193},
 		{<<"aacute">>, 225},
 		{<<"Acirc">>, 194},
@@ -152,58 +155,58 @@ charents() ->
 		{<<"Auml">>, 196},
 		{<<"auml">>, 228},
 		{<<"Ccedil">>, 199},
-                {<<"ccedil">>, 231},
-                {<<"Eacute">>, 201},
-                {<<"eacute">>, 233},
-                {<<"Ecirc">>, 202},
-                {<<"ecirc">>, 234},
-                {<<"Egrave">>, 200},
+		{<<"ccedil">>, 231},
+		{<<"Eacute">>, 201},
+		{<<"eacute">>, 233},
+		{<<"Ecirc">>, 202},
+		{<<"ecirc">>, 234},
+		{<<"Egrave">>, 200},
 		{<<"egrave">>, 232},
-                {<<"ETH">>, 208},
-                {<<"eth">>, 240},
-                {<<"Euml">>, 203},
-                {<<"euml">>, 235},
-                {<<"Iacute">>, 205},
-                {<<"iacute">>, 237},
-                {<<"Icirc">>, 206},
-                {<<"icirc">>, 238},
-                {<<"Igrave">>, 204},
-                {<<"igrave">>, 236},
-                {<<"Iuml">>, 207},
-                {<<"iuml">>, 239},
-                {<<"Ntilde">>, 209},
-                {<<"ntilde">>, 241},
-                {<<"Oacute">>, 211},
-                {<<"oacute">>, 243},
-                {<<"Ocirc">>, 212},
-                {<<"ocirc">>, 244},
-                {<<"OElig">>, 338},
-                {<<"oelig">>, 339},
-                {<<"Ograve">>, 210},
-                {<<"ograve">>, 242},
-                {<<"Oslash">>, 216},
-                {<<"oslash">>, 248},
-                {<<"Otilde">>, 213},
-                {<<"otilde">>, 245},
-                {<<"Ouml">>, 214},
-                {<<"ouml">>, 246},
-                {<<"Scaron">>, 352},
-                {<<"scaron">>, 353},
-                {<<"szlig">>, 223},
-                {<<"THORN">>, 222},
-                {<<"thorn">>, 254},
-                {<<"Uacute">>, 218},
-                {<<"uacute">>, 250},
-                {<<"Ucirc">>, 219},
-                {<<"ucirc">>, 251},
-                {<<"Ugrave">>, 217},
-                {<<"ugrave">>, 249},
-                {<<"Uuml">>, 220},
-                {<<"uuml">>, 252},
-                {<<"Yacute">>, 221},
-                {<<"yacute">>, 253},
-                {<<"Yuml">>, 376},
-                {<<"yuml">>, 255}
+		{<<"ETH">>, 208},
+		{<<"eth">>, 240},
+		{<<"Euml">>, 203},
+		{<<"euml">>, 235},
+		{<<"Iacute">>, 205},
+		{<<"iacute">>, 237},
+		{<<"Icirc">>, 206},
+		{<<"icirc">>, 238},
+		{<<"Igrave">>, 204},
+		{<<"igrave">>, 236},
+		{<<"Iuml">>, 207},
+		{<<"iuml">>, 239},
+		{<<"Ntilde">>, 209},
+		{<<"ntilde">>, 241},
+		{<<"Oacute">>, 211},
+		{<<"oacute">>, 243},
+		{<<"Ocirc">>, 212},
+		{<<"ocirc">>, 244},
+		{<<"OElig">>, 338},
+		{<<"oelig">>, 339},
+		{<<"Ograve">>, 210},
+		{<<"ograve">>, 242},
+		{<<"Oslash">>, 216},
+		{<<"oslash">>, 248},
+		{<<"Otilde">>, 213},
+		{<<"otilde">>, 245},
+		{<<"Ouml">>, 214},
+		{<<"ouml">>, 246},
+		{<<"Scaron">>, 352},
+		{<<"scaron">>, 353},
+		{<<"szlig">>, 223},
+		{<<"THORN">>, 222},
+		{<<"thorn">>, 254},
+		{<<"Uacute">>, 218},
+		{<<"uacute">>, 250},
+		{<<"Ucirc">>, 219},
+		{<<"ucirc">>, 251},
+		{<<"Ugrave">>, 217},
+		{<<"ugrave">>, 249},
+		{<<"Uuml">>, 220},
+		{<<"uuml">>, 252},
+		{<<"Yacute">>, 221},
+		{<<"yacute">>, 253},
+		{<<"Yuml">>, 376},
+		{<<"yuml">>, 255}
 	].
 
 read_ident(<<>>, _) -> false;
@@ -265,7 +268,7 @@ waitfor_gone(Ident) ->
 % os:cmd() returns non-strings that re:replace can't handle, this fixes them
 safe_os_cmd(String) ->
 	lists:flatmap(fun
-			(T) when T < 255 -> [T];
+			(T) when T < 128 -> [T];
 			(T) -> binary_to_list(<<T/utf8>>)
 		end, os:cmd(String)).
 
@@ -324,7 +327,7 @@ call_or(Mod, Func, Args, Or) ->
 	end.
 
 fix_utf8(Str) -> lists:reverse(fix_utf8(Str, [])).
-fix_utf8([A|R], O) when is_integer(A) andalso A > 255 -> fix_utf8(R, [binary_to_list(<<A/utf8>>) | O]);
+fix_utf8([A|R], O) when is_integer(A) andalso A > 128 -> fix_utf8(R, [binary_to_list(<<A/utf8>>) | O]);
 fix_utf8([A|R], O) when is_list(A) -> fix_utf8(R, [fix_utf8(A) | O]);
 fix_utf8([A|R], O) -> fix_utf8(R, [A|O]);
 fix_utf8([], O) -> O.

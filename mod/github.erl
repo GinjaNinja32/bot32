@@ -55,6 +55,12 @@ loop(SvrSock) ->
 		E -> logging:log(error, "GITHUB", "Unknown status ~p", [E])
 	end.
 
+fname(Socket) ->
+	case inet:peername(Socket) of
+		{ok, {Addr, Port}} -> io_lib:format("~p:~p", [Addr, Port]);
+		{error, Err} -> io_lib:format("~p", [Err])
+	end.
+
 handle_sock(Socket) ->
 	case gen_tcp:recv(Socket, 0, 2000) of
 		{ok, {http_request, 'POST', A, B}} ->
@@ -80,20 +86,20 @@ handle_sock(Socket) ->
 						ok ->
 							gen_tcp:send(Socket, "HTTP/1.1 204 No Content\r\n\r\n");
 						error ->
-							logging:log(info, "GITHUB", "HTTP request with incorrect signature ~p ~p ~p", [A, B, Dict]),
+							logging:log(info, "GITHUB", "HTTP request with incorrect signature from ~s: ~p ~p ~p", [fname(Socket), A, B, Dict]),
 							gen_tcp:send(Socket, "HTTP/1.1 403 Forbidden\r\n\r\n")
 					end;
 				error ->
-					logging:log(info, "GITHUB", "HTTP request with no signature ~p ~p ~p", [A, B, Dict]),
+					logging:log(info, "GITHUB", "HTTP request with no signature from ~s: ~p ~p ~p", [fname(Socket), A, B, Dict]),
 					gen_tcp:send(Socket, "HTTP/1.1 403 Forbidden\r\n\r\n")
 			end,
 			gen_tcp:close(Socket);
 		{ok, T} ->
-			logging:log(info, "GITHUB", "HTTP request ~p", [T]),
+			logging:log(info, "GITHUB", "HTTP request from ~s: ~p", [fname(Socket), T]),
 			gen_tcp:send(Socket, "HTTP/1.1 204 No Content\r\n\r\n"),
 			gen_tcp:close(Socket);
 		{error, T} ->
-			logging:log(info, "GITHUB", "HTTP error: ~p", [T]),
+			logging:log(info, "GITHUB", "HTTP error to ~s: ~p", [fname(Socket), T]),
 			gen_tcp:close(Socket)
 	end.
 

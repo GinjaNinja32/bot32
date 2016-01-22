@@ -1,6 +1,6 @@
 -module(loader).
 
--export([load/0]).
+-export([load/0, compile_to/2]).
 
 load() ->
 	code:add_path("./bin"),

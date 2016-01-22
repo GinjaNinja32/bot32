@@ -3,6 +3,17 @@
 
 -define(Sep, 16#feff).
 
+do_extras(Tokens, Reply, _) ->
+	case lists:dropwhile(fun(X) -> re:run(X, "^byond://.*$", [{capture, none}]) /= match end, Tokens) of
+		[] -> ok;
+		[IP|_] ->
+			case re:run(IP, "^byond://([^:]+)(?::([1-9][0-9]*))$", [{capture, all_but_first, list}]) of
+				nomatch -> ok;
+				{match, [Addr, Port]} ->
+					status(Reply, Addr, list_to_integer(Port), [$(,IP,$),$ ], true)
+			end
+	end.
+
 defaultserver(T) ->
 	case config:get_value(config, [?MODULE, default, T]) of
 		'$none' -> config:require_value(config, [?MODULE, default, default]);
@@ -62,14 +73,17 @@ address(RT, Ping, _, S, P, _, Name) ->
 	core ! {irc, {msg, {RT, [Ping, Name, io_lib:format("byond://~s:~b", [S, P])]}}}.
 
 status(RT, _, _, S, P, _, Name) ->
-        case byond:send(S, P, "status=2") of
-                {error, X} -> core ! {irc, {msg, {RT, io_lib:format("~sError: ~p", [Name, X])}}};
-                Dict ->
-                        Players = safeget(Dict, "players"),
-                        Mode = safeget(Dict, "mode"),
-                        Time = safeget(Dict, "stationtime"),
+	status(RT, S, P, Name, false).
+status(RT, S, P, Name, SilenceErrors) ->
+	case byond:send(S, P, "status=2") of
+		{error, _} when SilenceErrors -> ok;
+		{error, X} -> core ! {irc, {msg, {RT, io_lib:format("~sError: ~p", [Name, X])}}};
+		Dict ->
+			Players = safeget(Dict, "players"),
+			Mode = safeget(Dict, "mode"),
+			Time = safeget(Dict, "stationtime"),
 			Duration = safeget(Dict, "roundduration"),
-                        core ! {irc, {msg, {RT, [Name, "Players: ", Players, "; Mode: ", Mode, "; Station Time: ", Time, "; Round Duration: ", Duration]}}}
+			core ! {irc, {msg, {RT, [Name, "Players: ", Players, "; Mode: ", Mode, "; Station Time: ", Time, "; Round Duration: ", Duration]}}}
 	end.
 
 revision(RT, _, _, S, P, ID, Name) ->

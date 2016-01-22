@@ -7,8 +7,32 @@ get_commands() ->
 		{"load", fun load/1, host},
 		{"drop", fun drop/1, host},
 		{"reload", fun reload/1, host},
-		{"recompile", fun recompile/1, host}
+		{"recompile", fun recompile/1, host},
+		{"recompile_static", fun recompile_static/1, host}
 	].
+
+recompile_static(#{reply:=Reply, ping:=Ping, params:=Params}) ->
+	case Params of
+		[] -> {irc, {msg, {Reply, [Ping, "Provide one or more core Erlang modules to recompile!"]}}};
+		_ ->
+			lists:foreach(fun(T) ->
+					Mod = list_to_atom(T),
+					code:purge(Mod),
+					case compile:file(Mod, [{outdir,"./bin"}, return, report]) of
+						{ok, _, []} ->
+							core ! {irc, {msg, {Reply, [Ping, "Done."]}}};
+						{ok, _, Warns} ->
+							W = length(Warns),
+							core ! {irc, {msg, {Reply, [Ping, io_lib:format("~s: ~b warning~s", [T, W, util:s(W)])]}}};
+						{error, Errs, Warns} ->
+							W = length(Warns),
+							E = length(Errs),
+							core ! {irc, {msg, {Reply, [Ping, io_lib:format("~s: ~b warning~s, ~b error~s", [T, W, util:s(W), E, util:s(E)])]}}}
+					end,
+					code:load_file(Mod)
+				end, Params),
+			ok
+	end.
 
 modules(#{reply:=Reply, ping:=Ping}) ->
 	{irc, {msg, {Reply, [Ping,

@@ -161,6 +161,9 @@ tokens1() ->
 	 {"h", 'h'}, {"H", 'H'}, {"l", 'l'}, {"L", 'L'}
 	].
 
+tokenise([$;|_], T) -> T;
+tokenise([$:|_], T) -> T;
+tokenise([$||_], T) -> T;
 tokenise([], T) -> T;
 tokenise([A|R], T) when $0 =< A andalso A =< $9 ->
 	{Num,Rest} = lists:splitwith(fun(X) -> $0 =< X andalso X =< $9 end, [A|R]),
