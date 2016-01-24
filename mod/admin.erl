@@ -5,12 +5,12 @@
 
 get_commands() ->
 	[
-		{"setrank", fun setrank/1, host},
-		{"getrank", fun getrank/1, [{"mask",short}], admin},
+		{"setrank", fun setrank/1, perms},
+		{"getrank", fun getrank/1, [{"mask",short}], perms},
 		{"whorank", fun whorank/1, admin},
-		{"editrank", fun editrank/1, host},
+		{"editrank", fun editrank/1, perms},
 		{"getchanperm", fun gchanperm/1, admin},
-		{"chanperm", fun chanperm/1, host},
+		{"chanperm", fun chanperm/1, perms},
 		{"join", fun join/1, admin},
 		{"part", fun part/1, admin},
 		{"nick", fun nick/1, admin},

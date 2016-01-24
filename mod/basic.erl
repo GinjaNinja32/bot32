@@ -63,7 +63,7 @@ rand(#{reply:=ReplyTo, ping:=Ping, params:=[Num]}) ->
 		false -> {irc, {msg, {ReplyTo, [Ping, "Please pass a positive integer."]}}}
 	end.
 
-pick(#{reply:=ReplyTo, ping:=Ping, params:=Params}) -> {irc, {msg, {ReplyTo, [Ping, lists:nth(random:uniform(length(Params)), Params)]}}}.
+pick(#{reply:=ReplyTo, ping:=Ping, params:=[List]}) -> {irc, {msg, {ReplyTo, [Ping, lists:nth(random:uniform(length(List)), List)]}}}.
 
 dancereply() ->
 	[
