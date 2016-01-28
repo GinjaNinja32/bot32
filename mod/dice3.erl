@@ -10,7 +10,8 @@ get_commands() ->
 		{"gurps", fun gurps/1, user},
 		{"srun", fun srun/1, user},
 		{"sredge", fun sredge/1, user},
-		{"fate", fun fate/1, user}
+		{"fate", fun fate/1, user},
+		{"rtd", fun rtd/1, user}
 	].
 
 get_help("dice") ->
@@ -121,6 +122,24 @@ show(N) when N < 0 -> io_lib:format("~s~b~s", [?LRED, N, ?RESET]);
 show(N) when N > 0 -> io_lib:format("~s+~b~s", [?LGREEN, N, ?RESET]);
 show(0) -> ?WHITE ++ "+0" ++ ?RESET.
 
+% RTD
+
+rtd(#{reply:=Reply, ping:=Ping, nick:=Nick, selector:=Selector, params:=Params}) ->
+	Comment = case string:join(Params, " ") of
+		[] -> [];
+		X -> [X,$:,$ ]
+	end,
+	RTD = [
+		"\x036\x02Critical Failure!\x03\x02",
+		"\x035\x02Failure!\x03\x02",
+		"\x02Partial Success!\x02",
+		"\x033\x02Success!\x03\x02",
+		"\x039\x02Perfect!\x03\x02",
+		"\x0310\x02Overkill!\x03\x02"
+	],
+	Result = dice3("d6", true, fun(T) -> [Comment, lists:nth(T, RTD)] end),
+	send_to_all(Reply, Ping, Nick, nicks(Selector), "an RTD roll", Result).
+
 % GENERIC
 
 dice(X) -> dice(X, false).
@@ -133,15 +152,15 @@ dice (#{reply:=RT,ping:=P,nick:=Nick,params:=Params, selector:=Selector}, Expand
 
 dice3(String, Expand) -> dice3(String, Expand, fun(T) -> io_lib:format("~w", [T]) end).
 dice3(String, Expand, Formatter) ->
-	io:fwrite("tokenising ~p\n", [String]),
+%	io:fwrite("tokenising ~p\n", [String]),
 	case tokenise(String, []) of
 		error -> "Tokenisation error.";
 		Tokens ->
-			io:fwrite("parsing ~p\n", [lists:reverse(Tokens)]),
+%			io:fwrite("parsing ~p\n", [lists:reverse(Tokens)]),
 			case parse(lists:reverse(Tokens)) of
 				error -> "Parse error.";
 				Expressions ->
-					io:fwrite("evaluating ~p\n", [Expressions]),
+%					io:fwrite("evaluating ~p\n", [Expressions]),
 					{S,V} = evaluate(Expressions, Expand),
 					io_lib:format("~s : ~s~n", [Formatter(V),S])
 			end
@@ -276,21 +295,32 @@ b(Lst, Lvl) ->
 
 % EVALUATION
 
-comparison(AS, BS, AV, BV, OS, OV) when not is_list(AV) andalso not is_list(BV) -> % normal comparison
+comparison(_, _, AS, BS, AV, BV, OS, OV) when not is_list(AV) andalso not is_list(BV) -> % normal comparison
 	Result = OV(AV, BV),
 	Color = case Result of
 		true -> "3";
 		false -> "5"
 	end,
 	{[AS,3,Color,2,OS,3,2,BS], Result};
-comparison(__, BS, AV, BV, OS, OV) when is_list(AV) ->
+comparison(AX, __, AS, BS, AV, BV, OS, OV) when is_list(AV) ->
 	Result = lists:map(fun(A) -> {A,OV(A, BV)} end, AV),
 	Color = lists:map(fun({_,true}) -> "3"; ({_,false}) -> "5" end, Result),
-	{[$[,32,lists:flatmap(fun({{N,_},C}) -> [3,C,2,integer_to_list(N),3,2,32] end, lists:zip(Result, Color)),$],OS,BS], lists:map(fun({_,A}) -> A end, Result)};
-comparison(AS, __, AV, BV, OS, OV) when is_list(BV) ->
+	case is_literal_list(AX) of
+		true ->
+			{[$[,32,lists:flatmap(fun({{N,_},C}) -> [3,C,2,integer_to_list(N),3,2,32] end, lists:zip(Result, Color)),$],OS,BS], lists:map(fun({_,A}) -> A end, Result)};
+		false ->
+			{[$[,32,AS,32,$=,32,lists:flatmap(fun({{N,_},C}) -> [3,C,2,integer_to_list(N),3,2,32] end, lists:zip(Result, Color)),$],OS,BS], lists:map(fun({_,A}) -> A end, Result)}
+	end;
+
+comparison(__, BX, AS, BS, AV, BV, OS, OV) when is_list(BV) ->
 	Result = lists:map(fun(B) -> {B,OV(AV, B)} end, BV),
 	Color = lists:map(fun({_,true}) -> "3"; ({_,false}) -> "5" end, Result),
-	{[AS,OS,$[,32,lists:flatmap(fun({{N,_},C}) -> [3,C,2,integer_to_list(N),3,2,32] end, lists:zip(Result, Color)),$]], lists:map(fun({_,B}) -> B end, Result)}.
+	case is_literal_list(BX) of
+		true ->
+			{[AS,OS,$[,32,lists:flatmap(fun({{N,_},C}) -> [3,C,2,integer_to_list(N),3,2,32] end, lists:zip(Result, Color)),$]], lists:map(fun({_,B}) -> B end, Result)};
+		false ->
+			{[AS,OS,$[,32,BS,32,$=,32,lists:flatmap(fun({{N,_},C}) -> [3,C,2,integer_to_list(N),3,2,32] end, lists:zip(Result, Color)),$]], lists:map(fun({_,B}) -> B end, Result)}
+	end.
 
 evaluate(Tree, Expand) ->
 	case Tree of
@@ -337,15 +367,15 @@ evaluate(Tree, Expand) ->
 			{AS,AV} = evaluate(A, Expand),
 			{BS,BV} = evaluate(B, Expand),
 			case Op of
-				'+'  when (not is_list(AV)) andalso (not is_list(BV)) -> {[AS,$+,   BS], AV+ BV};
-				'-'  when (not is_list(AV)) andalso (not is_list(BV)) -> {[AS,$-,   BS], AV- BV};
-				'*'  when (not is_list(AV)) andalso (not is_list(BV)) -> {[AS,$*,   BS], AV* BV};
-				'/'  when (not is_list(AV)) andalso (not is_list(BV)) -> {[AS,$/,   BS], AV/ BV};
-				'<'  when (not is_list(AV)) orelse  (not is_list(BV)) -> comparison(AS, BS, AV, BV, "<", fun erlang:'<'/2);
-				'<=' when (not is_list(AV)) orelse  (not is_list(BV)) -> comparison(AS, BS, AV, BV, "<=", fun erlang:'=<'/2);
-				'>'  when (not is_list(AV)) orelse  (not is_list(BV)) -> comparison(AS, BS, AV, BV, ">", fun erlang:'>'/2);
-				'>=' when (not is_list(AV)) orelse  (not is_list(BV)) -> comparison(AS, BS, AV, BV, ">=", fun erlang:'>='/2);
-				'='  when (not is_list(AV)) orelse  (not is_list(BV)) -> comparison(AS, BS, AV, BV, "=", fun erlang:'=='/2);
+				'+'  when (not is_list(AV)) andalso (not is_list(BV)) -> {[AS, $+, BS], AV + BV};
+				'-'  when (not is_list(AV)) andalso (not is_list(BV)) -> {[AS, $-, BS], AV - BV};
+				'*'  when (not is_list(AV)) andalso (not is_list(BV)) -> {[AS, $*, BS], AV * BV};
+				'/'  when (not is_list(AV)) andalso (not is_list(BV)) -> {[AS, $/, BS], AV / BV};
+				'<'  when (not is_list(AV)) orelse  (not is_list(BV)) -> comparison(A, B, AS, BS, AV, BV, "<",  fun erlang:'<' /2);
+				'<=' when (not is_list(AV)) orelse  (not is_list(BV)) -> comparison(A, B, AS, BS, AV, BV, "<=", fun erlang:'=<'/2);
+				'>'  when (not is_list(AV)) orelse  (not is_list(BV)) -> comparison(A, B, AS, BS, AV, BV, ">",  fun erlang:'>' /2);
+				'>=' when (not is_list(AV)) orelse  (not is_list(BV)) -> comparison(A, B, AS, BS, AV, BV, ">=", fun erlang:'>='/2);
+				'='  when (not is_list(AV)) orelse  (not is_list(BV)) -> comparison(A, B, AS, BS, AV, BV, "=",  fun erlang:'=='/2);
 				'd'  when (not is_list(AV)) andalso (not is_list(BV)) ->
 					{Stat, Dice, Total} = roll(AV,BV),
 					Display = if
@@ -365,6 +395,10 @@ evaluate(Tree, Expand) ->
 		T when is_list(T) -> {io_lib:format("~p", [T]), T};
 		T -> {integer_to_list(T), T}
 	end.
+
+is_literal_list([_]) -> false;
+is_literal_list(T) when is_list(T) -> true;
+is_literal_list(_) -> false.
 
 roll(N,_) when N > 1000000 -> {"\x035\x02X\x03\x02 ", [], 0};
 roll(_,M) when M > 1000000 -> {"\x035\x02X\x03\x02 ", [], 0};
@@ -423,46 +457,3 @@ set_avail(M, List) ->
 		undefined -> put(dice_avail, [{M, List}]);
 		Dict -> put(dice_avail, orddict:store(M, List, Dict))
 	end.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

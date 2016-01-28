@@ -53,7 +53,7 @@ loop(RLog, RLogDate, Muted) ->
 		{log, Level, What, Message, FormatParams} ->
 			case datestr(calendar:now_to_universal_time(os:timestamp())) of
 				RLogDate -> Log = RLog, LogDate = RLogDate;
-				DateStr -> 
+				DateStr ->
 					case mklog(["main-", DateStr]) of
 						{ok, Log} ->
 							file:close(RLog),
@@ -65,14 +65,14 @@ loop(RLog, RLogDate, Muted) ->
 			end,
 			case lists:member(Level, Muted) of
 				false ->
-					io:fwrite("[~s][~s] ~s~n", [Level, What, io_lib:format(Message, FormatParams)])
+					io:fwrite("[~ts][~ts] ~ts~n", [Level, What, io_lib:format(Message, FormatParams)])
 						;
 				true -> ok
 			end
 			,
 			case file:write(Log, mkentry(Level, What, Message, FormatParams)) of
 				ok -> logging:loop(Log, LogDate, Muted);
-				{error, Reason} -> io:fwrite("[error][LOGGING] ~s~n", [Reason]), init(Muted)
+				{error, Reason} -> io:fwrite("[error][LOGGING] ~ts~n", [Reason]), init(Muted)
 			end;
 		stop -> ok
 	end.

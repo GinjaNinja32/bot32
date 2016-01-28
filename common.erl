@@ -47,7 +47,6 @@ purge_call_report(Module, Function, Param, Channel) ->
 	Module:Function(Param).
 
 raw_send(Sock, Transport, Msg) ->
-%	debug("send", "'~s'", [Msg]),
 	try
 		Raw = re:replace(flatten(Msg), "[\r\n]", "", [global, {return, list}]),
 		if
@@ -57,6 +56,7 @@ raw_send(Sock, Transport, Msg) ->
 			true ->
 				Send = Raw
 		end,
+%		debug("send", "'~s'", [Send]),
 		Transport:send(Sock, [Send, "\r\n"])
 	catch
 		throw:X -> logging:log(error, "RAW", "Thrown ~p (message ~p)", [X, Msg]);

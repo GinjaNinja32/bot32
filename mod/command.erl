@@ -71,7 +71,7 @@ reply_ping(Nick, Channel) ->
 		true ->
 			case config:get_value(data, [call, string:to_lower(Nick)]) of
 				'$none' -> [Nick, ": "];
-				Nickname -> [Nickname, "\x0F: "]
+				Nickname -> ["\x0F", Nickname, "\x0F: "]
 			end
 	end.
 

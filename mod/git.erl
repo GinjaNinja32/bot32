@@ -22,9 +22,9 @@ branch_params(Params, Type) ->
 		[X] -> {"master", [X]};
 		[] -> error;
 		_ ->
-			case config:get_value(temp, [?MODULE, Type, string:to_lower(hd(Params))]) of
+			case config:get_value(temp, [?MODULE, Type, list_to_binary(string:to_lower(hd(Params)))]) of
 				'$none' -> error;
-				_ -> {string:to_lower(hd(Params)), tl(Params)}
+				_ -> {list_to_binary(string:to_lower(hd(Params))), tl(Params)}
 			end
 	end.
 
@@ -32,7 +32,7 @@ search(#{reply:=Reply, ping:=Ping, params:=Params}) ->
 	case branch_params(Params, trees) of
 		error -> {irc, {msg, {Reply, [Ping, "Provide a valid branch to search!"]}}};
 		{BR, PR} ->
-			SearchString = string:to_lower(string:join(PR, " ")),
+			SearchString = list_to_binary(string:to_lower(string:join(PR, " "))),
 			{irc, {msg, {Reply, [Ping, search_tree(BR, SearchString)]}}}
 	end.
 
@@ -45,7 +45,7 @@ defined(#{reply:=Reply, ping:=Ping, params:=Params}) ->
 		error -> {irc, {msg, {Reply, [Ping, "Provide a valid branch to search!"]}}};
 		{BR, PR} ->
 			Def = hd(PR),
-			case config:get_value(temp, [?MODULE, defines, BR, Def]) of
+			case config:get_value(temp, [?MODULE, defines, BR, list_to_binary(Def)]) of
 				'$none' -> {irc, {msg, {Reply, [Ping, "No define of '", Def, "' found."]}}};
 				{File, Val} -> {irc, {msg, {Reply, [Ping, "'", Def, "' is defined as ", Val, " in ", File, $.]}}}
 			end
@@ -57,8 +57,9 @@ defined(#{reply:=Reply, ping:=Ping, params:=Params}) ->
 load_trees() ->
 	update(),
 	lists:foreach(fun(T) ->
-			config:set_value(temp, [?MODULE, trees, T], load_tree(T)),
-			config:set_value(temp, [?MODULE, defines, T], load_defines(T))
+			BinT = list_to_binary(T),
+			config:set_value(temp, [?MODULE, trees, BinT], load_tree(T)),
+			config:set_value(temp, [?MODULE, defines, BinT], load_defines(T))
 		end, ["master", "dev-freeze", "dev", "kunpeng"]).
 
 load_defines(Branch) ->
@@ -67,7 +68,7 @@ load_defines(Branch) ->
 	MatchingLines = string:tokens(util:safe_os_cmd(["cd ", Home, "; git grep '#define' ", Remote, "/", Branch]), "\r\n"),
 	lists:keysort(1, lists:filtermap(fun(Line) ->
 			% origin/dev:code/setup.dm:#define FOO 2
-			case re:run(Line, "[^:]+:([^:]+):#define\\s+(\\S+)\\s+(.*)", [{capture,all_but_first,list}]) of
+			case re:run(Line, <<"[^:]+:([^:]+):#define\\s+(\\S+)\\s+(.*)">>, [{capture,all_but_first,binary}]) of
 				{match, [File, Def, Val]} ->
 					{true, {Def, {File, Val}}};
 				nomatch -> false
@@ -77,12 +78,12 @@ load_defines(Branch) ->
 load_tree(Branch) ->
 	Home = config:require_value(config, [?MODULE, location]),
 	Remote = config:get_value(config, [?MODULE, remote], "upstream"),
-	string:tokens(util:safe_os_cmd(["cd ",Home,"; git ls-files --with-tree ",Remote,"/", Branch]), "\r\n").
+	lists:map(fun list_to_binary/1, string:tokens(util:safe_os_cmd(["cd ",Home,"; git ls-files --with-tree ",Remote,"/", Branch]), "\r\n")).
 
 search_tree(Branch, String) ->
 	Tree = config:require_value(temp, [?MODULE, trees, Branch]),
 	case lists:filter(fun(T) ->
-				string:str(string:to_lower(T), String) /= 0
+				binary:match(util:bin_to_lower(T), String) /= nomatch
 			end, Tree) of
 		[] -> "No matches found.";
 		[Match] -> ["http://github.com/Baystation12/Baystation12/blob/", Branch, "/", re:replace(Match, " ", "%20", [global, {return, list}])];
@@ -95,9 +96,9 @@ search_tree(Branch, String) ->
 join_list_max_len(List, Separator, Length) -> join_list_max_len(List, Separator, Length, []).
 
 join_list_max_len([], _, _, Complete) -> Complete;
-join_list_max_len(List, Separator, Length, Complete) when length(hd(List))+length(Separator) > Length -> [Complete, " (", integer_to_list(length(List)), " more)"];
-join_list_max_len(List, Separator, Length, []) -> join_list_max_len(tl(List), Separator, Length-length(hd(List)), [hd(List)]);
-join_list_max_len(List, Separator, Length, Complete) -> join_list_max_len(tl(List), Separator, Length-length(Separator)-length(hd(List)), [Complete, Separator, hd(List)]).
+join_list_max_len(List, Separator, Length, Complete) when byte_size(hd(List))+length(Separator) > Length -> [Complete, " (", integer_to_list(length(List)), " more)"];
+join_list_max_len(List, Separator, Length, []) -> join_list_max_len(tl(List), Separator, Length-byte_size(hd(List)), [hd(List)]);
+join_list_max_len(List, Separator, Length, Complete) -> join_list_max_len(tl(List), Separator, Length-length(Separator)-byte_size(hd(List)), [Complete, Separator, hd(List)]).
 
 update() ->
 	Home = config:require_value(config, [?MODULE, location]),

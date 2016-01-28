@@ -16,7 +16,8 @@ regex_escape(String) ->
 			[<<"\\*">>, <<"\\\\*">>],
 			[<<"\\+">>, <<"\\\\+">>],
 			[<<"\\{">>, <<"\\\\{">>],
-			[<<"\\-">>, <<"\\\\-">>]
+			[<<"\\-">>, <<"\\\\-">>],
+			[<<"\\|">>, <<"\\\\|">>]
 		]).
 
 regex_star(String) ->
@@ -34,7 +35,8 @@ regex_star(String) ->
 			[<<"\\+">>, <<"\\\\+">>],
 			[<<"\\{">>, <<"\\\\{">>],
 			[<<"\\-">>, <<"\\\\-">>],
-			[<<"\\*">>, <<".*">>]
+			[<<"\\*">>, <<".*">>],
+			[<<"\\|">>, <<"\\\\|">>]
 		]).
 
 -spec binary_join([binary()], binary()) -> binary().
@@ -331,3 +333,11 @@ fix_utf8([A|R], O) when is_integer(A) andalso A > 128 -> fix_utf8(R, [binary_to_
 fix_utf8([A|R], O) when is_list(A) -> fix_utf8(R, [fix_utf8(A) | O]);
 fix_utf8([A|R], O) -> fix_utf8(R, [A|O]);
 fix_utf8([], O) -> O.
+
+bin_to_lower(Bin) -> bin_to_lower(Bin, <<>>).
+
+bin_to_lower(<<A/utf8, Rst/binary>>, X) when $A =< A andalso A =< $Z ->
+	NewA = A + $a - $A,
+	bin_to_lower(Rst, <<X/binary, NewA/utf8>>);
+bin_to_lower(<<A/utf8, Rst/binary>>, X) -> bin_to_lower(Rst, <<X/binary, A/utf8>>);
+bin_to_lower(<<>>, X) -> X.

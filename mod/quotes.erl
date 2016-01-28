@@ -119,11 +119,12 @@ add_quote(Category, String) ->
 	Quotes = config:get_value(data, [?MODULE], []),
 	Regexed = util:regex_escape(String),
 	common:debug("quote", Regexed),
-	case length(lists:filter(fun({_, Q}) ->
+	case lists:filter(fun({_, Q}) ->
 				re:run(Q, <<"^", Regexed/binary, "$">>, [{capture, none}, caseless]) == match
-			end, Quotes)) of
-		0 ->
+			end, Quotes) of
+		[] ->
 			config:set_value(data, [?MODULE], [{list_to_binary(Category), list_to_binary(String)} | Quotes]),
 			"Quote added.";
-		_ -> "Quote is already listed."
+		_ ->
+			"Quote is already listed."
 	end.

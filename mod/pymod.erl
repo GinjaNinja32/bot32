@@ -31,7 +31,7 @@ pload(#{reply:=R, ping:=P, params:=Params}) ->
 
 				config:mod_get_value(config, [?MODULE, modules], fun(T) -> lists:umerge([list_to_atom(File)], lists:usort(T)) end),
 				X = load(list_to_atom(File)),
-				core ! {irc, {msg, {R, [File, io_lib:fwrite(": ~p", [X])]}}}
+				core ! {irc, {msg, {R, [P, File, io_lib:fwrite(": ~p", [X])]}}}
 		end
 	end, lists:map(fun string:to_lower/1, Params)).
 

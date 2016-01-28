@@ -12,6 +12,21 @@ showurl_raw(Channel, Ping, URL, Format, NotFound) ->
 		Sh -> core ! {irc, {msg, {Channel, [Ping, io_lib:format(Format, [util:parse_htmlentities(Sh)])]}}}
 	end.
 
+pre_command(Command, Args) ->
+	case is_russian(utf8(list_to_binary(Command))) of
+		false -> {Command, Args};
+		true ->
+			NewArgs = case Args of
+				none -> none;
+				_ -> de_russian(Args)
+			end,
+			NewCmd = de_russian_single(Command),
+
+			io:fwrite("~p ~p\n", [NewCmd, NewArgs]),
+
+			{NewCmd, NewArgs}
+	end.
+
 do_extras(Tokens, ReplyChannel, ReplyPing) ->
 	case lists:dropwhile(fun(X) -> re:run(X, "^https?://.*$", [{capture, none}]) /= match end, Tokens) of
 		[] -> ok;
@@ -50,13 +65,14 @@ do_russian(Tokens, ReplyChannel, ReplyPing) ->
 	end.
 
 de_russian(Tokens) ->
-	lists:map(fun(T) ->
-			UTFed = utf8(list_to_binary(T)),
-			case is_russian(UTFed) of
-				true -> convert_russian(UTFed);
-				false -> T
-			end
-		end, Tokens).
+	lists:map(fun de_russian_single/1, Tokens).
+
+de_russian_single(T) ->
+	UTFed = utf8(list_to_binary(T)),
+	case is_russian(UTFed) of
+		true -> convert_russian(UTFed);
+		false -> T
+	end.
 
 is_russian([]) -> false;
 is_russian(String) ->

@@ -148,10 +148,8 @@ whorank(#{reply:=ReplyTo, ping:=Ping}) ->
 join(#{reply:=ReplyTo, ping:=Ping, params:=[]}) ->
 	{irc, {msg, {ReplyTo, [Ping, "Please provide a channel to join."]}}};
 join(#{reply:=ReplyTo, ping:=Ping, params:=Params}) ->
-	{multi, [
-		{irc, {msg, {ReplyTo, [Ping, "Joining ", hd(Params), "."]}}},
-		{irc, {join, hd(Params)}}
-	]}.
+	core ! {irc, {msg, {ReplyTo, [Ping, "Joining ", hd(Params), "."]}}},
+	{irc, {join, hd(Params)}}.
 
 part(#{reply:=ReplyTo, ping:=Ping, params:=[]}) ->
 	{irc, {msg, {ReplyTo, [Ping, "Please provide a channel to part."]}}};
