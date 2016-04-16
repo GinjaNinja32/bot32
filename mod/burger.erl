@@ -96,6 +96,6 @@ delfood(#{reply:=RT, ping:=P, params:=[T,K|W]}) ->
 getrand(Key, Data) ->
 	case orddict:find(Key, Data) of
 		{ok, []} -> "##error";
-		{ok, List} -> lists:nth(random:uniform(length(List)), List);
+		{ok, List} -> util:pick_rand(List);
 		error -> "##error"
 	end.

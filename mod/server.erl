@@ -158,11 +158,12 @@ info(VID, ID, _, Reply, Ping, What) ->
 						"non-living" -> "non-living";
 						Dmg -> string:join(lists:map(fun({A,B}) -> [A,": ",B] end, byond:params2dict(Dmg)), ", ")
 					end,
+					Space = <<16#a0/utf8>>,
 					[
 						D("key"), "/(", D("name"), ") ", D("role"), $/, D("antag"), case D("hasbeenrev") of "1" -> " (has been rev)"; _ -> "" end,
-						"; loc:\xa0", D("loc"), "; turf:\xa0", D("turf"), "; area:\xa0", lists:filter(fun(T) -> 32 =< T andalso T =< 127 end, D("area")),
-						"; stat:\xa0", D("stat"), ", damage:\xa0[", Damage, $],
-						"; type:\xa0", D("type"), "; gender:\xa0", D("gender")
+						"; loc:", Space, D("loc"), "; turf:", Space, D("turf"), "; area:", Space, lists:filter(fun(T) -> 32 =< T andalso T =< 127 end, D("area")),
+						"; stat:", Space, D("stat"), ", damage:", Space, "[", Damage, $],
+						"; type:", Space, D("type"), "; gender:", D("gender")
 					];
 				error -> % key->name
 					string:join(lists:map(fun({Key,Name}) -> io_lib:format("~s/(~s)", [Key,Name]) end, Dict), "; ")

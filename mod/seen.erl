@@ -26,45 +26,50 @@ handle_event(msg, {#user{nick=N}, Chan, _}) ->
 	end;
 handle_event(_, _) -> ok.
 
+
+
 seen(#{reply:=RT, ping:=P, params:=[]}) -> {irc, {msg, {RT, [P, "Provide a nick to search for!"]}}};
 seen(#{reply:=RT, ping:=P, params:=Params}) ->
 	LParam = string:to_lower(hd(Params)),
 	D = config:get_value(data, [?MODULE]),
-	case orddict:filter(fun(N,_) ->
-				string:str(string:to_lower(N), LParam) /= 0
-			end, D) of
-		[] -> {irc, {msg, {RT, [P, hd(Params), " has never been in a channel I can see."]}}};
-		[{N, {What, When}}] ->
-			T = format_tstamp(When),
-			{irc, {msg, {RT, [P, N, " was last seen ",What," at ",T]}}};
-		T ->
-			{Nicks, {N,{What,When}}} = orddict:fold(
-				fun
-					(N,{What,When},{Nicks,Recent={_, {_,RecentWhen}}}) ->
-						case Recent of
-							{none, _} ->
-								NewRecent = {N, {What, When}};
-							_ ->
-								RecentSeconds = calendar:datetime_to_gregorian_seconds(calendar:now_to_universal_time(RecentWhen)),
-								Seconds = calendar:datetime_to_gregorian_seconds(calendar:now_to_universal_time(When)),
-								if
-									Seconds > RecentSeconds -> NewRecent = {N, {What, When}};
-									true -> NewRecent = Recent
-								end
-						end,
-						{[N|Nicks],NewRecent}
-				end, {[], {none, {x,x}}}, T),
-			{Extra, FirstTen} = if
-				length(Nicks) =< 10 -> {"", Nicks};
-				true -> {A,_} = lists:split(10, Nicks), {[" (", integer_to_list(length(Nicks)-10), " more)"], A}
-			end,
-			{irc, {msg, {RT, [P, "Results: ", string:join(FirstTen, " "), Extra, "; ",N," was last seen ",What," at ",format_tstamp(When)]}}}
+
+	case config:get_value(data, [?MODULE, LParam]) of % Exact match
+		{What, When} ->
+				T = format_tstamp(When),
+				{irc, {msg, {RT, [P, LParam, " was last seen ",What," at ",T]}}};
+		_ ->
+			case orddict:filter(fun(N, _) -> string:str(string:to_lower(N), LParam) /= 0 end, D) of % Fuzzy match
+				[] -> {irc, {msg, {RT, [P, hd(Params), " has never been in a channel I can see."]}}};
+				[{N, {What, When}}] ->
+					T = format_tstamp(When),
+					{irc, {msg, {RT, [P, N, " was last seen ",What," at ",T]}}};
+				T ->
+					{Nicks, {N,{What,When}}} = orddict:fold(
+						fun
+							(N,{What,When},{Nicks,Recent={_, {_,RecentWhen}}}) ->
+								case Recent of
+									{none, _} ->
+										NewRecent = {N, {What, When}};
+									_ ->
+										RecentSeconds = calendar:datetime_to_gregorian_seconds(calendar:now_to_universal_time(RecentWhen)),
+										Seconds = calendar:datetime_to_gregorian_seconds(calendar:now_to_universal_time(When)),
+										if
+											Seconds > RecentSeconds -> NewRecent = {N, {What, When}};
+											true -> NewRecent = Recent
+										end
+								end,
+								{[N|Nicks],NewRecent}
+						end, {[], {none, {x,x}}}, T),
+					{Extra, FirstTen} = if
+						length(Nicks) =< 10 -> {"", Nicks};
+						true -> {A,_} = lists:split(10, Nicks), {[" (", integer_to_list(length(Nicks)-10), " more)"], A}
+					end,
+					{irc, {msg, {RT, [P, "Results: ", string:join(FirstTen, " "), Extra, "; ",N," was last seen ",What," at ",format_tstamp(When)]}}}
+			end
 	end.
 
 see(User, Message, FormatParams) ->
-	D = config:get_value(data, [?MODULE]),
-	T = orddict:store(string:to_lower(User), {io_lib:format(Message, FormatParams),os:timestamp()}, D),
-	config:set_value(data, [?MODULE], T).
+	config:set_value(data, [?MODULE, string:to_lower(User)], {io_lib:format(Message, FormatParams),os:timestamp()}).
 
 format_tstamp(T) ->
 	Date={{Y,M,D},{H,Mi,S}} = calendar:now_to_universal_time(T),

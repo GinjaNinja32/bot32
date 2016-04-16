@@ -57,51 +57,6 @@ droplast(T) -> lists:droplast(T).
 lasttail([T|[]]) -> T;
 lasttail([_|TT]) -> lasttail(TT).
 
-eightball() ->
-	case file:read_file("eightball.txt") of
-		{ok, B} ->
-			R = lists:filter(fun(<<>>)->false; (_)->true end, binary:split(B, <<"\n">>, [global]));
-		_ ->
-			R = [
-				"It is certain",
-				"It is decidedly so",
-				"Without a doubt",
-				"Yes - definitely",
-				"You may rely on it",
-				"As I see it, yes",
-				"Most likely",
-				"Outlook good",
-				"Signs point to yes",
-				"Yes",
-				"Don't count on it",
-				"My reply is no",
-				"My sources say no",
-				"Outlook not so good",
-				"Very doubtful"
-			]
-	end,
-	lists:nth(random:uniform(length(R)), R).
-
-addeightball(TRaw) ->
-	T = case lists:member(binary:at(TRaw, byte_size(TRaw)-1), [$., $?, $!]) of
-		true -> TRaw;
-		false -> <<TRaw/binary, ".">>
-	end,
-	case file:read_file("eightball.txt") of
-		{ok, B} ->
-			R = binary:split(B, <<"\n">>, [global]),
-			case lists:member(T, R) of
-				true -> "That reply already exists!";
-				false ->
-					case file:write_file("eightball.txt", <<B/binary, T/binary, "\n">>) of
-						ok -> "Added.";
-						{error, T} -> "Error writing file."
-					end
-			end;
-		_ ->
-			"Error reading file."
-	end.
-
 parse_htmlentities(Binary) -> parse_htmlentities(Binary, <<>>).  
 
 parse_htmlentities(<<	      >>, X) -> X;  
@@ -276,22 +231,47 @@ safe_os_cmd(String) ->
 
 
 whois(Nick) ->
-	case whereis(bot) == self() of
-		true ->
-			core ! {raw, ["WHOIS ", Nick]},
-			receive_whois(#{ % defaults for the optional fields
-					operator => false,
-					cloak => false,
-					registered => false,
-					ssl => false
-				});
-		false ->
-			bot ! {request_execute, {self(), fun() -> whois(Nick) end}},
-			receive
-				{execute_done, Result} ->
-					Result
+	LNick = string:to_lower(Nick),
+	case case config:get_value(temp, [?MODULE, whois_cache, LNick]) of
+		'$none' -> query;
+		{Timestamp, D} ->
+			ThenSecs = calendar:datetime_to_gregorian_seconds(Timestamp),
+			NowSecs = calendar:datetime_to_gregorian_seconds(calendar:now_to_universal_time(os:timestamp())),
+			if
+				NowSecs - ThenSecs < 300 -> D;
+				true -> query
 			end
+	end of
+		query ->
+			case whereis(bot) == self() of
+				true ->
+					whois0(Nick);
+				false ->
+					bot ! {request_execute, {self(), fun() -> whois0(Nick) end}},
+					receive
+						{execute_done, Result} ->
+							Result
+					end
+			end;
+		Data -> Data
 	end.
+
+whois0(Nick) ->
+	core ! {raw, ["WHOIS ", Nick]},
+	Data = receive_whois(#{ % defaults for the optional fields
+		operator => false,
+		cloak => false,
+		registered => false,
+		ssl => false,
+		fingerprint => none
+	}),
+	case Data of
+		no_such_nick -> ok;
+		_ ->
+			Timestamp = calendar:now_to_universal_time(os:timestamp()),
+			config:set_value(temp, [?MODULE, whois_cache, string:to_lower(Nick)], {Timestamp, Data})
+	end,
+	Data.
 
 receive_whois(Map) ->
 	receive
@@ -306,6 +286,8 @@ receive_whois(Map) ->
 			receive_whois(Map#{server=>Server, server_tagline=>string:join([tl(hd(Tagline))|tl(Tagline)], " ")});
 		{irc, {numeric, {{rpl,whois_operator}, _}}} ->
 			receive_whois(Map#{operator=>true});
+		{irc, {numeric, {{unknown, 338}, [_, TrueHost, ":has", "cloak"]}}} ->
+			receive_whois(Map#{cloak=>TrueHost});
 		{irc, {numeric, {{unknown, 338}, [_, _, TrueHost, ":has", "cloak"]}}} ->
 			receive_whois(Map#{cloak=>TrueHost});
 		{irc, {numeric, {{unknown, 330}, [_, _, Nickserv, ":is", "logged", "in", "as"]}}} ->
@@ -314,6 +296,8 @@ receive_whois(Map) ->
 			receive_whois(Map#{registered=>true});
 		{irc, {numeric, {{unknown, 671}, _}}} ->
 			receive_whois(Map#{ssl=>true});
+		{irc, {numeric, {{unknown, 276}, [_, _, ":has", "client", "certificate", "fingerprint", Fingerprint]}}} ->
+			receive_whois(Map#{fingerprint => Fingerprint});
 		{irc, {numeric, {{rpl,whois_idle}, [_, _, Idle, Signon, ":seconds", "idle,", "signon", "time"]}}} ->
 			receive_whois(Map#{idle=>Idle, signon=>Signon});
 		{irc, {numeric, {{rpl,end_of_whois}, _}}} ->
@@ -341,3 +325,15 @@ bin_to_lower(<<A/utf8, Rst/binary>>, X) when $A =< A andalso A =< $Z ->
 	bin_to_lower(Rst, <<X/binary, NewA/utf8>>);
 bin_to_lower(<<A/utf8, Rst/binary>>, X) -> bin_to_lower(Rst, <<X/binary, A/utf8>>);
 bin_to_lower(<<>>, X) -> X.
+
+
+pick_rand([X]) -> X;
+pick_rand(List) ->
+	if
+		length(List) > 100 ->
+			[Half] = dice3:get_n_m(1, 2),
+			pick_rand(element(Half, lists:split(length(List) bsr 1, List)));
+		true ->
+			[N] = dice3:get_n_m(1, length(List)),
+			lists:nth(N, List)
+	end.

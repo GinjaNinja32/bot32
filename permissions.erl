@@ -5,16 +5,27 @@
 
 message_all_rank(Category, Message, Rank) ->
 	logging:log(info, Rank, "~s: ~s", [Category, Message]),
-	lists:foreach(fun({N,_,_}) ->
-			core ! {irc, {msg, {N, [Category, ": ", Message]}}}
+	lists:foreach(fun
+			({nickserv,Nick}) -> core ! {irc, {msg, {Nick, [Category, ": ", Message]}}};
+			({N,_,_}) -> core ! {irc, {msg, {N, [Category, ": ", Message]}}}
 		end, get_with_rank(Rank)).
 
 get_with_rank(Rank) ->
 	orddict:fetch_keys(orddict:filter(fun(_,V) -> lists:member(Rank, V) end,
 			config:require_value(config, [permissions]))).
 
+rankof_ns(NS) when is_list(NS) -> rankof_ns(list_to_binary(NS));
+rankof_ns(NS) ->
+	config:get_value(config, [?MODULE, {nickserv, NS}], []).
+
 rankof(Usr) -> rankof(Usr, none).
-rankof(#user{nick=N,username=U,host=H}, Channel) ->
+rankof(#user{nick=N,username=U,host=SrcH}, Channel) ->
+	Whois = util:whois(N),
+	H = case Whois of
+		#{cloak := false} -> SrcH;
+		#{cloak := TrueHost} -> TrueHost;
+		_ -> SrcH
+	end,
 	Permissions = config:require_value(config, [permissions]),
 	BinChannel = case Channel of
 		none -> none;
@@ -28,9 +39,18 @@ rankof(#user{nick=N,username=U,host=H}, Channel) ->
 					true -> lists:umerge(lists:usort(Perms), PermsSoFar);
 					false -> PermsSoFar
 				end;
-			(Chan, Perms, PermsSoFar) ->
+			(Chan, Perms, PermsSoFar) when is_binary(Chan) ->
 				if Chan == BinChannel -> lists:umerge(lists:usort(Perms), PermsSoFar);
 				   true -> PermsSoFar
+				end;
+			({nickserv, Nickserv}, Perms, PermsSoFar) ->
+				case Whois of
+					#{nickserv := Account} ->
+						case list_to_binary(Account) == Nickserv of
+							true -> lists:umerge(lists:usort(Perms), PermsSoFar);
+							false -> PermsSoFar
+						end;
+					_ -> PermsSoFar
 				end
 		end, [user], Permissions).
 
@@ -43,5 +63,5 @@ rankof_chan(Channel) ->
 hasperm(_, user) -> true;
 hasperm(User, Perm) -> lists:member(Perm, rankof(User)).
 
-hasperm(_, Chan, user) -> true;
+hasperm(_, _, user) -> true;
 hasperm(User, Chan, Perm) -> lists:member(Perm, rankof(User, Chan)).

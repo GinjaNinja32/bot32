@@ -71,16 +71,12 @@ handle_sock(Socket) ->
 					case case case orddict:find('Content-Length', Dict) of
 						{ok, Value} ->
 							inet:setopts(Socket, [{packet, raw}]),
-				%			Secret = config:require_value(config, [?MODULE, secret]),
-				%			read_content(Socket, list_to_integer(Value), Signature, Secret);
 							receive_content(Socket, list_to_integer(Value));
 						error -> <<"">>
 					end of
-				%		sigerr -> error;
 						<<"">> -> ok;
 						{error, T} -> logging:log(error, "GITHUB", "Error: ~p", [T]);
 						Content ->
-				%			Channels = config:require_value(config, [?MODULE, channels]),
 							decode_content(Content, Signature), ok
 					end of
 						ok ->
@@ -96,7 +92,7 @@ handle_sock(Socket) ->
 			gen_tcp:close(Socket);
 		{ok, T} ->
 			logging:log(info, "GITHUB", "HTTP request from ~s: ~p", [fname(Socket), T]),
-			gen_tcp:send(Socket, "HTTP/1.1 204 No Content\r\n\r\n"),
+			gen_tcp:send(Socket, "HTTP/1.1 403 Forbidden\r\n\r\n"),
 			gen_tcp:close(Socket);
 		{error, T} ->
 			logging:log(info, "GITHUB", "HTTP error to ~s: ~p", [fname(Socket), T]),
@@ -119,19 +115,6 @@ read_headers(Socket, Dict) ->
 receive_content(Socket, Length) ->
 	case gen_tcp:recv(Socket, Length, 10000) of
 		{ok, Data} -> Data;
-%			case Secret of
-%				'*' -> Data;
-%				_ ->
-%					% crypto:hmac returns a binary
-%					% github inserts 'sha1=' in front of the signature
-%					RealSignature = list_to_binary(tl(tl(tl(tl(tl(Signature)))))),
-%					case hexit(crypto:hmac(sha, Secret, Data), <<>>) of
-%						RealSignature -> Data;
-%						X ->
-%							io:fwrite("got ~p, expected ~p~n", [X, RealSignature]),
-%							sigerr
-%					end
-%			end;
 		{error, T} -> {error, T}
 	end.
 
@@ -184,9 +167,10 @@ handle_decoded(JSON) ->
 	Messages = case {
 				traverse_json(JSON, [struct, "action"]),
 				traverse_json(JSON, [struct, "pull_request"]),
-				traverse_json(JSON, [struct, "issue"])
+				traverse_json(JSON, [struct, "issue"]),
+				traverse_json(JSON, [struct, "state"])
 			} of
-		{"opened", _, error} ->
+		{"opened", _, error, _} ->
 			RepoStruct = traverse_json(JSON, [struct, "pull_request", struct, "base", struct, "repo"]),
 			[create_message(JSON, "[~s] ~s opened pull request #~b: ~s (" ++ ?BRANCH ++ "~s" ++ ?RESET ++ "..." ++ ?BRANCH ++ "~s" ++ ?RESET ++ ") ~s", [
 					{reponame, [struct, "pull_request", struct, "base", struct, "repo"]},
@@ -197,7 +181,7 @@ handle_decoded(JSON) ->
 					[struct, "pull_request", struct, "head", struct, "label"],
 					{url, [struct, "pull_request", struct, "html_url"]}
 				])];
-		{"reopened", _, error} ->
+		{"reopened", _, error, _} ->
 			RepoStruct = traverse_json(JSON, [struct, "pull_request", struct, "base", struct, "repo"]),
 			[create_message(JSON, "[~s] ~s reopened pull request #~b: ~s (" ++ ?BRANCH ++ "~s" ++ ?RESET ++ "..." ++ ?BRANCH ++ "~s" ++ ?RESET ++ ") ~s", [
 					{reponame, [struct, "pull_request", struct, "base", struct, "repo"]},
@@ -208,7 +192,7 @@ handle_decoded(JSON) ->
 					[struct, "pull_request", struct, "head", struct, "label"],
 					{url, [struct, "pull_request", struct, "html_url"]}
 				])];
-		{"closed", _, error} ->
+		{"closed", _, error, _} ->
 			RepoStruct = traverse_json(JSON, [struct, "pull_request", struct, "base", struct, "repo"]),
 			[create_message(JSON, "[~s] ~s closed pull request #~b: ~s (" ++ ?BRANCH ++ "~s" ++ ?RESET ++ "..." ++ ?BRANCH ++ "~s" ++ ?RESET ++ ") ~s", [
 					{reponame, [struct, "pull_request", struct, "base", struct, "repo"]},
@@ -219,7 +203,7 @@ handle_decoded(JSON) ->
 					[struct, "pull_request", struct, "head", struct, "label"],
 					{url, [struct, "pull_request", struct, "html_url"]}
 				])];
-		{"opened", error, _} ->
+		{"opened", error, _, _} ->
 			RepoStruct = traverse_json(JSON, [struct, "repository"]),
 			[create_message(JSON, "[~s] ~s opened issue #~b: ~s ~s", [
 					{reponame, [struct, "repository"]},
@@ -228,7 +212,7 @@ handle_decoded(JSON) ->
 					[struct, "issue", struct, "title"],
 					{url, [struct, "issue", struct, "html_url"]}
 				])];
-		{"reopened", error, _} ->
+		{"reopened", error, _, _} ->
 			RepoStruct = traverse_json(JSON, [struct, "repository"]),
 			[create_message(JSON, "[~s] ~s reopened issue #~b: ~s ~s", [
 					{reponame, [struct, "repository"]},
@@ -237,7 +221,7 @@ handle_decoded(JSON) ->
 					[struct, "issue", struct, "title"],
 					{url, [struct, "issue", struct, "html_url"]}
 				])];
-		{"closed", error, _} ->
+		{"closed", error, _, _} ->
 			RepoStruct = traverse_json(JSON, [struct, "repository"]),
 			[create_message(JSON, "[~s] ~s closed issue #~b: ~s ~s", [
 					{reponame, [struct, "repository"]},
@@ -246,7 +230,53 @@ handle_decoded(JSON) ->
 					[struct, "issue", struct, "title"],
 					{url, [struct, "issue", struct, "html_url"]}
 				])];
-		{error, _, _} ->
+		{error, _, _, X} when X /= error ->
+			RepoStruct = traverse_json(JSON, [struct, "repository"]),
+			case traverse_json(JSON, [struct, "state"]) of
+				"success" ->
+					logging:log(info, ?MODULE, "Travis SUCCESS: ~s", [traverse_json(JSON, [struct, "commit", struct, "sha"])]),
+					ok;
+				"pending" ->
+					logging:log(info, ?MODULE, "Travis PENDING: ~s", [traverse_json(JSON, [struct, "commit", struct, "sha"])]),
+					ok;
+				Status ->
+					case case traverse_json(JSON, [struct, "target_url"]) of
+						URL when is_list(URL) ->
+							os:putenv("url", URL),
+							case catch mochijson:decode(util:safe_os_cmd("curl -s $(echo $url | sed 's#travis-ci.org#api.travis-ci.org/repos#')")) of
+								{'EXIT',T} -> logging:log(error, ?MODULE, "Error in mochijson: ~p", [T]), error;
+								T -> {ok, T}
+							end;
+						_ -> error
+					end of
+						{ok, Travis} ->
+							RepoId = create_message(JSON, "~s", [{reponame, [struct, "repository"]}]),
+							[create_message(Travis, "[~s] Commit ~s '~s' has ~s CI: ~s ~s", [
+									{RepoId},
+									{hash, [struct, "commit"]},
+									{trunc_newline, [struct, "message"]},
+									{case Status of
+										"failure" -> "failed";
+										"error" -> "errored"
+									end},
+									{create_message(JSON, "~s", [ciurl])},
+									[struct, "compare_url"]
+								])];
+						error ->
+							[create_message(JSON, "[~s] Commit ~s on ~s has ~s CI: ~s ~s", [
+									{reponame, [struct, "repository"]},
+									{hash, [struct, "commit", struct, "sha"]},
+									cibranch,
+									{case Status of
+										"failure" -> "failed";
+										"error" -> "errored"
+									end},
+									cidesc,
+									ciurl
+								])]
+					end
+			end;
+		{error, _, _, _} ->
 			RepoStruct = traverse_json(JSON, [struct, "repository"]),
 			case lists:map(fun(T) -> traverse_json(JSON, [struct, T]) end, ["created", "deleted", "forced"]) of
 				[true, false, _] ->
@@ -299,6 +329,7 @@ handle_decoded(JSON) ->
 	case case Messages of
 		[] -> false;
 		["???"] -> file:write_file("json_err.crl", io_lib:format("~p", [JSON])), false;
+		_ when not is_list(Messages) -> false;
 		_ -> true
 	end of
 		true ->
@@ -343,6 +374,23 @@ create_message(JSON, String, FormatJsonPaths) ->
 							T -> T
 						end,
 						?USER ++ User ++ ?RESET ++ "/" ++ ?REPO ++ traverse_json(JSON, RepoStruct ++ [struct, "name"]) ++ ?RESET
+				end;
+			(cibranch) ->
+				SHA = traverse_json(JSON, [struct, "commit", struct, "sha"]),
+				case lists:filter(fun(T) -> traverse_json(T, [struct,"commit",struct,"sha"]) == SHA end,
+						traverse_json(JSON, [struct, "branches", array])) of
+					[Branch | _] -> ["branch ", traverse_json(Branch, [struct, "name"])];
+					_ -> "an unknown branch"
+				end;
+			(ciurl) ->
+				case traverse_json(JSON, [struct, "target_url"]) of
+					T when is_list(T) -> T;
+					_ -> ""
+				end;
+			(cidesc) ->
+				case traverse_json(JSON, [struct, "description"]) of
+					T when is_list(T) -> T;
+					_ -> ""
 				end;
 			(T) -> traverse_json(JSON, T)
 		end, FormatJsonPaths)).

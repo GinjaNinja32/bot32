@@ -11,6 +11,8 @@ get_commands() ->
 		{"editrank", fun editrank/1, perms},
 		{"getchanperm", fun gchanperm/1, admin},
 		{"chanperm", fun chanperm/1, perms},
+		{"nsperm", fun nsperm/1, perms},
+		{"getnsperm", fun gnsperm/1, [short], perms},
 		{"join", fun join/1, admin},
 		{"part", fun part/1, admin},
 		{"nick", fun nick/1, admin},
@@ -50,6 +52,26 @@ chanperm(#{reply:=ReplyTo, ping:=Ping, params:=[Rank | Chans]}) ->
 
 gchanperm(#{reply:=ReplyTo, ping:=Ping, params:=[Channel]}) -> {irc, {msg, {ReplyTo, [Ping, Channel, io_lib:format(" has the default permissions: ~p", [permissions:rankof_chan(Channel)])]}}};
 gchanperm(#{reply:=ReplyTo, ping:=Ping}) -> {irc, {msg, {ReplyTo, [Ping, "Provide exactly one channel!"]}}}.
+
+nsperm(#{reply:=Reply, ping:=Ping, params:=[Rank | Nickserv]}) ->
+	NewDict = lists:foldl(fun(NS, Dict) ->
+		NSRank = permissions:rankof_ns(NS),
+		NewList = case Rank of
+			"+" ++ R -> case lists:member(list_to_atom(R), NSRank) of
+					true -> NSRank;
+					false -> [list_to_atom(R) | NSRank]
+				end;
+			"-" ++ R -> lists:delete(list_to_atom(R), NSRank);
+			"user" -> [user];
+			R -> [user, list_to_atom(R)]
+		end,
+		core ! {irc, {msg, {Reply, [Ping, "Changed the permissions of the nickserv account ",NS," to ",io_lib:format("~w", [NewList])]}}},
+		orddict:store({nickserv, list_to_binary(NS)}, NewList, Dict)
+	end, config:require_value(config, [permissions]), Nickserv),
+	config:set_value(config, [permissions], cleandict(NewDict)).
+
+gnsperm(#{reply:=Reply, ping:=Ping, params:=[NS]}) ->
+	{irc, {msg, {Reply, [Ping, io_lib:format("The nickserv account ~s has the permissions ~500p", [NS, permissions:rankof_ns(NS)])]}}}.
 
 editrank(#{reply:=ReplyTo, ping:=Ping, params:=[]}) -> {irc, {msg, {ReplyTo, [Ping, "Provide a rank to edit and one or more nicks (+ users/masks)"]}}};
 editrank(#{reply:=ReplyTo, ping:=Ping, params:=[_]}) -> {irc, {msg, {ReplyTo, [Ping, "Provide one or more nicks (+ users/masks)"]}}};

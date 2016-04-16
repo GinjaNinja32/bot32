@@ -106,6 +106,17 @@ check_utf8(<<>>) -> true;
 check_utf8(<<_/utf8, B/binary>>) -> check_utf8(B);
 check_utf8(_) -> false.
 
+handle_irc(ctcp, {action, Chan, User=#user{nick=Nick}, Tokens}) ->
+	case permissions:hasperm(User, ignore) of
+		true ->
+			logging:log(ignore, ?MODULE, "Ignoring ~s!~s@~s ACTION: ~s.", [Nick, User#user.username, User#user.host, string:join(Tokens, " ")]),
+			ok;
+		false ->
+			lists:foreach(fun(Module) ->
+					util:call_or(Module, handle_event, [ctcp, {action, Chan, User, Tokens}], null)
+				end, config:require_value(config, [bot, modules]))
+	end;
+
 handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}) ->
 	case lists:all(fun(T) -> check_utf8(list_to_binary(T)) end, Tokens) of
 		false -> logging:log(utf8, ?MODULE, "Ignoring '~s' due to invalid UTF-8", [string:join(Tokens, " ")]);
@@ -142,7 +153,9 @@ handle_irc(nick, {U=#user{nick=OldNick}, NewNick}) ->
 				end, config:require_value(config, [bot, modules]))
 	end;
 
-handle_irc(notice, _) -> ok;
+handle_irc(notice, Params) ->
+	logging:log(info, ?MODULE, "NOTICE received: ~p", [Params]),
+	ok;
 
 handle_irc(numeric, {{rpl,away},_}) -> ok;
 handle_irc(numeric, {{A,B},Params}) -> logging:log(info, ?MODULE, "Numeric received: ~p_~p ~s", [A,B,string:join(Params," ")]);

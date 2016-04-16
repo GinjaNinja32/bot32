@@ -19,7 +19,7 @@ deinitialise() ->
 
 branch_params(Params, Type) ->
 	case Params of
-		[X] -> {"master", [X]};
+		[X] -> {<<"dev">>, [X]};
 		[] -> error;
 		_ ->
 			case config:get_value(temp, [?MODULE, Type, list_to_binary(string:to_lower(hd(Params)))]) of
@@ -60,7 +60,7 @@ load_trees() ->
 			BinT = list_to_binary(T),
 			config:set_value(temp, [?MODULE, trees, BinT], load_tree(T)),
 			config:set_value(temp, [?MODULE, defines, BinT], load_defines(T))
-		end, ["master", "dev-freeze", "dev", "kunpeng"]).
+		end, ["master", "dev", "kunpeng"]).
 
 load_defines(Branch) ->
 	Home = config:require_value(config, [?MODULE, location]),

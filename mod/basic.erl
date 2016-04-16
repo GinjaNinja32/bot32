@@ -5,7 +5,6 @@ get_commands() ->
 	[
 		{"ping", fun ping/1, user},
 		{"pong", fun pong/1, user},
-		{"8ball", fun eightball/1, user},
 		{"rand", fun rand/1, [integer], user},
 		{"pick", fun pick/1, [list], user},
 		{"dance", fun dance/1, user},
@@ -16,20 +15,28 @@ get_commands() ->
 		{"coin", fun coin/1, user}
 	].
 
-alt_funcs() -> [fun alt_eightball/1, fun select_or_string/1].
+rainbow() ->
+	R = fun(Str) ->
+			lists:map(fun({Chr,Col})->
+					[3,if Col<10->$0;true->[]end,integer_to_list(Col),Chr]
+				end,
+				lists:zip(Str,
+					lists:flatten(
+						[lists:duplicate(length(Str) div 13, lists:seq(2,14)),
+						lists:seq(2, 1 + (length(Str) rem 13))
+						]
+					)
+				)
+			) end.
 
-alt_eightball(Tokens) ->
-	case util:lasttail(util:lasttail(Tokens)) of
-		$? -> util:eightball();
-		_ -> false
-	end.
+alt_funcs() -> [fun select_or_string/1].
 
 select_or_string(Tokens) ->
 	case collapse_or_string(Tokens, [], []) of
 		false -> false;
 		[] -> false;
 		[_] -> false;
-		Options -> lists:nth(random:uniform(length(Options)), Options)
+		Options -> util:pick_rand(Options)
 	end.
 
 collapse_or_string([], [], _) -> false;
@@ -51,19 +58,14 @@ colors(#{reply:=ReplyTo, ping:=Ping}) -> {irc, {msg, {ReplyTo, [Ping,
 ping(#{reply:=ReplyTo, ping:=Ping}) -> {irc, {msg, {ReplyTo, [Ping, "Pong!"]}}}.
 pong(#{reply:=ReplyTo, ping:=Ping}) -> {irc, {msg, {ReplyTo, [Ping, "Ping!"]}}}.
 
-
-eightball(#{reply:=ReplyTo, ping:=Ping, params:=["add"|Thing]}) ->
-	{irc, {msg, {ReplyTo, [Ping, util:addeightball(list_to_binary(string:join(Thing, " ")))]}}};
-eightball(#{reply:=ReplyTo, ping:=Ping}) ->
-        {irc, {msg, {ReplyTo, [Ping, util:eightball()]}}}.
-
 rand(#{reply:=ReplyTo, ping:=Ping, params:=[Num]}) ->
 	case Num > 0 of
 		true -> {irc, {msg, {ReplyTo, [Ping, erlang:integer_to_list(random:uniform(Num))]}}};
 		false -> {irc, {msg, {ReplyTo, [Ping, "Please pass a positive integer."]}}}
 	end.
 
-pick(#{reply:=ReplyTo, ping:=Ping, params:=[List]}) -> {irc, {msg, {ReplyTo, [Ping, lists:nth(random:uniform(length(List)), List)]}}}.
+pick(#{reply:=ReplyTo, ping:=Ping, params:=[List]}) ->
+	{irc, {msg, {ReplyTo, [Ping, util:pick_rand(List)]}}}.
 
 dancereply() ->
 	[

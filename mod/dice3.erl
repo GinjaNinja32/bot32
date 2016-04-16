@@ -155,14 +155,14 @@ dice3(String, Expand, Formatter) ->
 %	io:fwrite("tokenising ~p\n", [String]),
 	case tokenise(String, []) of
 		error -> "Tokenisation error.";
-		Tokens ->
+		{Tokens, Comment} ->
 %			io:fwrite("parsing ~p\n", [lists:reverse(Tokens)]),
 			case parse(lists:reverse(Tokens)) of
 				error -> "Parse error.";
 				Expressions ->
 %					io:fwrite("evaluating ~p\n", [Expressions]),
 					{S,V} = evaluate(Expressions, Expand),
-					io_lib:format("~s : ~s~n", [Formatter(V),S])
+					io_lib:format("~s~s : ~s~n", [Comment, Formatter(V),S])
 			end
 	end.
 
@@ -173,17 +173,17 @@ tokens2() ->
 	 {"=<", '<='}, {"=>", '>='}].
 
 tokens1() ->
-	[{" ", '$none'}, {"	", '$none'},
-	 {">", '>'}, {"<", '<'}, {"=", '='},
+	[{" ", '$none'}, {"	", '$none'}, {"%", '%'},
+	 {">", '>'}, {"<", '<'}, {"=", '='}, {"!", '!'},
 	 {"+", '+'}, {"-", '-'}, {"*", '*'}, {"/", '/'},
 	 {"(", '('}, {")", ')'}, {"d", 'd'}, {"#", '#'},
 	 {"h", 'h'}, {"H", 'H'}, {"l", 'l'}, {"L", 'L'}
 	].
 
-tokenise([$;|_], T) -> T;
-tokenise([$:|_], T) -> T;
-tokenise([$||_], T) -> T;
-tokenise([], T) -> T;
+tokenise([$;|Rst], T) -> {T, [string:strip(Rst), ": "]};
+tokenise([$:|Rst], T) -> {T, [string:strip(Rst), ": "]};
+tokenise([$||Rst], T) -> {T, [string:strip(Rst), ": "]};
+tokenise([], T) -> {T, ""};
 tokenise([A|R], T) when $0 =< A andalso A =< $9 ->
 	{Num,Rest} = lists:splitwith(fun(X) -> $0 =< X andalso X =< $9 end, [A|R]),
 	tokenise(Rest, [list_to_integer(Num) | T]);
@@ -191,7 +191,7 @@ tokenise([$[|R], T) ->
 	{Lst, [_|Rest]} = lists:splitwith(fun(X) -> X /= $] end, R),
 	NumStrings = string:tokens(Lst, ", "),
 	case catch lists:map(fun(Z) ->
-				case list_to_integer(Z) of X when is_integer(X) -> X; _ -> throw(error) end
+				case catch list_to_integer(Z) of X when is_integer(X) -> X; _ -> throw(error) end
 			end, NumStrings) of
 		error -> error;
 		NumList ->
@@ -212,7 +212,7 @@ tokenise([A,B|R], T) ->
 	end;
 tokenise([A], T) ->
 	case lists:keyfind([A], 1, tokens1()) of
-		{_, X} -> [X | T];
+		{_, X} -> {[X | T], ""};
 		false -> error
 	end.
 
@@ -236,7 +236,7 @@ parseExpr(Expr) when is_list(Expr) ->
 parseExpr(T) -> T.
 
 parseExpression(Lst) ->
-	Priority = [['d'], ['L','l','H','h'], ['*','/'], ['+','-'], ['>','>=','<=','<','='], ['#']],
+	Priority = [['d'], ['!','L','l','H','h'], ['*','/'], ['+','-'], ['>','>=','<=','<','='], ['#']],
 	lists:foldl(fun parseLeftAssoc/2, Lst, Priority).
 
 parseLeftAssoc(_, error) -> error;
@@ -269,13 +269,14 @@ parseLeftAssoc(OpList, Toks) ->
 	end.
 
 
-is_acceptable_left(_, L) -> is_tuple(L) orelse is_number(L) orelse is_list(L).
-is_acceptable_right(_, R, _) -> is_tuple(R) orelse is_number(R) orelse is_list(R).
+is_acceptable_left(_, L) -> is_tuple(L) orelse is_number(L) orelse is_list(L) orelse L == '%'.
+is_acceptable_right(_, R, _) -> is_tuple(R) orelse is_number(R) orelse is_list(R) orelse R == '%'.
 
 default_left('d') -> 1;
 default_left(_) -> error.
 
 default_right('d') -> 6;
+default_right('!') -> '$';
 default_right(_) -> error.
 
 a(Lst) ->
@@ -322,6 +323,13 @@ comparison(__, BX, AS, BS, AV, BV, OS, OV) when is_list(BV) ->
 			{[AS,OS,$[,32,BS,32,$=,32,lists:flatmap(fun({{N,_},C}) -> [3,C,2,integer_to_list(N),3,2,32] end, lists:zip(Result, Color)),$]], lists:map(fun({_,B}) -> B end, Result)}
 	end.
 
+exploding(N, M, Trg, _) when Trg*20 < M*N -> [0];
+exploding(0, _, ___, D) -> D;
+exploding(N, M, Trg, D) ->
+	{_, NewDice} = rollraw(N, M),
+	S = util:count(fun(T) -> T >= Trg end, NewDice),
+	exploding(S, M, Trg, NewDice ++ D).
+
 evaluate(Tree, Expand) ->
 	case Tree of
 		{'#', A, B} ->
@@ -332,12 +340,31 @@ evaluate(Tree, Expand) ->
 					{[AS,$#,$[, string:join(Strings, "; "), $]], Totals};
 				_ -> {"{invalid}", 0}
 			end;
+		{'!', {'d',A,B}, X} ->
+			{AS,AV} = evaluate(A, Expand),
+			{BS,BV} = evaluate(B, Expand),
+			{XS,XV} = evaluate(X, Expand),
+			if
+				not is_number(AV) orelse
+				not is_number(BV) orelse
+				not ((is_number(XV) andalso XV<BV andalso XV>1) orelse XV == '$') -> {"{invalid}", 0};
+				true ->
+					Trg = if XV == '$' -> BV; true -> XV end,
+					Dice = exploding(AV, BV, Trg, []),
+					Lst = lists:map(fun
+							(0) -> [3,$0,$5,2,$e,$r,$r,3,2];
+							(T) when T >= Trg -> [3,$0,$9,integer_to_list(T),3,2,2];
+							(T) -> integer_to_list(T)
+						end, Dice),
+					{[$[,AS,$d,BS,$!,XS,$=,2,$[,string:join(Lst, ", "),$],2,$]], lists:sum(Dice)}
+			end;
+
 		{Op, {'d',A,B}, X} when Op=='L' orelse Op=='l' orelse Op=='H' orelse Op=='h' ->
 			{AS,AV} = evaluate(A, Expand),
 			{BS,BV} = evaluate(B, Expand),
 			{XS,XV} = evaluate(X, Expand),
 			if
-				not (is_number(AV) andalso is_number(BV) andalso is_number(XV)) orelse XV > AV -> {"{invalid", 0};
+				not (is_number(AV) andalso is_number(BV) andalso is_number(XV)) orelse XV > AV -> {"{invalid}", 0};
 				true ->
 					{Stat, Dice, _} = roll(AV,BV),
 					{Order, UseDice} = case Op of
@@ -393,6 +420,8 @@ evaluate(Tree, Expand) ->
 			{S,V} = evaluate(XTree, Expand),
 			{[$(,S,$)],V};
 		T when is_list(T) -> {io_lib:format("~p", [T]), T};
+		'$' -> {"", '$'};
+		'%' -> {"%", 100};
 		T -> {integer_to_list(T), T}
 	end.
 
@@ -408,6 +437,7 @@ roll(N,M) ->
 		{Stat, Total} -> {Stat, [], Total}
 	end.
 
+rollraw(N, 0) -> {ok, lists:duplicate(N, 0)};
 rollraw(N, 1) -> {ok, lists:duplicate(N, 1)};
 rollraw(N, M) ->
 	case config:get_value(config, [?MODULE, dicemode]) of

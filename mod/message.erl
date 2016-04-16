@@ -10,7 +10,8 @@ get_commands() ->
 		{"showmsg", fun showmsg/1, [{"id", integer}], user},
 		{"delmsg", fun delmsg/1, [{"id", integer}], user},
 		{"sent", fun sent/1, user},
-		{"pending", fun pending/1, admin}
+		{"pending", fun pending/1, admin},
+		{"retargmsg", fun retarget/1, [{"id",integer}, {"target",short}], user}
 	].
 
 initialise() ->
@@ -78,6 +79,20 @@ showmsg(#{origin:=User, nick:=Nick, reply:=Reply, ping:=Ping, params:=[ID]}) ->
 			end
 	end.
 
+retarget(#{origin:=User, nick:=Nick, reply:=Reply, ping:=Ping, params:=[ID, Target]}) ->
+	NickL = string:to_lower(Nick),
+	case config:get_value(data, [?MODULE, messages, ID]) of
+		'$none' -> {irc, {msg, {Reply, [Ping, "That message does not exist."]}}};
+		{_, _, true, _, _} -> {irc, {msg, {Reply, [Ping, "You cannot retarget delivered messages."]}}};
+		{Sender, _, _, _, _} ->
+			case permissions:hasperm(User, admin) orelse NickL == Sender of
+				false -> {irc, {msg, {Reply, [Ping, "You are not authorised to retarget that message."]}}};
+				true ->
+					config:mod_get_value(data, [?MODULE, messages, ID], fun(T) -> setelement(2, T, string:to_lower(Target)) end),
+					{irc, {msg, {Reply, [Ping, "Message retargeted to ", Target, $.]}}}
+			end
+	end.
+
 delmsg(#{origin:=User, nick:=Nick, reply:=Reply, ping:=Ping, params:=[ID]}) ->
 	NickL = string:to_lower(Nick),
 	case config:get_value(data, [?MODULE, messages, ID]) of
@@ -126,12 +141,27 @@ create_message(FromR, ToR, Msg) ->
 			[2, integer_to_list(ID), 2, " to ", VisTo, $.]
 	end.
 
-pending(#{nick:=Nick, reply:=Reply, ping:=Ping}) ->
-	Pending = util:count(fun({_,{_,_,T,_,_}}) -> not T end, config:get_value(data, [?MODULE, messages])),
+pending(#{reply:=Reply, ping:=Ping}) ->
+	PendingLst = lists:map(fun({X,{_,Trg,_,_,_}}) -> io_lib:format("~b:~s", [X,Trg]) end, lists:filter(fun({_,{_,_,T,_,_}}) -> not T end, config:get_value(data, [?MODULE, messages]))),
+	Pending = length(PendingLst),
 
 	Recipients = lists:umerge(lists:map(
 			fun({_,{_,T,Del,_,_}}) -> if Del -> []; true -> [T] end end,
 		config:get_value(data, [?MODULE, messages]))),
 
-	core ! {irc, {msg, {Nick, ["Recipients with pending messages: ", string:join(Recipients, "; ")]}}},
-	{irc, {msg, {Reply, [Ping, io_lib:format("There are ~b pending messages to ~b recipients.", [Pending, length(Recipients)])]}}}.
+	core ! {irc, {msg, {Reply, [Ping, io_lib:format("There are ~b pending messages to ~b recipients.", [Pending, length(Recipients)])]}}},
+	pendingf(Reply, Ping, PendingLst).
+
+pendingf(R, P, Lst) -> pendingf(R, P, tl(Lst), [hd(Lst)]).
+
+pendingf(R, P, [], B) ->
+	core ! {irc, {msg, {R, [P, string:join(lists:reverse(B), ", ")]}}},
+	ok;
+pendingf(R, P, [A|Rst], B) ->
+	if
+		length(B) > 19 ->
+			core ! {irc, {msg, {R, [P, string:join(lists:reverse(B), ", ")]}}},
+			pendingf(R, P, Rst, [A]);
+		true ->
+			pendingf(R, P, Rst, [A|B])
+	end.

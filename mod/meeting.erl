@@ -45,6 +45,7 @@ send2chan(Channel, Nick, [Fst|Rst], Bin) ->
 		T when T > 380 ->
 			core ! {irc, {msg, {Channel, [Nick, $:, $ , Bin]}}},
 			<<>>;
+		_ when Bin == <<>> -> <<>>;
 		_ -> <<Bin/binary, 32>>
 	end,
 	send2chan(Channel, Nick, Rst, <<NewBin/binary, Fst/binary>>).

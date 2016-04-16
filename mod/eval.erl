@@ -5,8 +5,10 @@
 
 get_commands() ->
 	[
+		{"eecho", fun eecho/1, eval},
 		{"eval", gen_eval(fun eval/1), eval},
 		{"evalstr", gen_eval_str(fun eval/1), eval},
+		{"bash", fun bash/1, [long], eval},
 		{"s", fun shl/1, eval},
 		{"sdrop", fun sdrop/1, eval},
 		{"serase", fun serase/1, eval},
@@ -16,6 +18,15 @@ get_commands() ->
 		{"sym", fun sym/1, user},
 		{"lsym", fun lsym/1, host}
 	].
+
+bash(#{reply:=Reply, ping:=Ping, params:=[Param]}) ->
+	os:putenv("args", Param),
+	{irc, {msg, {Reply, io_lib:format("~s~500p", [Ping, util:safe_os_cmd("bash -c \"$args\"")])}}}.
+
+eecho(Params=#{params:=Tokens}) ->
+	ES = gen_eval_str(fun eval/1),
+	NewParams = string:tokens(lists:flatten(["\"", string:join(Tokens, " "), "\""]), " "),
+	ES(Params#{ping := [], params := NewParams}).
 
 sym(#{reply:=RT, ping:=P, params:=Par}) ->
 	os:putenv("sym", string:join(Par, " ")),
@@ -38,7 +49,7 @@ shl(#{reply:=RT, ping:=P, params:=Params}) ->
 					case catch erl_eval:exprs(Forms, Bindings) of
 						{value, Value, NewBinds} ->
 							config:set_value(data, [eval, shell], NewBinds),
-							{irc, {msg, {RT, [P, io_lib:format("~p", [Value])]}}};
+							{irc, {msg, {RT, [P, io_lib:format("~500p", [Value])]}}};
 						{'EXIT', {Reason, Stack}} -> {irc, {msg, {RT, [P, format_reasonstack(Reason, Stack)]}}};
 						{'EXIT', Term} -> {irc, {msg, {RT, [P, io_lib:format("Code exited with ~p", [Term])]}}};
 						Term -> {irc, {msg, {RT, [P, io_lib:format("Code threw ~p", [Term])]}}}
@@ -51,7 +62,7 @@ shl(#{reply:=RT, ping:=P, params:=Params}) ->
 sshow(#{reply:=RT, ping:=P}) ->
 	case config:get_value(data, [eval, shell]) of
 		'$none' -> {irc, {msg, {RT, [P, "No state found."]}}};
-		V -> {irc, {msg, {RT, [P, io_lib:format("~p", [V])]}}}
+		V -> {irc, {msg, {RT, [P, io_lib:format("~500p", [V])]}}}
 	end.
 
 serase(#{reply:=RT, ping:=P, params:=A}) when length(A) /= 1 -> {irc, {msg, {RT, [P, "Provide a single var name."]}}};
@@ -63,7 +74,7 @@ serase(#{reply:=RT, ping:=P, params:=[Var]}) ->
 			case orddict:find(Atom, Vars) of
 				{ok, Val} ->
 					config:set_value(data, [eval, shell], orddict:erase(Atom, Vars)),
-					io_lib:format("Dropped value ~p.", [Val]);
+					io_lib:format("Dropped value ~500p.", [Val]);
 				error ->
 					io_lib:format("No variable ~s found.", [Var])
 			end
