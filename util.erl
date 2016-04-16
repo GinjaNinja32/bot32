@@ -337,3 +337,6 @@ pick_rand(List) ->
 			[N] = dice3:get_n_m(1, length(List)),
 			lists:nth(N, List)
 	end.
+
+simple_pick(Lst) ->
+	lists:nth(random:uniform(length(Lst)), Lst).
