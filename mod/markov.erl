@@ -25,44 +25,93 @@ defilter(M0) ->
 
 	M1.
 
+initialise() ->
+	Trees = config:get_value(data, [?MODULE]),
+	spawn(fun() ->
+			register(markov, self()),
+			loop(Trees)
+		end).
+
+deinitialise() ->
+	markov ! stop.
+
+set(_, [], V) -> V;
+set(D,[K|Ks],V) ->
+	case orddict:find(K, D) of
+		{ok,DV} -> orddict:store(K, set(DV, Ks, V), D);
+		error -> orddict:store(K, set([], Ks, V), D)
+	end.
+
+get(D, Ks) -> get(D, Ks, '$none').
+get(D, [], _) -> D;
+get(D, [K|Ks], V) ->
+	case orddict:find(K, D) of
+		{ok, DV} -> get(DV, Ks, V);
+		error -> V
+	end.
+
+inc(D, []) -> D+1;
+inc(D, [K|Ks]) ->
+	case orddict:find(K, D) of
+		{ok, DV} -> orddict:store(K, inc(DV, Ks), D);
+		error when Ks == [] -> orddict:store(K, 1, D);
+		error -> orddict:store(K, inc([], Ks), D)
+	end.
+
+loop(Trees) ->
+	receive
+		stop ->
+			config:set_value(data, [?MODULE], Trees);
+		{Chan, M, Reply} ->
+			NewT = case Reply of
+				pinged -> reply(Trees, Chan, M), Trees;
+				X ->
+					T3 = lists:foldl(fun({A,B}, T0) ->
+							T1 = inc(T0, [fwd, A, B]),
+							inc(T1, [fwd, B, A])
+						end, Trees, lists:zip([start | M], M ++ [finish])),
+					case X of
+						true -> reply(T3, Chan, M);
+						_ -> ok
+					end,
+					T3
+			end,
+			loop(NewT)
+	end.
+
 handle_event(msg_nocommand, {#user{nick=_Nick}, Channel, Tokens}) ->
 	M = filter(list_to_binary(string:join(Tokens, " "))),
 
+	case hd(M) of
+		<<"nt">> -> ok;
+		<<"nanotrasen_inc">> -> ok;
+		_ ->
 
-	Nick = list_to_binary(string:to_lower(config:require_value(config, [bot, nick]))),
-	NickS = <<Nick/binary, "s">>,
+			Nick = list_to_binary(string:to_lower(config:require_value(config, [bot, nick]))),
+			NickS = <<Nick/binary, "s">>,
 
-	case case lists:member(Nick, M) orelse lists:member(NickS, M) orelse lists:member(<<"nt">>, M) orelse lists:member(<<"nts">>, M) of
-		true -> pinged;
-		false -> random:uniform(100) =< config:get_value(config, [?MODULE, replyrate], 0)
-	end of
-		pinged -> reply(Channel, M);
-		T ->
-			lists:foreach(fun({A,B}) ->
-					config:mod_get_value(data, [?MODULE, fwd, A, B], fun('$none') -> 1; (T) -> T+1 end),
-					config:mod_get_value(data, [?MODULE, bwd, B, A], fun('$none') -> 1; (T) -> T+1 end)
-				end, lists:zip([start | M], M ++ [finish])),
-			case T of
-				true -> reply(Channel, M);
-				_ -> ok
-			end
+			X = case lists:member(Nick, M) orelse lists:member(NickS, M) orelse lists:member(<<"nt">>, M) orelse lists:member(<<"nts">>, M) orelse lists:member(<<"nti">>, M) orelse lists:member(<<"ntis">>, M) of
+				true -> pinged;
+				false -> random:uniform(100) =< config:get_value(config, [?MODULE, replyrate], 0)
+			end,
+			markov ! {Channel, M, X}
 	end,
 	ok;
 handle_event(_, _) -> ok.
 
-reply(Chan, Msg) ->
+reply(T, Chan, Msg) ->
 	Contexts = lists:zip(Msg, lists:map(fun(Word) ->
-			lists:sum(lists:map(fun({_,V}) -> V end, config:get_value(data, [?MODULE, fwd, Word], []))) +
-			lists:sum(lists:map(fun({_,V}) -> V end, config:get_value(data, [?MODULE, bwd, Word], [])))
+			lists:sum(lists:map(fun({_,V}) -> V end, get(T, [fwd, Word], []))) +
+			lists:sum(lists:map(fun({_,V}) -> V end, get(T, [fwd, Word], [])))
 		end, Msg)),
 	UseContexts = lists:filter(fun({_,N}) -> N >= 3 end, Contexts),
 	if
 		UseContexts == [] -> ok; % no contexts to use!
 		true ->
 			SortedContexts = [{_,MinContexts}|_] = lists:sort(fun({_,A}, {_,B}) -> A =< B end, UseContexts),
-			RareContexts = lists:takewhile(fun({_,T}) -> T == MinContexts end, SortedContexts),
+			RareContexts = lists:takewhile(fun({_,C}) -> C == MinContexts end, SortedContexts),
 			{Base,_} = util:simple_pick(RareContexts),
-			ReplyTokens = build([Base]),
+			ReplyTokens = build(T, [Base]),
 
 			ReplyParts = lists:zip3(
 				[start, start| ReplyTokens],
@@ -91,10 +140,8 @@ reply(Chan, Msg) ->
 			core ! {irc, {msg, {Chan, defilter(util:binary_join(Reply, <<" ">>))}}}
 	end.
 
-build(Lst) ->
-	FWD = config:get_value(data, [?MODULE, fwd]),
-	BWD = config:get_value(data, [?MODULE, bwd]),
-	build_fwd(FWD, build_bwd(BWD, Lst)).
+build(T, Lst) ->
+	build_fwd(get(T,[fwd]), build_bwd(get(T,[bwd]), Lst)).
 
 build_bwd(MD, [Wd|Rst]) ->
 %	io:fwrite("Building backwards from ~p\n", [[Wd|Rst]]),
@@ -135,5 +182,11 @@ replace() ->
 		{<<"im">>, <<"i'm">>},
 		{<<"youre">>, <<"you're">>},
 		{<<"hes">>, <<"he's">>},
-		{<<"shes">>, <<"she's">>}
+		{<<"shes">>, <<"she's">>},
+		{<<"thats">>, <<"that's">>},
+		{<<"shouldntve">>, <<"shouldn't've">>},
+		{<<"nt">>, <<"NT">>},
+		{<<"nts">>, <<"NT's">>},
+		{<<"nti">>, <<"NTI">>},
+		{<<"ntis">>, <<"NTI's">>}
 	].

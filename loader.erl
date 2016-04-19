@@ -20,7 +20,8 @@ load() ->
 		]),
 	code:add_path("./mod/bin"),
 	compile_to("./mod/bin", [
-			'mod/modules'
+			'mod/modules',
+			'mod/command'
 		]).
 
 compile_to(Dir, Files) ->
