@@ -150,7 +150,7 @@ handle_command(Ranks, User, Channel, Command, Arguments, Selector) ->
 								selector => Selector,
 								ranks => Ranks
 							},
-						apply(Fn, [ParamMap]);
+						Fn(ParamMap);
 					_ -> unhandled
 				end;
 			(_, Result) -> Result
