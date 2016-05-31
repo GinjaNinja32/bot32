@@ -63,20 +63,24 @@ loop(Trees) ->
 		stop ->
 			config:set_value(data, [?MODULE], Trees);
 		{Chan, M, Reply} ->
-			NewT = case Reply of
+			case (catch case Reply of
 				pinged -> reply(Trees, Chan, M), Trees;
 				X ->
 					T3 = lists:foldl(fun({A,B}, T0) ->
 							T1 = inc(T0, [fwd, A, B]),
-							inc(T1, [fwd, B, A])
+							inc(T1, [bwd, B, A])
 						end, Trees, lists:zip([start | M], M ++ [finish])),
 					case X of
 						true -> reply(T3, Chan, M);
 						_ -> ok
 					end,
 					T3
-			end,
-			loop(NewT)
+			end) of
+				{'EXIT', T} ->
+					io:fwrite("Err: ~p\n", [T]);
+				T ->
+					loop(T)
+			end
 	end.
 
 handle_event(msg_nocommand, {#user{nick=_Nick}, Channel, Tokens}) ->
@@ -85,6 +89,7 @@ handle_event(msg_nocommand, {#user{nick=_Nick}, Channel, Tokens}) ->
 	case hd(M) of
 		<<"nt">> -> ok;
 		<<"nanotrasen_inc">> -> ok;
+		<<$!, _/binary>> -> ok;
 		_ ->
 
 			Nick = list_to_binary(string:to_lower(config:require_value(config, [bot, nick]))),
@@ -137,6 +142,7 @@ reply(T, Chan, Msg) ->
 					[T2 | Final]
 				end, lists:droplast(tl(ReplyParts))),
 
+%			timer:sleep(1000 * random:uniform(length(Reply))),
 			core ! {irc, {msg, {Chan, defilter(util:binary_join(Reply, <<" ">>))}}}
 	end.
 
@@ -179,10 +185,15 @@ capitalise(Bin) -> Bin.
 
 replace() ->
 	[
-		{<<"im">>, <<"i'm">>},
+		{<<"i">>, <<"I">>},
+		{<<"im">>, <<"I'm">>},
 		{<<"youre">>, <<"you're">>},
 		{<<"hes">>, <<"he's">>},
 		{<<"shes">>, <<"she's">>},
+		{<<"whos">>, <<"who's">>},
+		{<<"wholl">>, <<"who'll">>},
+		{<<"theyre">>, <<"they're">>},
+		{<<"theyll">>, <<"they'll">>},
 		{<<"thats">>, <<"that's">>},
 		{<<"shouldntve">>, <<"shouldn't've">>},
 		{<<"nt">>, <<"NT">>},

@@ -126,7 +126,7 @@ drop_module(Module) ->
 			Removed = orddict:filter(fun(_,V) -> V /= [] end, Cleaned),
 			config:set_value(temp, [bot, commands], Removed),
 
-			util:call_or(Module, deinitialise, [], ok),
+			catch util:call_or(Module, deinitialise, [], ok),
 			config:mod_get_value(config, [bot, modules], fun(T) -> lists:delete(Module, T) end),
 			"ok"
 	end,
