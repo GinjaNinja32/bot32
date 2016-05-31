@@ -87,16 +87,17 @@ status(RT, S, P, Name, SilenceErrors) ->
 	end.
 
 revision(RT, _, _, S, P, ID, Name) ->
-        case byond:send(S, P, "revision") of
-                {error, X} -> core ! {irc, {msg, {RT, io_lib:format("~sError: ~p", [Name, X])}}};
+	case byond:send(S, P, "revision") of
+		{error, X} -> core ! {irc, {msg, {RT, io_lib:format("~sError: ~p", [Name, X])}}};
 		[{"unknown","?"}] -> core ! {irc, {msg, {RT, io_lib:format("~sRevision unknown.", [Name])}}};
-                Dict ->
-                        Branch = safeget(Dict, "branch"),
-                        Date = safeget(Dict, "date"),
-                        Rev = safeget(Dict, "revision"),
+		Dict ->
+			Branch = safeget(Dict, "branch"),
+			Date = safeget(Dict, "date"),
+			Rev = safeget(Dict, "revision"),
+			GID = safeget(Dict, "gameid"),
 			Msg = case config:get_value(config, [?MODULE, github, ID]) of
-				'$none' -> io_lib:format("~sRevision: ~s on ~s at ~s.", [Name, Rev, Branch, Date]);
-				URL -> io_lib:format("~sRevision: ~s on ~s at ~s: ~s", [Name, lists:sublist(Rev, 8), Branch, Date, [URL,Rev]])
+				'$none' -> io_lib:format("~sRevision: ~s on ~s at ~s. Game ID: ~s", [Name, Rev, Branch, Date, GID]);
+				URL -> io_lib:format("~sRevision: ~s on ~s at ~s: ~s. Game ID: ~s", [Name, lists:sublist(Rev, 8), Branch, Date, [URL,Rev], GID])
 			end,
 			core ! {irc, {msg, {RT, Msg}}}
 	end.
@@ -124,12 +125,12 @@ a(<<T/utf8, _/binary>>) ->
 a(_) -> <<"a">>.
 
 mode(RT, _, _, S, P, _, Name) ->
-        case byond:send(S, P, "status=2") of
-                {error, X} -> core ! {irc, {msg, {RT, io_lib:format("~sError: ~p", [Name,X])}}};
-                Dict ->
-                        Mode = safeget(Dict, "mode"),
-                        core ! {irc, {msg, {RT, [Name, "Mode: ", Mode]}}}
-        end.
+	case byond:send(S, P, "status=2") of
+		{error, X} -> core ! {irc, {msg, {RT, io_lib:format("~sError: ~p", [Name,X])}}};
+		Dict ->
+			Mode = safeget(Dict, "mode"),
+			core ! {irc, {msg, {RT, [Name, "Mode: ", Mode]}}}
+	end.
 
 players(RT, _, _, S, P, _, Name) ->
 	case byond:send(S, P, "status=2") of
@@ -161,14 +162,14 @@ manifest(RT, _, O, S, P, _, Name) ->
 	end.
 
 safeget(Dict, Key) ->
-        case orddict:find(Key, Dict) of
-                {ok, V} -> V;
-                error -> "???"
-        end.
+	case orddict:find(Key, Dict) of
+		{ok, V} -> V;
+		error -> "???"
+	end.
 
 acc_players(Name, {20, Acc, RT, SName}) ->
-        core ! {irc, {msg, {RT, [SName, "Players: ", Acc]}}},
-        {0, Name, RT, SName};
+	core ! {irc, {msg, {RT, [SName, "Players: ", Acc]}}},
+	{0, Name, RT, SName};
 acc_players(Name, {Num, Acc, RT, SName}) -> {Num+1, <<Acc/binary, ", ", Name/binary>>, RT, SName}.
 
 

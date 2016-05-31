@@ -225,10 +225,25 @@ waitfor_gone(Ident) ->
 % os:cmd() returns non-strings that re:replace can't handle, this fixes them
 safe_os_cmd(String) ->
 	lists:flatmap(fun
-			(T) when T < 128 -> [T];
+			(T) when T < 256 -> [T];
 			(T) -> binary_to_list(<<T/utf8>>)
-		end, os:cmd(String)).
+		end, unicode_os_cmd(String)).
 
+unicode_os_putenv(Key, Value) ->
+	os:putenv(unicode(Key), unicode(Value)).
+
+unicode_os_cmd(String) ->
+	os:cmd(unicode(String)).
+
+unicode(String) ->
+	Bin = if
+		is_binary(String) -> String;
+		is_list(String) -> list_to_binary(String)
+	end,
+	utf8_chars(Bin).
+
+utf8_chars(<<A/utf8, B/binary>>) -> [A | utf8_chars(B)];
+utf8_chars(<<>>) -> [].
 
 whois(Nick) ->
 	LNick = string:to_lower(Nick),

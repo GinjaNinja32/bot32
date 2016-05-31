@@ -19,10 +19,13 @@ dm(#{reply:=Reply, ping:=Ping, params:=[String]}) ->
 			SV -> ["\n\tworld.log << \"[", SV, "]\""]
 		end
 	],
+%	io:fwrite("~s\n", [File]),
 
-	file:write_file("dm.dme", File),
+	MD5 = re:replace(base64:encode(crypto:md5(File)), "/", "@", [global, {return, list}]),
+
+	file:write_file(["dm/", MD5, ".dme"], File),
 	spawn(fun() ->
-		Output = os:cmd("./dm_compile_run.sh"),
+		Output = util:safe_os_cmd(["./dm_compile_run.sh ", MD5]),
 		core ! {irc, {msg, {Reply, [Ping, string:join(string:tokens(Output, "\n"), ";  ")]}}}
 	end),
 	ok.

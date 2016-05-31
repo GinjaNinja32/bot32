@@ -20,7 +20,7 @@ get_commands() ->
 	].
 
 bash(#{reply:=Reply, ping:=Ping, params:=[Param]}) ->
-	os:putenv("args", Param),
+	util:unicode_os_putenv("args", Param),
 	{irc, {msg, {Reply, io_lib:format("~s~500p", [Ping, util:safe_os_cmd("bash -c \"$args\"")])}}}.
 
 eecho(Params=#{params:=Tokens}) ->

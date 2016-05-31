@@ -147,7 +147,8 @@ handle_command(Ranks, User, Channel, Command, Arguments, Selector) ->
 								reply => RC,
 								ping => RP,
 								params => Args,
-								selector => Selector
+								selector => Selector,
+								ranks => Ranks
 							},
 						apply(Fn, [ParamMap]);
 					_ -> unhandled
@@ -172,7 +173,13 @@ alternate_commands(Tokens) ->
 				Alt ++ util:call_or(Mod, alt_funcs, [], [])
 		end, [], config:require_value(config, [bot, modules])),
 	lists:foldl(fun
-			(Func, false) -> Func(Tokens);
+			(Func, false) ->
+				case Func(Tokens) of
+					false -> false;
+					T ->
+%						io:fwrite("~p(~p) returned ~p, HANDLED\n", [Func, Tokens, T]),
+						T
+				end;
 			(_, Re) -> Re
 		end, false, AltFunctions).
 

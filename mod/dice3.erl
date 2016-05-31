@@ -57,7 +57,7 @@ gurps(#{reply:=RT, ping:=P, nick:=Nick, params:=Params, selector:=Selector}) ->
 			Targets = if
 				T >= 16 -> [6, 16,   17];
 				T == 15 -> [5, 15,   16];
-				T >=  7 -> [4,  T,   17];
+				T >=  7 -> [4,  T,   16];
 				true    -> [4,  T, T+10]
 			end,
 			Formatter = fun
@@ -137,7 +137,7 @@ rtd(#{reply:=Reply, ping:=Ping, nick:=Nick, selector:=Selector, params:=Params})
 		"\x039\x02Perfect!\x03\x02",
 		"\x0310\x02Overkill!\x03\x02"
 	],
-	Result = dice3("d6", true, fun(T) -> [Comment, lists:nth(T, RTD)] end),
+	Result = dice3("d6", true, fun([T]) -> [Comment, lists:nth(T, RTD)] end),
 	send_to_all(Reply, Ping, Nick, nicks(Selector), "an RTD roll", Result).
 
 % GENERIC
@@ -177,7 +177,8 @@ tokens1() ->
 	 {">", '>'}, {"<", '<'}, {"=", '='}, {"!", '!'},
 	 {"+", '+'}, {"-", '-'}, {"*", '*'}, {"/", '/'},
 	 {"(", '('}, {")", ')'}, {"d", 'd'}, {"#", '#'},
-	 {"h", 'h'}, {"H", 'H'}, {"l", 'l'}, {"L", 'L'}
+	 {"h", 'h'}, {"H", 'H'}, {"l", 'l'}, {"L", 'L'},
+	 {"s", 's'}
 	].
 
 tokenise([$;|Rst], T) -> {T, [string:strip(Rst), ": "]};
@@ -188,14 +189,16 @@ tokenise([A|R], T) when $0 =< A andalso A =< $9 ->
 	{Num,Rest} = lists:splitwith(fun(X) -> $0 =< X andalso X =< $9 end, [A|R]),
 	tokenise(Rest, [list_to_integer(Num) | T]);
 tokenise([$[|R], T) ->
-	{Lst, [_|Rest]} = lists:splitwith(fun(X) -> X /= $] end, R),
-	NumStrings = string:tokens(Lst, ", "),
+	{RLst, [_|Rest]} = lists:splitwith(fun(X) -> X /= $] end, R),
+	Lst = string:tokens(RLst, ","),
 	case catch lists:map(fun(Z) ->
-				case catch list_to_integer(Z) of X when is_integer(X) -> X; _ -> throw(error) end
-			end, NumStrings) of
+				case tokenise(Z, []) of
+					error -> error;
+					{Tokens, _} -> parse(lists:reverse(Tokens))
+				end
+			end, Lst) of
 		error -> error;
-		NumList ->
-			tokenise(Rest, [NumList|T])
+		Exprs -> tokenise(Rest, [{list,Exprs}|T])
 	end;
 tokenise([A,B|R], T) ->
 	case lists:keyfind([A,B], 1, tokens2()) of
@@ -236,7 +239,7 @@ parseExpr(Expr) when is_list(Expr) ->
 parseExpr(T) -> T.
 
 parseExpression(Lst) ->
-	Priority = [['d'], ['!','L','l','H','h'], ['*','/'], ['+','-'], ['>','>=','<=','<','='], ['#']],
+	Priority = [['d'], ['!','L','l','H','h'], ['*','/'], ['+','-'], ['>','>=','<=','<','='], ['s', '#']],
 	lists:foldl(fun parseLeftAssoc/2, Lst, Priority).
 
 parseLeftAssoc(_, error) -> error;
@@ -269,9 +272,11 @@ parseLeftAssoc(OpList, Toks) ->
 	end.
 
 
+is_acceptable_left('s', _) -> false;
 is_acceptable_left(_, L) -> is_tuple(L) orelse is_number(L) orelse is_list(L) orelse L == '%'.
 is_acceptable_right(_, R, _) -> is_tuple(R) orelse is_number(R) orelse is_list(R) orelse R == '%'.
 
+default_left('s') -> '$'; % dummy, it has no left arg
 default_left('d') -> 1;
 default_left(_) -> error.
 
@@ -359,50 +364,47 @@ evaluate(Tree, Expand) ->
 					{[$[,AS,$d,BS,$!,XS,$=,2,$[,string:join(Lst, ", "),$],2,$]], lists:sum(Dice)}
 			end;
 
-		{Op, {'d',A,B}, X} when Op=='L' orelse Op=='l' orelse Op=='H' orelse Op=='h' ->
-			{AS,AV} = evaluate(A, Expand),
-			{BS,BV} = evaluate(B, Expand),
+		{Op, X, Y} when Op=='L' orelse Op=='l' orelse Op=='H' orelse Op=='h' ->
 			{XS,XV} = evaluate(X, Expand),
+			{YS,YV} = evaluate(Y, Expand),
 			if
-				not (is_number(AV) andalso is_number(BV) andalso is_number(XV)) orelse XV > AV -> {"{invalid}", 0};
+				not (is_list(XV) andalso is_number(YV)) orelse length(XV) < YV -> {"{invalid}", 0};
 				true ->
-					{Stat, Dice, _} = roll(AV,BV),
-					{Order, UseDice} = case Op of
-						'L' -> {low,  lists:sublist(lists:sort(Dice), XV)}; % keep lowest
-						'l' -> {high, lists:sublist(lists:sort(Dice), XV+1, length(Dice))}; % drop lowest
-						'H' -> {high, lists:sublist(lists:sort(Dice), 1+length(Dice)-XV, length(Dice))}; % keep highest
-						'h' -> {low,  lists:sublist(lists:sort(Dice), 1, length(Dice)-XV)} % drop highest
+					UseDice = case Op of
+						'L' -> lists:sublist(lists:sort(XV), YV); % keep lowest
+						'l' -> lists:sublist(lists:sort(XV), YV+1, length(XV)); % drop lowest
+						'H' -> lists:sublist(lists:sort(XV), 1+length(XV)-YV, length(XV)); % keep highest
+						'h' -> lists:sublist(lists:sort(XV), 1, length(XV)-YV) % drop highest
 					end,
-					Total = lists:foldl(fun erlang:'+'/2, 0, UseDice),
 					Display = if
-						Expand andalso AV =< 10 ->
-							Accepted = lists:map(fun(T) -> [3,$1,$1,integer_to_list(T),3,2,2] end, UseDice),
-							Denied = lists:map(fun(T) -> [3,$1,$3,integer_to_list(T),3,2,2] end, lists:sort(Dice -- UseDice)),
-							[$[, string:join(case Order of
-									low -> Accepted ++ Denied;
-									high -> Denied ++ Accepted
-								end, ", "), $], $= | integer_to_list(Total)];
-						true -> integer_to_list(Total)
+						Expand andalso length(UseDice) =< 10 ->
+							[$[, string:join(lists:map(fun(T) -> [3,$0,$8,integer_to_list(T),3,2,2] end, UseDice), ", "), $]];
+						true -> integer_to_list(lists:foldl(fun erlang:'+'/2, 0, UseDice))
 					end,
-					Str = case Stat of
-						ok -> [$[,     AS,$d,BS,atom_to_list(Op),XS,$=,2,Display,2,$]];
-						_ ->  [$[,Stat,AS,$d,BS,atom_to_list(Op),XS,$=,2,Display,2,$]]
-					end,
-					{Str, Total}
+					{[$[,XS,atom_to_list(Op),YS,$=,2,Display,2,$]], UseDice}
 			end;
+
 		{Op, A, B} ->
 			{AS,AV} = evaluate(A, Expand),
 			{BS,BV} = evaluate(B, Expand),
 			case Op of
-				'+'  when (not is_list(AV)) andalso (not is_list(BV)) -> {[AS, $+, BS], AV + BV};
-				'-'  when (not is_list(AV)) andalso (not is_list(BV)) -> {[AS, $-, BS], AV - BV};
-				'*'  when (not is_list(AV)) andalso (not is_list(BV)) -> {[AS, $*, BS], AV * BV};
-				'/'  when (not is_list(AV)) andalso (not is_list(BV)) -> {[AS, $/, BS], AV / BV};
+				's' -> {BS, sum_or_get(BV)};
+				'+' -> {[AS, $+, BS], sum_or_get(AV) + sum_or_get(BV)};
+				'-' -> {[AS, $-, BS], sum_or_get(AV) - sum_or_get(BV)};
+				'*' -> {[AS, $*, BS], sum_or_get(AV) * sum_or_get(BV)};
+				'/' -> {[AS, $/, BS], sum_or_get(AV) / sum_or_get(BV)};
+
 				'<'  when (not is_list(AV)) orelse  (not is_list(BV)) -> comparison(A, B, AS, BS, AV, BV, "<",  fun erlang:'<' /2);
 				'<=' when (not is_list(AV)) orelse  (not is_list(BV)) -> comparison(A, B, AS, BS, AV, BV, "<=", fun erlang:'=<'/2);
 				'>'  when (not is_list(AV)) orelse  (not is_list(BV)) -> comparison(A, B, AS, BS, AV, BV, ">",  fun erlang:'>' /2);
 				'>=' when (not is_list(AV)) orelse  (not is_list(BV)) -> comparison(A, B, AS, BS, AV, BV, ">=", fun erlang:'>='/2);
 				'='  when (not is_list(AV)) orelse  (not is_list(BV)) -> comparison(A, B, AS, BS, AV, BV, "=",  fun erlang:'=='/2);
+
+				'<'  -> comparison(A, B, AS, BS, lists:sum(AV), BV, "<",  fun erlang:'<' /2);
+				'<=' -> comparison(A, B, AS, BS, lists:sum(AV), BV, "<=", fun erlang:'=<'/2);
+				'>'  -> comparison(A, B, AS, BS, lists:sum(AV), BV, ">",  fun erlang:'>' /2);
+				'>=' -> comparison(A, B, AS, BS, lists:sum(AV), BV, ">=", fun erlang:'>='/2);
+				'='  -> comparison(A, B, AS, BS, lists:sum(AV), BV, "=",  fun erlang:'=='/2);
 				'd'  when (not is_list(AV)) andalso (not is_list(BV)) ->
 					{Stat, Dice, Total} = roll(AV,BV),
 					Display = if
@@ -413,9 +415,12 @@ evaluate(Tree, Expand) ->
 						ok -> [$[,AS,$d,BS,$=,2,Display,2,$]];
 						X -> [$[,X,AS,$d,BS,$=,2,Display,2,$]]
 					end,
-					{Str, Total};
+					{Str, Dice};
 				_ -> {"{invalid}", 0}
 			end;
+		{list, L} ->
+			{Strs, Vals} = lists:unzip(lists:map(fun(T) -> evaluate(T, Expand) end, L)),
+			{[$[,string:join(Strs, ", "),$]], lists:flatten(Vals)};
 		[XTree] ->
 			{S,V} = evaluate(XTree, Expand),
 			{[$(,S,$)],V};
@@ -424,6 +429,9 @@ evaluate(Tree, Expand) ->
 		'%' -> {"%", 100};
 		T -> {integer_to_list(T), T}
 	end.
+
+sum_or_get(L) when is_list(L) -> lists:sum(L);
+sum_or_get(L) -> L.
 
 is_literal_list([_]) -> false;
 is_literal_list(T) when is_list(T) -> true;

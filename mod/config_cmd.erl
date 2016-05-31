@@ -15,7 +15,7 @@ c(#{reply:=Reply, ping:=Ping, params:=Params, selector:=Selector}) ->
 		"temp" -> temp;
 		_ -> config
 	end,
-	case erl_scan:string(string:join(Params, " ") ++ ".") of
+	case case erl_scan:string(string:join(Params, " ") ++ ".") of
 		{ok, TokLst, _} ->
 			case erl_parse:parse_exprs(TokLst) of
 				{ok, ExprList} ->
@@ -38,6 +38,11 @@ c(#{reply:=Reply, ping:=Ping, params:=Params, selector:=Selector}) ->
 			end;
 		{error, Info, Location} ->
 			{err, io_lib:format("Error: ~p / ~p", [Info, Location])}
+	end of
+		{err, T} ->
+			core ! {irc, {msg, {Reply, [Ping, T]}}},
+			ok;
+		_ -> ok
 	end.
 
 cget(#{reply:=RT, ping:=RP, params:=Path}) ->

@@ -79,8 +79,8 @@ loop() ->
 				T -> T
 			end;
 		T when is_atom(T) -> T;
-		{T, K} when is_atom(T) -> {T, K};
-		T -> logging:log(error, ?MODULE, "unknown receive ~p, continuing", [T])
+		{T, K} when is_atom(T) -> {T, K}
+%		T -> logging:log(error, ?MODULE, "unknown receive ~p, continuing", [T])
 	end of
 		{request_execute, {Pid, Fun}} ->
 			Pid ! {execute_done, catch Fun()},
@@ -112,9 +112,7 @@ handle_irc(ctcp, {action, Chan, User=#user{nick=Nick}, Tokens}) ->
 			logging:log(ignore, ?MODULE, "Ignoring ~s!~s@~s ACTION: ~s.", [Nick, User#user.username, User#user.host, string:join(Tokens, " ")]),
 			ok;
 		false ->
-			lists:foreach(fun(Module) ->
-					util:call_or(Module, handle_event, [ctcp, {action, Chan, User, Tokens}], null)
-				end, config:require_value(config, [bot, modules]))
+			distribute_event(ctcp, {action, Chan, User, Tokens})
 	end;
 
 handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}) ->
@@ -124,15 +122,10 @@ handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}) ->
 	case permissions:hasperm(User, ignore) of
 		true ->
 			logging:log(ignore, ?MODULE, "Ignoring ~s!~s@~s: ~s.", [Nick, User#user.username, User#user.host, string:join(Tokens, " ")]),
+			distribute_event(msg_ignored, {User, Channel, Tokens}),
 			ok;
 		false ->
-			lists:foreach(fun(Module) ->
-					case catch util:call_or(Module, handle_event, [msg, Params], null) of
-						{'EXIT', X} -> logging:log(error, ?MODULE, "handle_event for ~p exited ~p", [Module, X]);
-						{'EXIT', RS, X} -> logging:log(error, ?MODULE, "handle_event for ~p errored ~p (~p)", [Module, X, RS]);
-						_ -> ok
-					end
-				end, config:get_value(config, [bot, modules])),
+			distribute_event(msg, Params),
 			case config:require_value(config, [bot, nick]) of
 				Channel ->
 					case permissions:hasperm(User, admin) of
@@ -148,9 +141,7 @@ handle_irc(nick, {U=#user{nick=OldNick}, NewNick}) ->
 	case config:get_value(config, [bot, nick]) of
 		OldNick -> config:set_value(config, [bot, nick], NewNick);
 		_ ->
-			lists:foreach(fun(Module) ->
-					util:call_or(Module, handle_event, [nick, {U, NewNick}], null)
-				end, config:require_value(config, [bot, modules]))
+			distribute_event(nick, {U, NewNick})
 	end;
 
 handle_irc(notice, Params) ->
@@ -158,10 +149,18 @@ handle_irc(notice, Params) ->
 	ok;
 
 handle_irc(numeric, {{rpl,away},_}) -> ok;
-handle_irc(numeric, {{A,B},Params}) -> logging:log(info, ?MODULE, "Numeric received: ~p_~p ~s", [A,B,string:join(Params," ")]);
+handle_irc(numeric, {{A,B},Params}) ->
+	logging:log(info, ?MODULE, "Numeric received: ~p_~p ~s", [A,B,string:join(Params," ")]),
+	distribute_event(numeric, {{A,B}, Params});
 
 handle_irc(Type, Params) ->
-	lists:foreach(fun(Module) ->
-				util:call_or(Module, handle_event, [Type, Params], null)
-			end, config:require_value(config, [bot, modules])).
+	distribute_event(Type, Params).
 
+distribute_event(Type, Params) ->
+	lists:foreach(fun(Module) ->
+			case catch util:call_or(Module, handle_event, [Type, Params], null) of
+				{'EXIT', X} -> logging:log(error, ?MODULE, "~p:handle_event(~p, ~p) exited with ~p", [Module, Type, Params, X]);
+				{'EXIT', RS, X} -> logging:log(error, ?MODULE, "~p:handle_event(~p, ~p) errored with ~p (~p)", [Module, Type, Params, X, RS]);
+				_ -> ok
+			end
+		end, config:require_value(config, [bot, modules])).

@@ -82,11 +82,11 @@ gsrank(ID, Who) ->
 
 ssr(VID, ID, _, Reply, Ping, [Nick|RankT]) when RankT /= [] ->
 	Rank = string:join(RankT, " "),
-	case Rank of
-		"none" -> config:del_value(config, [?MODULE, ranks, ID, string:to_lower(Nick)]);
-		_ -> config:set_value(config, [?MODULE, ranks, ID, string:to_lower(Nick)], Rank)
+	ShowRank = case Rank of
+		"none" -> config:del_value(config, [?MODULE, ranks, ID, string:to_lower(Nick)]), "<none>";
+		_ -> config:set_value(config, [?MODULE, ranks, ID, string:to_lower(Nick)], Rank), [$", Rank, $"]
 	end,
-	{irc, {msg, {Reply, [Ping, VID, io_lib:format("Set rank of ~p to ~p.", [Nick, Rank])]}}};
+	{irc, {msg, {Reply, [Ping, VID, io_lib:format("Set rank of ~s to ~s.", [Nick, ShowRank])]}}};
 ssr(_, _, _, Reply, Ping, _) -> {irc, {msg, {Reply, [Ping, "Provide a nick and a rank to set!"]}}}.
 
 pm(VID, ID, Nick, Reply, Ping, [Who | Msg]) when Msg /= [] ->
@@ -115,7 +115,7 @@ notes(VID, ID, Nick, Reply, Ping, [Who|_]) ->
 					Who,
 					config:get_value(config, [?MODULE, servers, ID, pass])
 				]) of
-		{error, T} -> io_lib:format("Error: ~s", [T]);
+		{error, T} -> io_lib:format("Error: ~p", [T]);
 		Dict ->
 			case hd(orddict:fetch_keys(Dict)) of
 				"No information found on the given key." -> ["No information found on the key '", Who, "'."];
@@ -163,7 +163,7 @@ info(VID, ID, _, Reply, Ping, What) ->
 						D("key"), "/(", D("name"), ") ", D("role"), $/, D("antag"), case D("hasbeenrev") of "1" -> " (has been rev)"; _ -> "" end,
 						"; loc:", Space, D("loc"), "; turf:", Space, D("turf"), "; area:", Space, lists:filter(fun(T) -> 32 =< T andalso T =< 127 end, D("area")),
 						"; stat:", Space, D("stat"), ", damage:", Space, "[", Damage, $],
-						"; type:", Space, D("type"), "; gender:", D("gender")
+						"; type:", Space, D("type"), "; species:", Space, D("species"), "; gender:", Space, D("gender")
 					];
 				error -> % key->name
 					string:join(lists:map(fun({Key,Name}) -> io_lib:format("~s/(~s)", [Key,Name]) end, Dict), "; ")
@@ -228,7 +228,7 @@ loop(SvrSock) ->
 
 readsock(Socket) ->
 	% timeout specified just to avoid crashing the bot if bad things happen
-	case gen_tcp:recv(Socket, 0, 20000) of
+	case gen_tcp:recv(Socket, 0, 60000) of
 		{ok, {http_request, 'GET', URL, _}} ->
 			Plist = case URL of
 				{abs_path, T} -> tl(tl(T));

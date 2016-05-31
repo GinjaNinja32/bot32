@@ -6,7 +6,10 @@
 get_food_options() ->
 	config:offer_value(config, [?MODULE, types], [
 		{antag, {[person, cloth, weapon, mission], ["dresses ", person, " into ", cloth, " and ", cloth, ", gives them ", weapon, " and ", weapon, ", and sends them on a mission to ", mission, " "]}},
-		{burger, {[bun, filling, topping], ["puts ", bun, " on the table, piles on ", filling, ", ", filling, ", and ", filling, ", then tops it with ", topping, ", sliding it over to "]}}
+		{burger, {[bun, filling, topping], ["puts ", bun, " on the table, piles on ", filling, ", ", filling, ", and ", filling, ", then tops it with ", topping, ", sliding it over to "]}},
+		{character, {[species,job,quirk],["takes ",species,", assigns them to ",job,{90,[", gives them ",quirk,{20,[" and ",quirk]}]},", then sends them to work for "]}},
+		{noodles, {[liquid, time, extra], ["pours ", liquid, " into a cup of noodles, waits ", time, " then adds ", extra, " and ", extra, ", then slides it over to "]}},
+		{pizza, {[base, sauce, topping, setting], ["puts ", base, " on the counter, spreading on ", sauce, ", then piles on ", topping, " and ", topping, ", puts it in the oven ", setting, ", then gives it to "]}}
 	]),
 	config:get_value(config, [?MODULE, types]).
 
@@ -67,10 +70,22 @@ mkfood(K, #{nick:=O, reply:=RT, ping:=P}) ->
 	Message = case config:get_value(data, [burger, K], []) of
 		[] -> [P, "Can't find my ",atom_to_list(K)," ingredients, sorry."];
 		Food ->
-			Msg = lists:map(fun(T) when is_atom(T) -> getrand(T, Food); (T) -> T end, String),
+			Msg = generate_food_string(Food, String), % lists:map(fun(T) when is_atom(T) -> getrand(T, Food); (T) -> T end, String),
 			["\x01ACTION ", Msg, O, ".\x01"]
 	end,
 	{irc, {msg, {RT, Message}}}.
+
+generate_food_string(TD, Lst) ->
+	lists:map(fun
+			(T) when is_atom(T) -> getrand(T, TD);
+			({Prob, L}) ->
+				[Roll] = dice3:get_n_m(1, 100),
+				case Roll =< Prob of
+					true -> generate_food_string(TD, L);
+					false -> ""
+				end;
+			(T) -> T
+		end, Lst).
 
 delfood(#{reply:=RT, ping:=P, params:=Params}) when length(Params) < 3 -> {irc, {msg, {RT, [P, "Provide a type, key, and the exact string of what you want to remove."]}}};
 delfood(#{reply:=RT, ping:=P, params:=[T,K|W]}) ->

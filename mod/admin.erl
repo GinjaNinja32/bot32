@@ -23,6 +23,7 @@ get_commands() ->
 		{"prefix", fun prefix/1, host},
 		{"cmode", fun mode/1, admin},
 		{"kick", fun kick/1, admin},
+		{"kickban", fun kickban/1, admin},
 		{"raw", fun raw/1, host}
 	].
 
@@ -215,6 +216,25 @@ kick(#{reply:=Chan, params:=[User | Reason]}) ->
 	ok;
 kick(#{reply:=RT, ping:=P}) ->
 	{irc, {msg, {RT, [P, "Provide a user to kick and an optional reason"]}}}.
+
+
+kickban(#{reply:=Chan, params:=[User | Reason]}) ->
+	Whois = util:whois(User),
+	case Whois of
+		#{cloak := Cloak} when Cloak /= false ->
+			core ! {irc, {mode, {Chan, ["+b *!*@", ban_host(Cloak)]}}};
+		#{host := Host} ->
+			core ! {irc, {mode, {Chan, ["+b *!*@", ban_host(Host)]}}};
+		_ ->
+			core ! {irc, {msg, {Chan, ["Failed to find a hostmask for ", User, "!"]}}}
+	end,
+	core ! {irc, {kick, {Chan, User, string:join(Reason, " ")}}},
+	ok;
+kickban(#{reply:=RT, ping:=P}) ->
+	{irc, {msg, {RT, [P, "Provide a user to kick and an optional reason"]}}}.
+
+ban_host(Host) ->
+	["*.", string:join(tl(string:tokens(Host, ".")), ".")].
 
 raw(#{params:=Params}) ->
 	core ! {raw, string:join(Params, " ")},

@@ -18,10 +18,10 @@ get_commands() ->
 		{"quotename", fun quotename/1, user},
 		{"quoteword", fun quoteword/1, user},
 		{"addquote",  fun addquote/1, user},
-		{"delquote",    gen_delquote(fun gen_genmatch/1  ), admin},
-		{"delquote_c",  gen_delquote(fun gen_catmatch/1  ), admin},
-		{"delquote_e",  gen_delquote(fun gen_exmatch/1   ), admin},
-		{"delquote_ce", gen_delquote(fun gen_excatmatch/1), admin}
+		{"delquote",    gen_delquote(fun gen_genmatch/2  ), user},
+		{"delquote_c",  gen_delquote(fun gen_catmatch/2  ), user},
+		{"delquote_e",  gen_delquote(fun gen_exmatch/2   ), user},
+		{"delquote_ce", gen_delquote(fun gen_excatmatch/2), user}
 	].
 
 %
@@ -43,32 +43,37 @@ addquote(#{reply:=ReplyTo, ping:=Ping, params:=Params}) ->
 	Reply = add_quote(string:to_lower(hd(Params)), string:strip(string:join(tl(Params), " "))),
 	{irc, {msg, {ReplyTo, [Ping, Reply]}}}.
 
-gen_genmatch(Params) ->
+gen_genmatch(Params, Nick) ->
 	Regexed = util:regex_escape(string:to_lower(string:join(Params, " "))),
-	fun({_,Q}) -> re:run(Q, Regexed, [{capture, none}, caseless]) == match end.
+	fun({C,Q}) -> (C==Nick orelse Nick==admin) andalso re:run(Q, Regexed, [{capture, none}, caseless]) == match end.
 
-gen_exmatch(Params) ->
+gen_exmatch(Params, Nick) ->
 	Regexed = util:regex_escape(string:to_lower(string:join(Params, " "))),
-	fun({_,Q}) -> re:run(Q, [$^, Regexed, $$], [{capture, none}, caseless]) == match end.
+	fun({C,Q}) -> (C==Nick orelse Nick==admin) andalso re:run(Q, [$^, Regexed, $$], [{capture, none}, caseless]) == match end.
 
-gen_catmatch(Params) ->
+gen_catmatch(Params, Nick) ->
 	Cat = list_to_binary(string:to_lower(hd(Params))),
-	General = gen_genmatch(tl(Params)),
-	fun(T={C,_}) -> Cat == C andalso General(T) end.
+	General = gen_genmatch(tl(Params), Nick),
+	fun(T={C,_}) -> (C==Nick orelse Nick==admin) andalso Cat == C andalso General(T) end.
 
-gen_excatmatch(Params) ->
+gen_excatmatch(Params, Nick) ->
 	Cat = list_to_binary(string:to_lower(hd(Params))),
-	General = gen_exmatch(tl(Params)),
-	fun(T={C,_}) -> Cat == C andalso General(T) end.
+	General = gen_exmatch(tl(Params), Nick),
+	fun(T={C,_}) -> (C==Nick orelse Nick==admin) andalso Cat == C andalso General(T) end.
 
 gen_delquote(Func) ->
 	fun(#{reply:=ReplyTo, ping:=Ping, params:=[]}) -> {irc, {msg, {ReplyTo, [Ping, "Provide a quote to delete!"]}}};
-	   (#{reply:=ReplyTo, ping:=Ping, params:=Params}) ->
-		case remove_quote(Func(Params)) of
-			no_match -> {irc, {msg, {ReplyTo, [Ping, "No matching quotes found."]}}};
-			{multi_match, Num} -> {irc, {msg, {ReplyTo, [Ping, integer_to_list(Num), " matching quotes found."]}}};
-			deleted -> {irc, {msg, {ReplyTo, [Ping, "Quote deleted."]}}}
-		end
+	   (#{reply:=ReplyTo, ping:=Ping, params:=Params, nick:=Nick, ranks:=Ranks}) ->
+			UseNick = case lists:member(admin, Ranks) of
+				true -> admin;
+				false -> list_to_binary(string:to_lower(Nick))
+			end,
+			case remove_quote(Func(Params, UseNick)) of
+				illegal -> {irc, {msg, {ReplyTo, [Ping, "You may not remove that quote."]}}};
+				no_match -> {irc, {msg, {ReplyTo, [Ping, "No matching quotes found."]}}};
+				{multi_match, Num} -> {irc, {msg, {ReplyTo, [Ping, integer_to_list(Num), " matching quotes found."]}}};
+				deleted -> {irc, {msg, {ReplyTo, [Ping, "Quote deleted."]}}}
+			end
 	end.
 
 %
@@ -106,7 +111,7 @@ get_quote_word(String) ->
 	Quotes = config:get_value(data, [?MODULE], []),
 	Regexed = util:regex_escape(String),
 	Matching = lists:filter(fun({_,Q}) ->
-			re:run(Q, [$\\, $W, Regexed, $\\, $W], [{capture, none}, caseless]) == match
+			re:run(Q, [$\\, $b, Regexed, $\\, $b], [{capture, none}, caseless]) == match
 		end, Quotes),
 	pick_quote(Matching).
 

@@ -3,7 +3,7 @@
 
 -include("definitions.hrl").
 
-handle_event(msg_nocommand, {User, Channel, Tokens}) ->
+handle_event(msg_ignored, {User, Channel, Tokens}) ->
 	case permissions:hasperm(User, eira) of
 		true ->
 			case case hd(Tokens) of

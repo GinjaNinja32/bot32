@@ -76,3 +76,83 @@ split_slashes([$\\,$/|Str], Curr, Lst) -> split_slashes(Str, [$/|Curr], Lst);
 split_slashes([$\\,Chr|Str], Curr, Lst) -> split_slashes(Str, [[$\\,Chr]|Curr], Lst);
 split_slashes([Chr|Str], Curr, Lst) -> split_slashes(Str, [Chr|Curr], Lst);
 split_slashes([], Curr, Lst) -> lists:reverse([lists:reverse(Curr) | Lst]).
+
+% KEYBOARD LAYOUTS
+
+get_commands() ->
+	[
+		{"kbd", fun kbdfix/1, [short, short, short], user}
+	].
+
+kbdfix(#{reply:=Reply, ping:=Ping, params:=[Src,Dst,Nick]}) ->
+	LNick = string:to_lower(Nick),
+	case parsekbd(Src) of
+		error -> core ! {irc, {msg, {Reply, [Ping, "Invalid keyboard layout ", Src]}}};
+		SrcKbd ->
+
+	case parsekbd(Dst) of
+		error -> core ! {irc, {msg, {Reply, [Ping, "Invalid keyboard layout ", Dst]}}};
+		DstKbd ->
+
+	X = (catch lists:foldl(fun({N, Type, T}, _) ->
+			case string:to_lower(N) == LNick of
+				true ->
+					case Type of
+						msg ->
+							core ! {irc, {msg, {Reply, [Ping, $<, N, $>, $ , convert(T, SrcKbd, DstKbd)]}}};
+						action ->
+							core ! {irc, {msg, {Reply, [Ping, $*, $ , N, $ , convert(T, SrcKbd, DstKbd)]}}}
+					end,
+					throw(foo);
+				false -> ok
+			end
+		end, foo, config:get_value(temp, [?MODULE, lines, Reply], []))),
+	io:fwrite("~p\n", [X])
+	end end,
+	ok.
+
+parsekbd(Name) ->
+	LName = string:to_lower(Name),
+	lists:foldl(fun({L,Lst}, X) ->
+			case lists:member(LName, Lst) of
+				true -> L;
+				false -> X
+			end
+		end, error, names()).
+
+names() ->
+	[
+		{dvorak(), ["dvorak", "dv", "d"]},
+		{russian(), ["russian", "ru", "r"]},
+		{qwerty(), ["qwerty", "qw", "q"]}
+	].
+
+indexof(Element, List) -> indexof(Element, List, 1).
+
+indexof(E, <<E/utf8, _/binary>>, N) -> N;
+indexof(E, <<_/utf8, R/binary>>, N) -> indexof(E, R, N+1);
+indexof(_, <<>>, _) -> 0.
+
+charat(1, <<A/utf8, _/binary>>) -> A;
+charat(T, <<_/utf8, R/binary>>) -> charat(T-1, R).
+
+russian() -> <<"ё1234567890-=йцукенгшщзхъ/фывапролджэячсмитьбю.Ё!\"№;%:?*()_+ЙЦУКЕНГШЩЗХЪ|ФЫВАПРОЛДЖЭЯЧСМИТЬБЮ,">>.
+dvorak()  -> <<"`1234567890[]',.pyfgcrl/=\aoeuidhtns-;qjkxbmwvz~!@#$%^&*(){}\"<>PYFGCRL?+|AOEUIDHTNS_:QJKXBMWVZ">>.
+qwerty()  -> <<"`1234567890-=qwertyuiop[]\asdfghjkl;'zxcvbnm,./~!@#$%^&*()_+QWERTYUIOP{}|ASDFGHJKL:\"ZXCVBNM<>?">>.
+
+convert(String, From, To) ->
+    binary_to_list(deseparate(lists:map(fun(S) ->
+            case indexof(S, From) of
+                0 -> S;
+                T -> charat(T, To)
+            end
+        end, separate(String)))).
+
+separate(<<>>) -> [];
+separate(<<T/utf8, R/binary>>) -> [T | separate(R)].
+
+deseparate([]) -> <<>>;
+deseparate([T|R]) ->
+    DSR = deseparate(R),
+    <<T/utf8, DSR/binary>>.
+
