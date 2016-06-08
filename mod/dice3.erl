@@ -426,21 +426,25 @@ evaluate(Tree, Expand) ->
 				'i'  when is_integer(AV) andalso is_integer(BV)->
 					{Stat, Dice, RTotal} = roll(AV, BV),
 					Avg = AV * ((BV-1)/2 + 1),
-					Adj = (AV*BV - AV + 1) / 2,
-					case RTotal > Avg of
-						true -> Total = RTotal - Adj;
-						false -> Total = RTotal + Adj
-					end,
-					io:fwrite("avg=~p; adj=~p; rtot=~p; tot=~p\n", [Avg, Adj, RTotal, Total]),
-					Display = if
-						Expand andalso AV =< 10 -> io_lib:format("~w=~p", [Dice,Total]);
-						true -> io_lib:format("~p", [Total])
-					end,
-					Str = case Stat of
-						ok -> [$[,AS,$i,BS,$=,2,Display,2,$]];
-						X -> [$[,X,AS,$i,BS,$=,2,Display,2,$]]
-					end,
-					{Str, Total};
+					case round(Avg) == Avg of
+						true -> {"{invalid}", 0};
+						false ->
+							Adj = (AV*BV - AV + 1) div 2,
+							case RTotal > Avg of
+								true -> Total = RTotal - Adj;
+								false -> Total = RTotal + Adj
+							end,
+							io:fwrite("avg=~p; adj=~p; rtot=~p; tot=~p\n", [Avg, Adj, RTotal, Total]),
+							Display = if
+								Expand andalso AV =< 10 -> io_lib:format("~w=~p", [Dice,Total]);
+								true -> io_lib:format("~p", [Total])
+							end,
+							Str = case Stat of
+								ok -> [$[,AS,$i,BS,$=,2,Display,2,$]];
+								X -> [$[,X,AS,$i,BS,$=,2,Display,2,$]]
+							end,
+							{Str, Total}
+					end;
 				_ -> {"{invalid}", 0}
 			end;
 		{list, L} ->
