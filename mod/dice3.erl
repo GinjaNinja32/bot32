@@ -434,7 +434,6 @@ evaluate(Tree, Expand) ->
 								true -> Total = RTotal - Adj;
 								false -> Total = RTotal + Adj
 							end,
-							io:fwrite("avg=~p; adj=~p; rtot=~p; tot=~p\n", [Avg, Adj, RTotal, Total]),
 							Display = if
 								Expand andalso AV =< 10 -> io_lib:format("~w=~p", [Dice,Total]);
 								true -> io_lib:format("~p", [Total])
