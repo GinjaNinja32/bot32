@@ -178,7 +178,7 @@ tokens1() ->
 	 {"+", '+'}, {"-", '-'}, {"*", '*'}, {"/", '/'},
 	 {"(", '('}, {")", ')'}, {"d", 'd'}, {"#", '#'},
 	 {"h", 'h'}, {"H", 'H'}, {"l", 'l'}, {"L", 'L'},
-	 {"s", 's'}
+	 {"s", 's'}, {"i", 'i'}
 	].
 
 tokenise([$;|Rst], T) -> {T, [string:strip(Rst), ": "]};
@@ -239,7 +239,7 @@ parseExpr(Expr) when is_list(Expr) ->
 parseExpr(T) -> T.
 
 parseExpression(Lst) ->
-	Priority = [['d'], ['!','L','l','H','h'], ['*','/'], ['+','-'], ['>','>=','<=','<','='], ['s', '#']],
+	Priority = [['d', 'i'], ['!','L','l','H','h'], ['*','/'], ['+','-'], ['>','>=','<=','<','='], ['s', '#']],
 	lists:foldl(fun parseLeftAssoc/2, Lst, Priority).
 
 parseLeftAssoc(_, error) -> error;
@@ -405,8 +405,15 @@ evaluate(Tree, Expand) ->
 				'>'  -> comparison(A, B, AS, BS, lists:sum(AV), BV, ">",  fun erlang:'>' /2);
 				'>=' -> comparison(A, B, AS, BS, lists:sum(AV), BV, ">=", fun erlang:'>='/2);
 				'='  -> comparison(A, B, AS, BS, lists:sum(AV), BV, "=",  fun erlang:'=='/2);
-				'd'  when (not is_list(AV)) andalso (not is_list(BV)) ->
-					{Stat, Dice, Total} = roll(AV,BV),
+				'd'  when is_integer(AV) andalso (is_list(BV) orelse is_integer(BV))->
+					case is_list(BV) of
+						true ->
+							{Stat, RDice, _} = roll(AV,length(BV)),
+							Dice = lists:map(fun(T) -> lists:nth(T, BV) end, RDice),
+							Total = lists:sum(Dice);
+						false ->
+							{Stat, Dice, Total} = roll(AV, BV)
+					end,
 					Display = if
 						Expand andalso AV =< 10 -> io_lib:format("~w=~b", [Dice,Total]);
 						true -> integer_to_list(Total)
@@ -416,6 +423,24 @@ evaluate(Tree, Expand) ->
 						X -> [$[,X,AS,$d,BS,$=,2,Display,2,$]]
 					end,
 					{Str, Dice};
+				'i'  when is_integer(AV) andalso is_integer(BV)->
+					{Stat, Dice, RTotal} = roll(AV, BV),
+					Avg = AV * ((BV-1)/2 + 1),
+					Adj = (AV*BV - AV + 1) / 2,
+					case RTotal > Avg of
+						true -> Total = RTotal - Adj;
+						false -> Total = RTotal + Adj
+					end,
+					io:fwrite("avg=~p; adj=~p; rtot=~p; tot=~p\n", [Avg, Adj, RTotal, Total]),
+					Display = if
+						Expand andalso AV =< 10 -> io_lib:format("~w=~p", [Dice,Total]);
+						true -> io_lib:format("~p", [Total])
+					end,
+					Str = case Stat of
+						ok -> [$[,AS,$i,BS,$=,2,Display,2,$]];
+						X -> [$[,X,AS,$i,BS,$=,2,Display,2,$]]
+					end,
+					{Str, Total};
 				_ -> {"{invalid}", 0}
 			end;
 		{list, L} ->

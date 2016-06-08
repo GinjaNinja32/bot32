@@ -9,6 +9,7 @@ get_commands() ->
 		{"eval", gen_eval(fun eval/1), eval},
 		{"evalstr", gen_eval_str(fun eval/1), eval},
 		{"bash", fun bash/1, [long], eval},
+		{"bashl", fun bashl/1, [long], eval},
 		{"s", fun shl/1, eval},
 		{"sdrop", fun sdrop/1, eval},
 		{"serase", fun serase/1, eval},
@@ -22,6 +23,22 @@ get_commands() ->
 bash(#{reply:=Reply, ping:=Ping, params:=[Param]}) ->
 	util:unicode_os_putenv("args", Param),
 	{irc, {msg, {Reply, io_lib:format("~s~500p", [Ping, util:safe_os_cmd("bash -c \"$args\"")])}}}.
+
+bashl(#{reply:=Reply, ping:=Ping, params:=[Param]}) ->
+	util:unicode_os_putenv("args", Param),
+	RRaw = util:safe_os_cmd("bash -c \"$args\""),
+	R = lists:flatmap(fun
+			(10) -> [10];
+			(T) when T < 32 -> [];
+			(T) -> [T]
+		end, RRaw),
+	lists:foreach(fun
+			(T) ->
+				case string:strip(T) of
+					[] -> ok;
+					_ -> core ! {irc, {msg, {Reply, [Ping, T]}}}
+				end
+		end, string:tokens(R, "\n")).
 
 eecho(Params=#{params:=Tokens}) ->
 	ES = gen_eval_str(fun eval/1),
