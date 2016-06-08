@@ -466,6 +466,8 @@ is_literal_list([_]) -> false;
 is_literal_list(T) when is_list(T) -> true;
 is_literal_list(_) -> false.
 
+roll(N,_) when N < 0 -> {"{invalid} ", [], 0};
+roll(_,M) when M =< 0 -> {"{invalid} ", [], 0};
 roll(N,_) when N > 1000000 -> {"\x035\x02X\x03\x02 ", [], 0};
 roll(_,M) when M > 1000000 -> {"\x035\x02X\x03\x02 ", [], 0};
 roll(N,M) ->

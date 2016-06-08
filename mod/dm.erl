@@ -7,14 +7,22 @@ get_commands() ->
 	].
 
 dm(#{reply:=Reply, ping:=Ping, params:=[String]}) ->
-	X = re:split(String, ";;", [{return, list}]),
-	Setup = lists:droplast(X),
-	Value = lists:last(X),
+	Parts = re:split(String, ";;;", [{return, list}]),
+	case Parts of
+		[Main] -> Pre = [], ok;
+		[Pre, Main] -> ok
+	end,
+	PreLines = re:split(Pre, ";;", [{return, list}]),
+
+	MainLines = re:split(Main, ";;", [{return, list}]),
+	MainSetup = lists:droplast(MainLines),
+	MainValue = lists:last(MainLines),
 
 	File = [
+		lists:map(fun(T) -> ["\n" | string:strip(T)] end, PreLines),
 		"\n/world/New()\n\tdm_eval()\n\tdel(src)\n/proc/dm_eval()",
-		lists:map(fun(T) -> ["\n\t" | string:strip(T)] end, Setup),
-		case string:strip(Value) of
+		lists:map(fun(T) -> ["\n\t" | string:strip(T)] end, MainSetup),
+		case string:strip(MainValue) of
 			[] -> "";
 			SV -> ["\n\tworld.log << \"[", SV, "]\""]
 		end
