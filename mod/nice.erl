@@ -19,15 +19,20 @@ filter(Msg) ->
 
 do_extras(Tokens, Reply, Ping) ->
 	String = filter(list_to_binary(string:join(Tokens, " "))),
-	case re:run(String, "\\b(good ?)?night", [{capture, none}]) of
-		match -> core ! {irc, {msg, {Reply, [Ping, "Goodnight!"]}}};
-		nomatch ->
-			case re:run(String, "\\bmorning", [{capture, none}]) of
-				match -> core ! {irc, {msg, {Reply, [Ping, "Morning!"]}}};
+	Nick = string:to_lower(config:require_value(config, [bot, nick])),
+	case re:run(String, "\\b(" ++ Nick ++ ")|((" ++ Nick ++ "s))|(nti)|(nt)|(nts)|(ntis)", [{capture, none}]) of
+		match ->
+			case re:run(String, "\\b(good ?)?night", [{capture, none}]) of
+				match -> core ! {irc, {msg, {Reply, [Ping, "Goodnight!"]}}};
 				nomatch ->
-					case re:run(String, "\\bhello", [{capture, none}]) of
-						match -> core ! {irc, {msg, {Reply, [Ping, "Hello!"]}}};
-						nomatch -> ok
+					case re:run(String, "\\bmorning", [{capture, none}]) of
+						match -> core ! {irc, {msg, {Reply, [Ping, "Morning!"]}}};
+						nomatch ->
+							case re:run(String, "\\bhello", [{capture, none}]) of
+								match -> core ! {irc, {msg, {Reply, [Ping, "Hello!"]}}};
+								nomatch -> ok
+							end
 					end
-			end
+			end;
+		nomatch -> ok
 	end.
