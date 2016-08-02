@@ -83,7 +83,8 @@ status(RT, S, P, Name, SilenceErrors) ->
 			Mode = safeget(Dict, "mode"),
 			Time = safeget(Dict, "stationtime"),
 			Duration = safeget(Dict, "roundduration"),
-			core ! {irc, {msg, {RT, [Name, "Players: ", Players, "; Mode: ", Mode, "; Station Time: ", Time, "; Round Duration: ", Duration]}}}
+			Map = safeget(Dict, "map"),
+			core ! {irc, {msg, {RT, [Name, "Players: ", Players, "; Mode: ", Mode, "; Station Time: ", Time, "; Round Duration: ", Duration, "; Map: ", Map]}}}
 	end.
 
 revision(RT, _, _, S, P, ID, Name) ->
@@ -95,9 +96,11 @@ revision(RT, _, _, S, P, ID, Name) ->
 			Date = safeget(Dict, "date"),
 			Rev = safeget(Dict, "revision"),
 			GID = safeget(Dict, "gameid"),
+			DD = safeget(Dict, "dd_version"),
+			DM = safeget(Dict, "dm_version"),
 			Msg = case config:get_value(config, [?MODULE, github, ID]) of
-				'$none' -> io_lib:format("~sRevision: ~s on ~s at ~s. Game ID: ~s", [Name, Rev, Branch, Date, GID]);
-				URL -> io_lib:format("~sRevision: ~s on ~s at ~s: ~s. Game ID: ~s", [Name, lists:sublist(Rev, 8), Branch, Date, [URL,Rev], GID])
+				'$none' -> io_lib:format("~sRevision: ~s on ~s at ~s. Game ID: ~s. DM: ~s; DD: ~s", [Name, Rev, Branch, Date, GID, DM, DD]);
+				URL -> io_lib:format("~sRevision: ~s on ~s at ~s: ~s. Game ID: ~s. DM: ~s; DD: ~s", [Name, lists:sublist(Rev, 8), Branch, Date, [URL,Rev], GID, DM, DD])
 			end,
 			core ! {irc, {msg, {RT, Msg}}}
 	end.

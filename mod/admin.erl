@@ -177,10 +177,8 @@ join(#{reply:=ReplyTo, ping:=Ping, params:=Params}) ->
 part(#{reply:=ReplyTo, ping:=Ping, params:=[]}) ->
 	{irc, {msg, {ReplyTo, [Ping, "Please provide a channel to part."]}}};
 part(#{reply:=ReplyTo, ping:=Ping, params:=Params}) ->
-	{multi, [
-		{irc, {msg, {ReplyTo, [Ping, "Parting ", hd(Params), "."]}}},
-		{irc, {part, {hd(Params), string:join(tl(Params), " ")}}}
-	]}.
+	core ! {irc, {msg, {ReplyTo, [Ping, "Parting ", hd(Params), "."]}}},
+	{irc, {part, {hd(Params), string:join(tl(Params), " ")}}}.
 
 nick(#{reply:=RT, ping:=Ping, params:=[]}) -> {irc, {msg, {RT, [Ping, "Please provide a nick for me."]}}};
 nick(#{params:=Params}) -> {irc, {nick, hd(Params)}}.
@@ -189,11 +187,11 @@ quit(#{params:=Params}) -> {irc, {quit, string:join(Params, " ")}}.
 
 speak (#{reply:=RT, ping:=Ping, params:=[]}) -> {irc, {msg, {RT, [Ping, "Please provide a channel and message."]}}};
 speak (#{reply:=RT, ping:=Ping, params:=[_]}) -> {irc, {msg, {RT, [Ping, "Please provide a message."]}}};
-speak (#{params:=Params}) -> {irc, {msg,          {hd(Params), string:join(tl(Params), " ")}}}.
+speak (#{params:=Params}) -> {irc, {msg, {hd(Params), string:join(tl(Params), " ")}}}.
 
 notice(#{reply:=RT, ping:=Ping, params:=[_]}) -> {irc, {msg, {RT, [Ping, "Please provide a message."]}}};
 notice(#{reply:=RT, ping:=Ping, params:=[]}) -> {irc, {msg, {RT, [Ping, "Please provide a channel and message."]}}};
-notice(#{params:=Params}) -> {irc, {notice,       {hd(Params), string:join(tl(Params), " ")}}}.
+notice(#{params:=Params}) -> {irc, {notice, {hd(Params), string:join(tl(Params), " ")}}}.
 
 action(#{reply:=RT, ping:=Ping, params:=[_]}) -> {irc, {msg, {RT, [Ping, "Please provide an action."]}}};
 action(#{reply:=RT, ping:=Ping, params:=[]}) -> {irc, {msg, {RT, [Ping, "Please provide a channel and action."]}}};

@@ -240,6 +240,7 @@ handle_decoded(JSON) ->
 					logging:log(info, ?MODULE, "Travis PENDING: ~s", [traverse_json(JSON, [struct, "commit", struct, "sha"])]),
 					ok;
 				Status ->
+					logging:log(info, ?MODULE, "Travis ~s: ~s", [string:to_upper(Status), traverse_json(JSON, [struct, "commit", struct, "sha"])]),
 					case case traverse_json(JSON, [struct, "target_url"]) of
 						URL when is_list(URL) ->
 							os:putenv("url", URL),

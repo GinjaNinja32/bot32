@@ -178,7 +178,7 @@ tokens1() ->
 	 {"+", '+'}, {"-", '-'}, {"*", '*'}, {"/", '/'},
 	 {"(", '('}, {")", ')'}, {"d", 'd'}, {"#", '#'},
 	 {"h", 'h'}, {"H", 'H'}, {"l", 'l'}, {"L", 'L'},
-	 {"s", 's'}, {"i", 'i'}
+	 {"s", 's'}, {"i", 'i'}, {"c", 'c'}
 	].
 
 tokenise([$;|Rst], T) -> {T, [string:strip(Rst), ": "]};
@@ -239,7 +239,7 @@ parseExpr(Expr) when is_list(Expr) ->
 parseExpr(T) -> T.
 
 parseExpression(Lst) ->
-	Priority = [['d', 'i'], ['!','L','l','H','h'], ['*','/'], ['+','-'], ['>','>=','<=','<','='], ['s', '#']],
+	Priority = [['d', 'i'], ['!','L','l','H','h'], ['*','/'], ['+','-'], ['>','>=','<=','<','='], ['c', 's', '#']],
 	lists:foldl(fun parseLeftAssoc/2, Lst, Priority).
 
 parseLeftAssoc(_, error) -> error;
@@ -272,11 +272,13 @@ parseLeftAssoc(OpList, Toks) ->
 	end.
 
 
+is_acceptable_left('c', _) -> false;
 is_acceptable_left('s', _) -> false;
 is_acceptable_left(_, L) -> is_tuple(L) orelse is_number(L) orelse is_list(L) orelse L == '%'.
 is_acceptable_right(_, R, _) -> is_tuple(R) orelse is_number(R) orelse is_list(R) orelse R == '%'.
 
-default_left('s') -> '$'; % dummy, it has no left arg
+default_left('c') -> '$'; % dummy, it has no left arg
+default_left('s') -> '$'; % ditto
 default_left('d') -> 1;
 default_left(_) -> error.
 
@@ -388,7 +390,8 @@ evaluate(Tree, Expand) ->
 			{AS,AV} = evaluate(A, Expand),
 			{BS,BV} = evaluate(B, Expand),
 			case Op of
-				's' -> {BS, sum_or_get(BV)};
+				's' -> {[$s,$(,BS,$)], sum_or_get(BV)};
+				'c' -> {[$c,$(,BS,$)], lists:sum(lists:map(fun(true)->1; (false)->0 end, BV))};
 				'+' -> {[AS, $+, BS], sum_or_get(AV) + sum_or_get(BV)};
 				'-' -> {[AS, $-, BS], sum_or_get(AV) - sum_or_get(BV)};
 				'*' -> {[AS, $*, BS], sum_or_get(AV) * sum_or_get(BV)};

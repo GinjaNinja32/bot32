@@ -31,8 +31,15 @@ check_messages(#{nick:=Origin, reply:=ReplyTo, ping:=Ping}) ->
 		_ -> ok
 	end.
 
-new_message(#{nick:=Origin, reply:=ReplyTo, ping:=Ping, params:=[Target, Message]}) ->
-	{irc, {msg, {ReplyTo, [Ping, create_message(Origin, Target, Message)]}}}.
+new_message(#{nick:=Origin, reply:=ReplyTo, ping:=Ping, params:=[Targets, Message]}) ->
+	lists:foldl(fun(Target, Sent) ->
+			case lists:member(string:to_lower(Target), Sent) of
+				true -> Sent;
+				false ->
+					core ! {irc, {msg, {ReplyTo, [Ping, create_message(Origin, Target, Message)]}}},
+					[string:to_lower(Target), Sent]
+			end
+		end, [], string:tokens(Targets, "/,")).
 
 check_presence_for(NickR) ->
 	Nick = string:to_lower(NickR),

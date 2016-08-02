@@ -44,7 +44,7 @@ votemake(#{reply:=Reply, ping:=Ping, params:=Params}) ->
 	QnOptions = lists:map(fun string:strip/1, string:tokens(string:join(Params, " "), "|")),
 	Question = hd(QnOptions),
 	Options = tl(QnOptions),
-	<<MD5:128>> = erlang:md5(string:join(QnOptions, "|")),
+	<<MD5:128>> = crypto:hash(md5, string:join(QnOptions, "|")),
 	Num = MD5 rem ipow(36, 5),
 	VoteKey = lists:flatten(io_lib:format("~5.36.0B", [Num])),
 	case config:get_value(data, [?MODULE, votes, VoteKey]) of

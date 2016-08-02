@@ -355,3 +355,14 @@ pick_rand(List) ->
 
 simple_pick(Lst) ->
 	lists:nth(random:uniform(length(Lst)), Lst).
+
+floor(X) when X < 0 ->
+	T = trunc(X),
+	case X - T == 0 of
+		true -> T;
+		false -> T - 1
+	end;
+floor(X) ->
+	trunc(X).
+
+ceil(X) -> -floor(-X).

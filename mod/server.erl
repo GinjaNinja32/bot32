@@ -120,7 +120,7 @@ notes(VID, ID, Nick, Reply, Ping, [Who|_]) ->
 			case hd(orddict:fetch_keys(Dict)) of
 				"No information found on the given key." -> ["No information found on the key '", Who, "'."];
 				T ->
-					File = re:replace(base64:encode(erlang:md5(T)), "/", "@", [global]),
+					File = re:replace(base64:encode(crypto:hash(md5, T)), "/", "@", [global]),
 					Filename = io_lib:format("/home/bot32/www/~s.txt", [File]),
 					file:write_file(Filename, T),
 					["Following link valid for approximately ten minutes: http://nyx.gn32.uk/admin/", File, ".txt"]
