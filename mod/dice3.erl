@@ -143,18 +143,18 @@ rtd(#{reply:=Reply, ping:=Ping, nick:=Nick, selector:=Selector, params:=Params})
 
 % APOCALYPSE WORLD
 
-!apoc(#{reply:=RT, ping:=P, nick:=Nick, params:=Params, selector:=Selector}) ->
+apoc(#{reply:=RT, ping:=P, nick:=Nick, params:=Params, selector:=Selector}) ->
 	case Params of
 		[] ->
 			M = 0,
-			Comment = ""
+			Comment = "";
 		_ ->
 			M = list_to_integer(hd(Params)),
 			Comment = case string:join(tl(Params), " ") of
 				[] -> [];
 				X -> [X,$:,$ ]
 			end,
-		end,
+	end,
 	Formatter = fun
 		([false,false,false]) -> [Comment, "\x034\x02Miss!\x03\x02"];
 		([false,false, true]) -> [Comment, "\x038\x02Weak Hit!\x03\x02"];
