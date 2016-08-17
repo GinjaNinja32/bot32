@@ -283,10 +283,13 @@ whois0(Nick) ->
 	case Data of
 		no_such_nick -> ok;
 		_ ->
-			Timestamp = calendar:now_to_universal_time(os:timestamp()),
-			config:set_value(temp, [?MODULE, whois_cache, string:to_lower(Nick)], {Timestamp, Data})
+			insert_whois(Nick, Data)
 	end,
 	Data.
+
+insert_whois(Nick, Data) ->
+	Timestamp = calendar:now_to_universal_time(os:timestamp()),
+	config:set_value(temp, [?MODULE, whois_cache, string:to_lower(Nick)], {Timestamp, Data}).
 
 receive_whois(Map) ->
 	receive

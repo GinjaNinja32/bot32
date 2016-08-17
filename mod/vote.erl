@@ -76,7 +76,7 @@ voteresult(#{reply:=Reply, ping:=Ping, params:=[ID]}) ->
 			core ! {irc, {msg, {Reply, ["Vote ", ID, ": ", config:get_value(data, [?MODULE, votes, ID, question])]}}},
 			lists:foreach(fun({Opt,Num}) ->
 						core ! {irc, {msg, {Reply, [Opt, $:, $ , integer_to_list(Num)]}}}
-					end, lists:reverse(lists:ukeysort(2, lists:zip(Options, Votes)))),
+					end, lists:reverse(lists:keysort(2, lists:zip(Options, Votes)))),
 			ok
 	end.
 

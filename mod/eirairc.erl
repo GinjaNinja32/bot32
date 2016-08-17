@@ -17,7 +17,22 @@ handle_event(msg_ignored, {User, Channel, Tokens}) ->
 			end of
 				false -> ok;
 				{N, T} ->
-					self() ! {irc, {msg, {User#user{nick=N, username=User#user.username ++ "-user"}, Channel, T}}}
+					U = User#user.username ++ "-user",
+					util:insert_whois(N, #{
+							nick => N,
+							user => U,
+							host => User#user.host,
+							real => N,
+							channels => [Channel],
+							server => "none",
+							server_tagline => "I don't exist!",
+							operator => false,
+							cloak => false,
+							registered => false,
+							ssl => false,
+							fingerprint => none
+						}),
+					self() ! {irc, {msg, {User#user{nick=N, username=U}, Channel, T}}}
 			end;
 		false -> ok
 	end;

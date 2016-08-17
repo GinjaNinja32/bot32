@@ -29,6 +29,7 @@ bashl(#{reply:=Reply, ping:=Ping, params:=[Param]}) ->
 	RRaw = util:safe_os_cmd("bash -c \"$args\""),
 	R = lists:flatmap(fun
 			(10) -> [10];
+			(9) -> "    ";
 			(T) when T < 32 -> [];
 			(T) -> [T]
 		end, RRaw),

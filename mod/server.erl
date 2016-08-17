@@ -12,6 +12,7 @@ get_commands() ->
 		{"age",      generic(age,     "server"), server},
 		{"notes",    generic(notes,   "server"), server},
 		{"info",     generic(info,    "server"), server},
+		{"laws",     generic(laws,    "server"), server},
 		{"pm",       generic(pm,      "server"), server}
 	].
 
@@ -170,6 +171,52 @@ info(VID, ID, _, Reply, Ping, What) ->
 		end
 	end,
 	{irc, {msg, {Reply, [Ping, VID, RMsg]}}}.
+
+laws(VID, ID, _, Reply, Ping, What) ->
+	RMsg = case send2server(ID, "?laws=~s;key=~s", [
+					string:join(What, " "),
+					config:get_value(config, [?MODULE, servers, ID, pass])
+				]) of
+		{error, T} -> io_lib:format("Error: ~s", [T]);
+		[{"No matches",_}] -> "No matches found";
+		Dict ->
+			case orddict:find("key", Dict) of
+				{ok, _} -> % specific player
+					D = fun(T) ->
+						case orddict:find(T, Dict) of
+							{ok, V} -> V;
+							error -> "???"
+						end
+					end,
+					ShowLaws = fun(Which, DispStr) ->
+						case D(Which) of
+							"?" -> ok;
+							Params ->
+								List = byond:params2dict(Params),
+								lists:foreach(fun({T,_}) ->
+										core ! {irc, {msg, {Reply, [Ping, VID, DispStr, T]}}}
+									end, List)
+						end
+					end,
+					core ! {irc, {msg, {Reply, [Ping, VID, D("name"), $/, D("key"), "'s laws:"]}}},
+					ShowLaws("ion", "Ion:  "),
+					case D("zero") of
+						"?" -> ok;
+						Zeroth ->
+							core ! {irc, {msg, {Reply, [Ping, VID, "Zero: ", Zeroth]}}}
+					end,
+					ShowLaws("inherent", "Inh:  "),
+					ShowLaws("supplied", "Supp: "),
+					ok;
+
+				error -> % key -> name
+					string:join(lists:map(fun({Key,Name}) -> io_lib:format("~s/(~s)", [Key,Name]) end, Dict), "; ")
+		end
+	end,
+	case RMsg of
+		ok -> ok;
+		_ -> {irc, {msg, {Reply, [Ping, VID, RMsg]}}}
+	end.
 
 
 notify(VID, ID, Nick, Reply, Ping, _) ->
