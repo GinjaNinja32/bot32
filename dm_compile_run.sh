@@ -4,7 +4,6 @@ file=$1
 
 if [[ $2 == "run" ]]; then
 	DreamDaemon $file.dmb -invisible -ultrasafe 2>&1 | tail -n +4 | head -c 512
-	rm $file.*
 	exit 0
 fi
 
@@ -19,7 +18,7 @@ return=$?
 
 if [[ $return != 0 ]]; then
 	echo "$output" | tail -n +3
-	rm $file.*
 else
 	~/timeout --just-kill --no-info-on-success --detect-hangups -h 10 -t 10 -m 102400 ../$0 $file run
 fi
+rm $file.*
