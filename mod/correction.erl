@@ -99,18 +99,19 @@ opts(Opts) ->
 
 split_regex(Str) -> split_regex(Str, [], [], []).
 
-split_regex([$ |Str], [], [], R) -> split_regex(Str, [], [], R); % ignore spaces before first / in each regex
+split_regex(_, _, CR, _) when length(CR) > 3 -> false;
 
-split_regex([$/|Str], [], CR, R) -> split_regex(Str, [], CR, R);
+split_regex([$ |Str], [], [], R) -> split_regex(Str, [], [], R); % ignore spaces before first / in each regex
+split_regex([$/|Str], [], [], R) -> split_regex(Str, [], [], R); % skip the first /
 split_regex([$/|Str], CX, CR, R) -> split_regex(Str, [], [lists:reverse(CX)|CR], R);
 
 split_regex([$\\,$/|Str], CX, CR, R) -> split_regex(Str, [$/|CX], CR, R);
-split_regex([$\\,Chr|Str], CX, CR, R) -> split_regex(Str, [Chr|CX], CR, R);
+split_regex([$\\,Chr|Str], CX, CR, R) -> split_regex(Str, [Chr,$\\|CX], CR, R);
 split_regex([$;|Str], CX, CR, R) when length(CR) == 2 -> split_regex(Str, [], [], [lists:reverse([lists:reverse(CX)|CR])|R]);
 split_regex([Chr|Str], CX, CR, R) -> split_regex(Str, [Chr|CX], CR, R);
 
 split_regex([], [], [], R) -> lists:reverse(R);
-split_regex([], [], CR, R) -> split_regex([], [], [], [lists:reverse(CR) | R]);
+split_regex([], [], CR, R) when length(CR) == 3 -> split_regex([], [], [], [lists:reverse(CR) | R]);
 split_regex([], CX, CR, R) -> split_regex([], [], [lists:reverse(CX)|CR], R).
 
 % KEYBOARD LAYOUTS
