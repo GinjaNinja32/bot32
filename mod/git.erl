@@ -102,7 +102,7 @@ join_list_max_len(List, Separator, Length, Complete) -> join_list_max_len(tl(Lis
 
 update() ->
 	Home = config:require_value(config, [?MODULE, location]),
-	Remote = config:get_value(config, [?MODULE, location], "upstream"),
+	Remote = config:get_value(config, [?MODULE, remote], "upstream"),
 	os:cmd([
 		"cd ",Home,";",
 		"git fetch ",Remote,";"

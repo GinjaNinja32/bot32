@@ -93,7 +93,7 @@ set_chanserv_rank(Nick, Rank, Reply, Ping) ->
 	BotNick = config:require_value(config, [bot,nick]),
 	core ! {irc, {msg, {"NickServ", ["INFO ",Nick]}}},
 	receive
-		{irc, {notice, {#user{nick="NickServ",username="services",host="services.sorcery.net"}, BotNick, [_Nick, "is", _Realname]}}} -> % nick is registered
+		{irc, {notice, {#user{nick="NickServ",username="services",host="services.sorcery.net"}, BotNick, [_Nick, "is"| _Realname]}}} -> % nick is registered
 			case get_add_remove(Nick, Rank) of
 				none -> core ! {irc, {msg, {Reply, [Ping, "'", Rank, "' did not have an associated ChanServ rank."]}}};
 				Cmd ->
