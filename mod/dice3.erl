@@ -378,7 +378,7 @@ evaluate(Tree, Expand) ->
 			if
 				not is_number(AV) orelse
 				not is_number(BV) orelse
-				not ((is_number(XV) andalso XV<BV andalso XV>1) orelse XV == '$') -> {"{invalid}", 0};
+				not ((is_number(XV) andalso XV=<BV andalso XV>1) orelse XV == '$') -> {"{invalid}", 0};
 				true ->
 					Trg = if XV == '$' -> BV; true -> XV end,
 					Dice = exploding(AV, BV, Trg, []),

@@ -22,8 +22,8 @@ get_commands() ->
 		{"action", fun action/1, admin},
 		{"prefix", fun prefix/1, host},
 		{"cmode", fun mode/1, admin},
-		{"kick", fun kick/1, admin},
-		{"kickban", fun kickban/1, admin},
+		{"kick", fun kick/1, chanban},
+		{"kickban", fun kickban/1, chanban},
 		{"raw", fun raw/1, host}
 	].
 
@@ -210,7 +210,7 @@ mode(#{nick:=ReplyTo, reply:=ReplyTo, ping:=Ping}) -> {irc, {msg, {ReplyTo, [Pin
 mode(#{reply:=ReplyTo, params:=Params}) -> {irc, {mode, {ReplyTo, string:join(Params, " ")}}}.
 
 kick(#{reply:=Chan, params:=[User | Reason]}) ->
-	core ! {irc, {kick, {Chan, User, Reason}}},
+	core ! {irc, {kick, {Chan, User, string:join(Reason, " ")}}},
 	ok;
 kick(#{reply:=RT, ping:=P}) ->
 	{irc, {msg, {RT, [P, "Provide a user to kick and an optional reason"]}}}.

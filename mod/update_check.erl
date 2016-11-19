@@ -14,6 +14,6 @@ checkupdate(#{reply:=Reply, ping:=Ping}) ->
 				error -> {irc, {msg, {Reply, [Ping, "Server did not reply with a valid revision"]}}};
 				{ok, Rev} ->
 					os:putenv("rev", Rev),
-					{irc, {msg, {Reply, [Ping, util:safe_os_cmd("./getrev.sh \"$rev\"")]}}}
+					{irc, {msg, {Reply, [Ping, util:safe_os_cmd("bash -c './getrev.sh \"$rev\"'")]}}}
 			end
 	end.

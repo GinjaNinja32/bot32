@@ -1,13 +1,16 @@
 -module(byond).
--export([send/3, params2dict/1, dict2params/1, vencode/1, vdecode/1]).
+-export([send/3, send/4, params2dict/1, dict2params/1, vencode/1, vdecode/1]).
 
-send(Addr, Port, Msg) ->
+send(Addr, Port, Msg) -> send(Addr, Port, Msg, true).
+
+send(Addr, Port, Msg, Parse) ->
 	case gen_tcp:connect(Addr, Port, [binary, {packet, raw}, {active, false}, {send_timeout, 10 * 1000}], 30 * 1000) of
 		{ok, Sock} ->
 			case gen_tcp:send(Sock, encode(Msg)) of
 				ok ->
 					case recv(Sock) of
-						{ok, V} -> parse(V);
+						{ok, V} when Parse -> parse(V);
+						{ok, V} -> V;
 						{error, T} -> {error, {recv,T}}
 					end;
 				{error, T} -> {error, {send,T}}

@@ -32,7 +32,7 @@ steam(#{reply:=Reply, ping:=Ping, params:=[Param], selector:=[]}) ->
 			JSON_US = info(ID, "us"),
 			JSON_EU = info(ID, "fr"), % "eu" here seems to give USD?
 			R = create_message([{eu,JSON_EU}, {uk,JSON_UK}, {us,JSON_US}],
-								"[STEAM] ~s (~s / ~s / ~s ~s) (~s) https://store.steampowered.com/app/~b/", [
+								"[STEAM] ~s (~s / ~s / ~s~s) (~s) https://store.steampowered.com/app/~b/", [
 					{utf8fix, [uk, struct, "name"]},
 					{price, [uk, struct, "price_overview"]},
 					{price, [us, struct, "price_overview"]},
@@ -48,7 +48,7 @@ steam(#{reply:=Reply, ping:=Ping, params:=[Param], selector:=CC}) ->
 		error -> {irc, {msg, {Reply, [Ping, "No results for '", Param, "'."]}}};
 		ID ->
 			JSON = info(ID, CC),
-			R = create_message(JSON, "[STEAM] ~s (~s ~s) (~s) https://store.steampowered.com/app/~b/", [
+			R = create_message(JSON, "[STEAM] ~s (~s~s) (~s) https://store.steampowered.com/app/~b/", [
 					{utf8fix, [struct, "name"]},
 					{price, [struct, "price_overview"]},
 					{discount, [struct, "price_overview"]},
@@ -94,7 +94,7 @@ create_message(JSON, String, FormatJsonPaths) ->
 						case traverse_json(Price, [struct, "initial"]) == traverse_json(Price, [struct, "final"]) of
 							true -> "";
 							false ->
-								create_message(Price, "(-~b%)\x03", [
+								create_message(Price, " (-~b%)\x03", [
 										[struct, "discount_percent"]
 									])
 						end

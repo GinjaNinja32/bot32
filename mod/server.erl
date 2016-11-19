@@ -82,25 +82,40 @@ gsrank(ID, Who) ->
 		T -> T
 	end.
 
-get_add_remove(Nick, "none") -> ["del ", Nick];
-get_add_remove(Nick, Rank) ->
-	case config:get_value(config, [?MODULE, chanserv, Rank]) of
-		'$none' -> none;
-		R -> io_lib:format("add ~s ~b", [Nick,R])
+do_add_remove(Nick, OldRank, NewRank) ->
+	case OldRank of
+		"none" -> ok;
+		_ ->
+			case config:get_value(config, [?MODULE, chanserv, OldRank]) of
+				'$none' -> ok;
+				OldChanRanks ->
+					lists:foreach(fun({Chan,_}) ->
+							core ! {raw, io_lib:format("chanserv access ~s del ~s", [Chan, Nick])}
+						end, OldChanRanks)
+			end
+	end,
+
+	case NewRank of
+		"none" -> ok;
+		_ ->
+			case config:get_value(config, [?MODULE, chanserv, NewRank]) of
+				'$none' -> none;
+				NewChanRanks ->
+					lists:foreach(fun({Chan,Rank}) ->
+							core ! {raw, io_lib:format("chanserv access ~s add ~s ~b", [Chan, Nick, Rank])}
+						end, NewChanRanks),
+					ok
+			end
 	end.
 
-set_chanserv_rank(Nick, Rank, Reply, Ping) ->
+set_chanserv_rank(Nick, OldRank, Rank, Reply, Ping) ->
 	BotNick = config:require_value(config, [bot,nick]),
 	core ! {irc, {msg, {"NickServ", ["INFO ",Nick]}}},
 	receive
 		{irc, {notice, {#user{nick="NickServ",username="services",host="services.sorcery.net"}, BotNick, [_Nick, "is"| _Realname]}}} -> % nick is registered
-			case get_add_remove(Nick, Rank) of
+			case do_add_remove(Nick, OldRank, Rank) of
 				none -> core ! {irc, {msg, {Reply, [Ping, "'", Rank, "' did not have an associated ChanServ rank."]}}};
-				Cmd ->
-					core ! {raw, ["chanserv access #staffcoach ", Cmd]},
-					core ! {raw, ["chanserv access #bs12staff ", Cmd]},
-					core ! {raw, ["chanserv access #bs12admin ",Cmd]},
-					core ! {irc, {msg, {Reply, [Ping, Nick, "'s ChanServ entries updated."]}}}
+				ok -> core ! {irc, {msg, {Reply, [Ping, Nick, "'s ChanServ entries updated."]}}}
 			end;
 		{irc, {notice, {#user{nick="NickServ",username="services",host="services.sorcery.net"}, BotNick, ["Nick", _Nick, "isn't", "registered."]}}} -> % not registered
 			core ! {irc, {msg, {Reply, [Ping, Nick, "'s nickname is *not* registered with NickServ; they will *not* be added to the ChanServ access lists!"]}}}
@@ -108,7 +123,8 @@ set_chanserv_rank(Nick, Rank, Reply, Ping) ->
 
 ssr(VID, ID, _, Reply, Ping, [Nick|RankT]) when RankT /= [] ->
 	Rank = string:join(RankT, " "),
-	ID == "main" andalso set_chanserv_rank(Nick, Rank, Reply, Ping),
+	OldRank = config:get_value(config, [?MODULE, ranks, ID, string:to_lower(Nick)], "none"),
+	ID == "main" andalso set_chanserv_rank(Nick, OldRank, Rank, Reply, Ping),
 	ShowRank = case Rank of
 		"none" -> config:del_value(config, [?MODULE, ranks, ID, string:to_lower(Nick)]), "<none>";
 		_ -> config:set_value(config, [?MODULE, ranks, ID, string:to_lower(Nick)], Rank), [$", Rank, $"]
@@ -124,7 +140,7 @@ pm(VID, ID, Nick, Reply, Ping, [Who | Msg]) when Msg /= [] ->
 					Nick,
 					config:get_value(config, [?MODULE, ranks, ID, string:to_lower(Nick)], "Unknown")
 				]) of
-		{error, T} -> io_lib:format("Error: ~s", [T]);
+		{error, T} -> io_lib:format("Error: ~p", [T]);
 		Dict ->
 			case orddict:fetch_keys(Dict) of
 				["Message Successful"] -> "Sent.";
@@ -161,7 +177,7 @@ age(VID, ID, _, Reply, Ping, [Who|_]) ->
 					Who,
 					config:get_value(config, [?MODULE, servers, ID, pass])
 				]) of
-		{error, T} -> io_lib:format("Error: ~s", [T]);
+		{error, T} -> io_lib:format("Error: ~p", [T]);
 		Dict -> ["Age of ", Who, ": ", hd(orddict:fetch_keys(Dict))]
 	end,
 	{irc, {msg, {Reply, [Ping, VID, RMsg]}}}.
@@ -171,7 +187,7 @@ info(VID, ID, _, Reply, Ping, What) ->
 					string:join(What, " "),
 					config:get_value(config, [?MODULE, servers, ID, pass])
 				]) of
-		{error, T} -> io_lib:format("Error: ~s", [T]);
+		{error, T} -> io_lib:format("Error: ~p", [T]);
 		[{"No matches",_}] -> "No matches found";
 		Dict ->
 			case orddict:find("key", Dict) of
@@ -204,7 +220,7 @@ laws(VID, ID, _, Reply, Ping, What) ->
 					string:join(What, " "),
 					config:get_value(config, [?MODULE, servers, ID, pass])
 				]) of
-		{error, T} -> io_lib:format("Error: ~s", [T]);
+		{error, T} -> io_lib:format("Error: ~p", [T]);
 		[{"No matches",_}] -> "No matches found";
 		Dict ->
 			case orddict:find("key", Dict) of
@@ -313,7 +329,7 @@ readsock(Socket) ->
 				{{ok, Pwd}, {ok, Chan}, {ok, Mesg}} ->
 					case check_password_for_channel(Pwd, Chan) of
 						{ok, ID} -> handle_msg(ID, Chan, Mesg);
-						error -> logging:log(error, ?MODULE, "received invalid message ~p\n", [Plist])
+						error -> logging:log(error, ?MODULE, "received message with incorrect key ~p\n", [Plist])
 					end;
 				_ -> logging:log(info, ?MODULE, "received invalid message ~p\n", [Plist])
 			end,
