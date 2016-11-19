@@ -1,5 +1,5 @@
 -module(byond).
--export([send/3, send/4, params2dict/1, dict2params/1, vencode/1, vdecode/1]).
+-export([send/3, send/4, params2list/1, params2dict/1, dict2params/1, vencode/1, vdecode/1]).
 
 send(Addr, Port, Msg) -> send(Addr, Port, Msg, true).
 
@@ -51,6 +51,9 @@ parse(Str) ->
 
 vencode(V) -> http_uri:encode(V).
 vdecode(V) -> http_uri:decode(re:replace(V, "\\+", " ", [{return, list}, global])).
+
+params2list(Params) ->
+	lists:map(fun vdecode/1, string:tokens(Params, "&;")).
 
 params2dict(Params) ->
 	lists:foldl(fun(T, Dict) ->

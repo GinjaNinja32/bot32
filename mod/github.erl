@@ -118,17 +118,9 @@ receive_content(Socket, Length) ->
 		{error, T} -> {error, T}
 	end.
 
-hexit(<<>>, Out) -> Out;
-hexit(<<A,In/binary>>, Out) ->
-	case io_lib:format("~.16b",[A]) of
-		[X] when length(X) == 2 -> Bin = list_to_binary(X);
-		[X] -> Bin = list_to_binary("0" ++ X)
-	end,
-	hexit(In, <<Out/binary, Bin/binary>>).
-
 decode_content(Content, Signature) ->
-	case catch mochijson:decode(Content) of
-		{'EXIT', T} -> logging:log(error, "GITHUB", "Error in mochijson: ~p", [T]);
+	case catch json:parse(Content) of
+		{'EXIT', T} -> logging:log(error, "GITHUB", "Error parsing JSON: ~p", [T]);
 		JSON ->
 			file:write_file("json.crl", io_lib:format("~p",[JSON])),
 			case handle_decoded(JSON) of
@@ -155,7 +147,7 @@ check_signature(Content, Signature, User, Repo) ->
 		'*' -> true;
 		Secret ->
 			RealSignature = list_to_binary(tl(tl(tl(tl(tl(Signature)))))),
-			case hexit(crypto:hmac(sha, Secret, Content), <<>>) of
+			case util:bin2hex(crypto:hmac(sha, Secret, Content), <<>>) of
 				RealSignature -> true;
 				X ->
 					io:fwrite("hashed to ~p, expected ~p\n", [X, RealSignature]),
@@ -165,13 +157,13 @@ check_signature(Content, Signature, User, Repo) ->
 
 handle_decoded(JSON) ->
 	Messages = case {
-				traverse_json(JSON, [struct, "action"]),
-				traverse_json(JSON, [struct, "pull_request"]),
-				traverse_json(JSON, [struct, "issue"]),
-				traverse_json(JSON, [struct, "state"])
+				json:traverse(JSON, [struct, "action"]),
+				json:traverse(JSON, [struct, "pull_request"]),
+				json:traverse(JSON, [struct, "issue"]),
+				json:traverse(JSON, [struct, "state"])
 			} of
 		{"opened", _, error, _} ->
-			RepoStruct = traverse_json(JSON, [struct, "pull_request", struct, "base", struct, "repo"]),
+			RepoStruct = json:traverse(JSON, [struct, "pull_request", struct, "base", struct, "repo"]),
 			[create_message(JSON, "[~s] ~s opened pull request #~b: ~s (" ++ ?BRANCH ++ "~s" ++ ?RESET ++ "..." ++ ?BRANCH ++ "~s" ++ ?RESET ++ ") ~s", [
 					{reponame, [struct, "pull_request", struct, "base", struct, "repo"]},
 					[struct, "sender", struct, "login"],
@@ -182,7 +174,7 @@ handle_decoded(JSON) ->
 					{url, [struct, "pull_request", struct, "html_url"]}
 				])];
 		{"reopened", _, error, _} ->
-			RepoStruct = traverse_json(JSON, [struct, "pull_request", struct, "base", struct, "repo"]),
+			RepoStruct = json:traverse(JSON, [struct, "pull_request", struct, "base", struct, "repo"]),
 			[create_message(JSON, "[~s] ~s reopened pull request #~b: ~s (" ++ ?BRANCH ++ "~s" ++ ?RESET ++ "..." ++ ?BRANCH ++ "~s" ++ ?RESET ++ ") ~s", [
 					{reponame, [struct, "pull_request", struct, "base", struct, "repo"]},
 					[struct, "sender", struct, "login"],
@@ -193,7 +185,7 @@ handle_decoded(JSON) ->
 					{url, [struct, "pull_request", struct, "html_url"]}
 				])];
 		{"closed", _, error, _} ->
-			RepoStruct = traverse_json(JSON, [struct, "pull_request", struct, "base", struct, "repo"]),
+			RepoStruct = json:traverse(JSON, [struct, "pull_request", struct, "base", struct, "repo"]),
 			[create_message(JSON, "[~s] ~s closed pull request #~b: ~s (" ++ ?BRANCH ++ "~s" ++ ?RESET ++ "..." ++ ?BRANCH ++ "~s" ++ ?RESET ++ ") ~s", [
 					{reponame, [struct, "pull_request", struct, "base", struct, "repo"]},
 					[struct, "sender", struct, "login"],
@@ -204,7 +196,7 @@ handle_decoded(JSON) ->
 					{url, [struct, "pull_request", struct, "html_url"]}
 				])];
 		{"opened", error, _, _} ->
-			RepoStruct = traverse_json(JSON, [struct, "repository"]),
+			RepoStruct = json:traverse(JSON, [struct, "repository"]),
 			[create_message(JSON, "[~s] ~s opened issue #~b: ~s ~s", [
 					{reponame, [struct, "repository"]},
 					[struct, "sender", struct, "login"],
@@ -213,7 +205,7 @@ handle_decoded(JSON) ->
 					{url, [struct, "issue", struct, "html_url"]}
 				])];
 		{"reopened", error, _, _} ->
-			RepoStruct = traverse_json(JSON, [struct, "repository"]),
+			RepoStruct = json:traverse(JSON, [struct, "repository"]),
 			[create_message(JSON, "[~s] ~s reopened issue #~b: ~s ~s", [
 					{reponame, [struct, "repository"]},
 					[struct, "sender", struct, "login"],
@@ -222,7 +214,7 @@ handle_decoded(JSON) ->
 					{url, [struct, "issue", struct, "html_url"]}
 				])];
 		{"closed", error, _, _} ->
-			RepoStruct = traverse_json(JSON, [struct, "repository"]),
+			RepoStruct = json:traverse(JSON, [struct, "repository"]),
 			[create_message(JSON, "[~s] ~s closed issue #~b: ~s ~s", [
 					{reponame, [struct, "repository"]},
 					[struct, "sender", struct, "login"],
@@ -231,26 +223,27 @@ handle_decoded(JSON) ->
 					{url, [struct, "issue", struct, "html_url"]}
 				])];
 		{error, _, _, X} when X /= error ->
-			RepoStruct = traverse_json(JSON, [struct, "repository"]),
-			case traverse_json(JSON, [struct, "state"]) of
+			RepoStruct = json:traverse(JSON, [struct, "repository"]),
+			case json:traverse(JSON, [struct, "state"]) of
 				"success" ->
-					logging:log(info, ?MODULE, "Travis SUCCESS: ~s", [traverse_json(JSON, [struct, "commit", struct, "sha"])]),
+					logging:log(info, ?MODULE, "Travis SUCCESS: ~s", [json:traverse(JSON, [struct, "commit", struct, "sha"])]),
 					ok;
 				"pending" ->
-					logging:log(info, ?MODULE, "Travis PENDING: ~s", [traverse_json(JSON, [struct, "commit", struct, "sha"])]),
+					logging:log(info, ?MODULE, "Travis PENDING: ~s", [json:traverse(JSON, [struct, "commit", struct, "sha"])]),
 					ok;
 				Status ->
-					logging:log(info, ?MODULE, "Travis ~s: ~s", [string:to_upper(Status), traverse_json(JSON, [struct, "commit", struct, "sha"])]),
-					case case traverse_json(JSON, [struct, "target_url"]) of
+					logging:log(info, ?MODULE, "Travis ~s: ~s", [string:to_upper(Status), json:traverse(JSON, [struct, "commit", struct, "sha"])]),
+					case case json:traverse(JSON, [struct, "target_url"]) of
 						URL when is_list(URL) ->
 							os:putenv("url", URL),
-							case catch mochijson:decode(util:safe_os_cmd("curl -s $(echo $url | sed 's#travis-ci.org#api.travis-ci.org/repos#')")) of
-								{'EXIT',T} -> logging:log(error, ?MODULE, "Error in mochijson: ~p", [T]), error;
+							case catch json:parse(util:safe_os_cmd("curl -s $(echo $url | sed 's#travis-ci.org#api.travis-ci.org/repos#')")) of
+								{'EXIT',T} -> logging:log(error, ?MODULE, "Error parsing JSON: ~p", [T]), error;
 								T -> {ok, T}
 							end;
 						_ -> error
 					end of
 						{ok, Travis} ->
+
 							RepoId = create_message(JSON, "~s", [{reponame, [struct, "repository"]}]),
 							[create_message(Travis, "[~s] Commit ~s '~s' has ~s CI: ~s ~s", [
 									{RepoId},
@@ -278,8 +271,8 @@ handle_decoded(JSON) ->
 					end
 			end;
 		{error, _, _, _} ->
-			RepoStruct = traverse_json(JSON, [struct, "repository"]),
-			case lists:map(fun(T) -> traverse_json(JSON, [struct, T]) end, ["created", "deleted", "forced"]) of
+			RepoStruct = json:traverse(JSON, [struct, "repository"]),
+			case lists:map(fun(T) -> json:traverse(JSON, [struct, T]) end, ["created", "deleted", "forced"]) of
 				[true, false, _] ->
 					[create_message(JSON, "[~s] ~s created ~s at ~s: ~s", [
 							{reponame, [struct, "repository"]},
@@ -308,7 +301,7 @@ handle_decoded(JSON) ->
 							{hash, [struct, "after"]},
 							{url, [struct, "compare"]}
 						]),
-					CommitList = traverse_json(JSON, [struct, "commits", array]),
+					CommitList = json:traverse(JSON, [struct, "commits", array]),
 					ShowList = lists:sublist(CommitList, 3),
 					RepoBranch = create_message(JSON, "~s:~s", [
 							{reponame, [struct, "repository"]},
@@ -334,11 +327,11 @@ handle_decoded(JSON) ->
 		_ -> true
 	end of
 		true ->
-			case traverse_json(RepoStruct, [struct, "owner", struct, "name"]) of
-				error -> UU = traverse_json(RepoStruct, [struct, "owner", struct, "login"]);
+			case json:traverse(RepoStruct, [struct, "owner", struct, "name"]) of
+				error -> UU = json:traverse(RepoStruct, [struct, "owner", struct, "login"]);
 				UU -> ok
 			end,
-			NN = traverse_json(RepoStruct, [struct, "name"]),
+			NN = json:traverse(RepoStruct, [struct, "name"]),
 			{UU, NN, Messages};
 		false -> ok
 	end.
@@ -346,63 +339,55 @@ handle_decoded(JSON) ->
 create_message(JSON, String, FormatJsonPaths) ->
 	io_lib:format(String, lists:map(fun
 			({T}) -> T;
-			({hash,T}) -> ?HASH ++ lists:sublist(traverse_json(JSON, T), 8) ++ ?RESET;
-			({length,T}) -> length(traverse_json(JSON, T));
-			({s,Str,T}) -> util:s(length(traverse_json(JSON, T)), Str);
-			({s,T}) -> util:s(length(traverse_json(JSON, T)));
+			({hash,T}) -> ?HASH ++ lists:sublist(json:traverse(JSON, T), 8) ++ ?RESET;
+			({length,T}) -> length(json:traverse(JSON, T));
+			({s,Str,T}) -> util:s(length(json:traverse(JSON, T)), Str);
+			({s,T}) -> util:s(length(json:traverse(JSON, T)));
 			({ref,T}) ->
-				case traverse_json(JSON, T) of
+				case json:traverse(JSON, T) of
 					"refs/heads/" ++ Branch -> ?BRANCH ++ Branch ++ ?RESET;
 					"refs/tags/" ++ Tag -> ?TAG ++ "tag " ++ Tag ++ ?RESET;
 					X -> X
 				end;
 			({url,T}) ->
-				case traverse_json(JSON, T) of
+				case json:traverse(JSON, T) of
 					error -> error;
 					URL -> ?URL ++ ?UNDERLINE ++ URL ++ ?UNDERLINE ++ ?RESET
 				end;
 			({trunc_newline,T}) ->
-				case traverse_json(JSON, T) of
+				case json:traverse(JSON, T) of
 					error -> error;
 					Lst -> lists:takewhile(fun(X) -> X /= 10 end, Lst)
 				end;
 			({reponame, RepoStruct}) ->
-				case traverse_json(JSON, RepoStruct ++ [struct, "fork"]) of
-					false -> ?REPO ++ traverse_json(JSON, RepoStruct ++ [struct, "name"]) ++ ?RESET;
+				case json:traverse(JSON, RepoStruct ++ [struct, "fork"]) of
+					false -> ?REPO ++ json:traverse(JSON, RepoStruct ++ [struct, "name"]) ++ ?RESET;
 					_ ->
-						User = case traverse_json(JSON, RepoStruct ++ [struct, "owner", struct, "login"]) of
-							error -> traverse_json(JSON, RepoStruct ++ [struct, "owner", struct, "name"]);
+						User = case json:traverse(JSON, RepoStruct ++ [struct, "owner", struct, "login"]) of
+							error -> json:traverse(JSON, RepoStruct ++ [struct, "owner", struct, "name"]);
 							T -> T
+
 						end,
-						?USER ++ User ++ ?RESET ++ "/" ++ ?REPO ++ traverse_json(JSON, RepoStruct ++ [struct, "name"]) ++ ?RESET
+						?USER ++ User ++ ?RESET ++ "/" ++ ?REPO ++ json:traverse(JSON, RepoStruct ++ [struct, "name"]) ++ ?RESET
 				end;
 			(cibranch) ->
-				SHA = traverse_json(JSON, [struct, "commit", struct, "sha"]),
-				case lists:filter(fun(T) -> traverse_json(T, [struct,"commit",struct,"sha"]) == SHA end,
-						traverse_json(JSON, [struct, "branches", array])) of
-					[Branch | _] -> ["branch ", traverse_json(Branch, [struct, "name"])];
+				SHA = json:traverse(JSON, [struct, "commit", struct, "sha"]),
+				case lists:filter(fun(T) -> json:traverse(T, [struct,"commit",struct,"sha"]) == SHA end,
+						json:traverse(JSON, [struct, "branches", array])) of
+					[Branch | _] -> ["branch ", json:traverse(Branch, [struct, "name"])];
 					_ -> "an unknown branch"
 				end;
 			(ciurl) ->
-				case traverse_json(JSON, [struct, "target_url"]) of
+				case json:traverse(JSON, [struct, "target_url"]) of
 					T when is_list(T) -> T;
 					_ -> ""
 				end;
 			(cidesc) ->
-				case traverse_json(JSON, [struct, "description"]) of
+				case json:traverse(JSON, [struct, "description"]) of
 					T when is_list(T) -> T;
 					_ -> ""
 				end;
-			(T) -> traverse_json(JSON, T)
+			(T) -> json:traverse(JSON, T)
 		end, FormatJsonPaths)).
 
-traverse_json(error, _) -> error;
-traverse_json(JSON, []) -> JSON;
-traverse_json({struct,T}, [struct|Path]) -> traverse_json(T, Path);
-traverse_json({array,T}, [array|Path]) -> traverse_json(T, Path);
-traverse_json(Dict, [Key|Path]) ->
-	traverse_json(case lists:keyfind(Key, 1, Dict) of
-			false -> error;
-			{_,V} -> V
-		end, Path).
 
