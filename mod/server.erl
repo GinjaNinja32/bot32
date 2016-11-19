@@ -245,7 +245,7 @@ send2server(ID, Msg, FParams) ->
 % Receive loop
 
 sloop() ->
-	case gen_tcp:listen(45678, [list, {packet, http}, {active, false}, {reuseaddr, true}]) of
+	case gen_tcp:listen(45678, [list, {packet, http}, {packet_size, 65536}, {active, false}, {reuseaddr, true}]) of
 		{ok, SvrSock} ->
 			config:set_value(temp, [?MODULE, general], self()),
 			logging:log(info, ?MODULE, "Starting loop."),
@@ -282,13 +282,35 @@ readsock(Socket) ->
 				T -> tl(T)
 			end,
 			Dict = byond:params2dict(Plist),
-			case {orddict:find("pwd", Dict), orddict:find("chan", Dict), orddict:find("mesg", Dict)} of
-				{{ok, Pwd}, {ok, Chan}, {ok, Mesg}} ->
-					case check_password_for_channel(Pwd, Chan) of
-						{ok, ID} -> handle_msg(ID, Chan, Mesg);
-						error -> logging:log(error, ?MODULE, "received invalid message ~p\n", [Plist])
+			case case {orddict:find("pwd", Dict), orddict:find("type", Dict)} of
+				{{ok, Pwd}, {ok, Type}} ->
+					case Type of
+						"msg" ->
+							case {orddict:find("chan", Dict), orddict:find("mesg", Dict)} of
+								{{ok, Chan}, {ok, Mesg}} ->
+									case check_password_for_channel(Pwd, Chan) of
+										{ok, ID} -> handle_msg(ID, Chan, Mesg);
+										error -> invalid
+									end;
+								_ -> invalid
+							end;
+						"runtime" ->
+							case {orddict:find("runtimes", Dict), orddict:find("revision", Dict)} of
+								{{ok, R}, {ok, Revision}} ->
+									io:fwrite("~p\n", [R]),
+									RuntimeList = lists:map(fun byond:params2dict/1, byond:params2list(R)),
+									case check_password_for_repo(Pwd) of
+										{ok, Repo} -> runtime_report:report_runtimes(Repo, Revision, RuntimeList);
+										error -> invalid
+									end;
+								_ -> invalid
+							end;
+						_ -> invalid
 					end;
-				_ -> logging:log(info, ?MODULE, "received invalid message ~p\n", [Plist])
+				_ -> invalid
+			end of
+				invalid -> logging:log(info, ?MODULE, "received invalid message ~p\n", [Plist]);
+				_ -> ok
 			end,
 			gen_tcp:send(Socket, "HTTP/1.1 200 OK\r\n\r\n"),
 			gen_tcp:close(Socket);
@@ -306,11 +328,21 @@ get_id_from_pass(Pass) ->
 		_ -> error
 	end.
 
-check_password_for_channel(Pwd, Chan) ->
+check_password_for_channel(Pwd, Chan) -> check_password_generic(Pwd, channel, Chan).
+check_password_for_repo(Pwd) ->
 	case get_id_from_pass(Pwd) of
 		error -> error;
 		ID ->
-			case lists:member(Chan, config:require_value(config, [?MODULE, servers, ID, channels])) of
+			case config:get_value(config, [?MODULE, servers, ID, repo]) of
+				'$none' -> error;
+				T -> {ok, T}
+			end
+	end.
+check_password_generic(Pwd, Type, Value) ->
+	case get_id_from_pass(Pwd) of
+		error -> error;
+		ID ->
+			case lists:member(Value, config:require_value(config, [?MODULE, servers, ID, Type])) of
 				true -> {ok, ID};
 				false -> error
 			end
