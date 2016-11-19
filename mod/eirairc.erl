@@ -3,17 +3,20 @@
 
 -include("definitions.hrl").
 
+-define(OPTS, [{capture,all_but_first,list}]).
+
 handle_event(msg_ignored, {User, Channel, Tokens}) ->
 	case permissions:hasperm(User, eira) of
 		true ->
-			case case hd(Tokens) of
-				"***" ->
-					{User#user.nick ++ "-CONSOLE", tl(util:droplast(Tokens))};
-				[$< | Nick] ->
-					{User#user.nick ++ "-" ++ util:droplast(Nick), tl(Tokens)};
-				_ ->
-					io:fwrite("user ~p has +eira but their first token ~p was not formatted correctly!\n", [User, hd(Tokens)]),
-					false
+			String = string:join(Tokens, " "),
+			case case re:run(String, "\\*\\*\\* (.*) \\*\\*\\*", ?OPTS) of
+				{match, [Message]} -> {User#user.nick ++ "-CONSOLE", string:tokens(Message, " ")};
+				nomatch ->
+					case re:run(String, "<([^>]+)> (.+)", ?OPTS) of
+						{match, [Nick, Message]} ->
+							{User#user.nick ++ "-" ++ re:replace(Nick, "\\s", "_", [global,{return,list}]), string:tokens(Message, " ")};
+						nomatch -> false
+					end
 			end of
 				false -> ok;
 				{N, T} ->

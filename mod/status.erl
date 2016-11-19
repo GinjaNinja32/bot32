@@ -62,6 +62,12 @@ generic(Func) ->
 			{ok, {Addr,Port,Name}} -> spawn(status, Func, [RT, P, O, Addr, Port, defaultserver(RT), Name]), ok;
 			error -> {irc, {msg, {RT, [P, "Failed to find default server for this channel!"]}}}
 		end;
+	   (#{nick:=O,reply:=RT,ping:=P,params:=[Address="byond://"++_]}) ->
+		case re:run(Address, "^byond://([^:]+)(?::([1-9][0-9]*))$", [{capture, all_but_first, list}]) of
+			{match,[IP,Port]} ->
+				spawn(status, Func, [RT, P, O, IP, list_to_integer(Port), Address, [$(,Address,$),$ ]]);
+			_ -> {irc, {msg, {RT, [P, "Illegal argument!"]}}}
+		end;
 	   (#{nick:=O,reply:=RT,ping:=P,params:=[ServerID]}) ->
 		case orddict:find(canonicalise(ServerID), servers()) of
 			{ok, {Addr,Port,Name}} -> spawn(status, Func, [RT, P, O, Addr, Port, canonicalise(ServerID), Name]), ok;
@@ -79,12 +85,13 @@ status(RT, S, P, Name, SilenceErrors) ->
 		{error, _} when SilenceErrors -> ok;
 		{error, X} -> core ! {irc, {msg, {RT, io_lib:format("~sError: ~p", [Name, X])}}};
 		Dict ->
-			Players = safeget(Dict, "players"),
-			Mode = safeget(Dict, "mode"),
-			Time = safeget(Dict, "stationtime"),
-			Duration = safeget(Dict, "roundduration"),
-			Map = safeget(Dict, "map"),
-			core ! {irc, {msg, {RT, [Name, "Players: ", Players, "; Mode: ", Mode, "; Station Time: ", Time, "; Round Duration: ", Duration, "; Map: ", Map]}}}
+			Display = [{"Players", "players"}, {"Mode", "mode"}, {"Station Time", "stationtime"}, {"Round Duration", "roundduration"}, {"Map", "map"}],
+			DispParts = lists:filtermap(fun({Disp,Key}) ->
+				case orddict:find(Key, Dict) of
+					{ok, V} -> {true, [Disp, ": ", V]};
+					error -> false
+				end end, Display),
+			core ! {irc, {msg, {RT, [Name, string:join(DispParts, "; ")]}}}
 	end.
 
 revision(RT, _, _, S, P, ID, Name) ->

@@ -134,6 +134,8 @@ parse_privmsg(Origin, Channel, Message) ->
 			end
 	end.
 
+parse_notice(Origin, Channel, [[]]) -> {irc, {notice, {Origin, Channel, [""]}}};
+parse_notice(Origin, Channel, [[]|Msg]) -> parse_notice(Origin, Channel, Msg);
 parse_notice(Origin, Channel, Message) ->
 	FirstFirst = hd(hd(Message)),
 	LastLast = lists:last(lists:last(Message)),

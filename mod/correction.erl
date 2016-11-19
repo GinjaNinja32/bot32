@@ -6,8 +6,8 @@
 handle_event(msg_nocommand, {#user{nick=Nick}, Chan, Tokens}) ->
 	Msg = string:join(Tokens, " "),
 	case catch parse_regex(Msg) of
-		{ok, Find, Replace, Options} ->
-			do_regex(Find, Replace, Options, Chan);
+		{ok, What, Regexes} ->
+			do_regex(What, Regexes, Chan, Nick);
 		{error, Err} ->
 			core ! {irc, {msg, {Chan, [Nick, ": ", Err]}}};
 		_ ->
@@ -17,13 +17,16 @@ handle_event(ctcp, {action, Chan, #user{nick=Nick}, Tokens}) ->
 	add_line(Nick, Chan, action, list_to_binary(string:join(Tokens, " " )));
 handle_event(_, _) -> ok.
 
-do_regex(Find, Replace, Options, Chan) ->
-	catch lists:foldl(fun({N,Type,T},_) ->
-			case re:replace(T, Find, Replace, [{return,binary} | Options]) of
-				T -> ok;
+do_regex(What, Regexes, Chan, Nick) ->
+	catch lists:foldl(fun
+		({N,____,_},_) when What == self andalso N /= Nick -> ok;
+		({N,Type,T},_) ->
+			case catch apply_all_check(T, Regexes) of
+				err_nochange ->
+					ok;
 				NewT ->
 					remove_line(N, Chan, Type, T),
-					Show = re:replace(T, Find, [2,Replace,2], [{return, list} | Options]),
+					Show = apply_all(T, Regexes),
 					add_line(N, Chan, Type, NewT),
 					case Type of
 						msg ->
@@ -34,6 +37,20 @@ do_regex(Find, Replace, Options, Chan) ->
 					throw(end_iteration)
 			end
 		end, foo, config:get_value(temp, [?MODULE, lines, Chan], [])).
+
+apply_all_check(Line, Regexes) ->
+	lists:foldl(fun({F,R,O},L) ->
+			case re:replace(L,F,R,[{return,binary}|O]) of
+				L ->
+					throw(err_nochange);
+				NL -> NL
+			end
+		end, Line, Regexes).
+
+apply_all(Line, Regexes) ->
+	lists:foldl(fun({F,R,O},L) ->
+			re:replace(L,F,[2,R,2],[{return,binary}|O])
+		end, Line, Regexes).
 
 remove_line(Nick, Chan, Type, Line) ->
 	config:mod_get_value(temp, [?MODULE, lines, Chan],
@@ -52,30 +69,50 @@ add_line(Nick, Chan, Type, Line) ->
 		end),
 	ok.
 
-parse_regex([$s,$/|Rest]) ->
-	case split_slashes(Rest) of
-		[F,R] ->
-			{ok, F, R, []};
-		[F,R,O] ->
-			Opts = lists:map(fun
-						($g) -> global;
-						($i) -> caseless;
-						($u) -> unicode;
-						(T) -> throw({error, ["Unknown option character ",T]})
-					end, O),
-			{ok, F, R, Opts};
-		_ -> false
-	end;
+parse_regex([$s,$s,$/|Rest]) -> parse_regex0(Rest, self);
+parse_regex([$s,$/|Rest]) -> parse_regex0(Rest, all);
 parse_regex(_) -> false.
 
+parse_regex0(Rest, Type) ->
+	case split_regex(Rest) of
+		false -> false;
+		Regexes ->
+			case catch lists:map(fun
+						([Find, Replace, Options]) ->
+								{Find, Replace, opts(Options)};
+						([Find, Replace]) ->
+								{Find, Replace, []};
+						(_) -> throw({error, "Invalid regex"})
+					end, Regexes) of
+				{error, T} -> {error, T};
+				Regex2 -> {ok, Type, Regex2}
+			end
+	end.
 
-split_slashes(Str) -> split_slashes(Str, [], []).
+opts(Opts) ->
+	lists:map(fun
+			($g) -> global;
+			($i) -> caseless;
+			($u) -> unicode;
+			(T) -> throw({error, ["Unknown option character ",T]})
+		end, Opts).
 
-split_slashes([$/|Str], Curr, Lst) -> split_slashes(Str, [], [lists:reverse(Curr)|Lst]);
-split_slashes([$\\,$/|Str], Curr, Lst) -> split_slashes(Str, [$/|Curr], Lst);
-split_slashes([$\\,Chr|Str], Curr, Lst) -> split_slashes(Str, [[$\\,Chr]|Curr], Lst);
-split_slashes([Chr|Str], Curr, Lst) -> split_slashes(Str, [Chr|Curr], Lst);
-split_slashes([], Curr, Lst) -> lists:reverse([lists:reverse(Curr) | Lst]).
+split_regex(Str) -> split_regex(Str, [], [], []).
+
+split_regex(_, _, CR, _) when length(CR) > 3 -> false;
+
+split_regex([$ |Str], [], [], R) -> split_regex(Str, [], [], R); % ignore spaces before first / in each regex
+split_regex([$/|Str], [], [], R) -> split_regex(Str, [], [], R); % skip the first /
+split_regex([$/|Str], CX, CR, R) -> split_regex(Str, [], [lists:reverse(CX)|CR], R);
+
+split_regex([$\\,$/|Str], CX, CR, R) -> split_regex(Str, [$/|CX], CR, R);
+split_regex([$\\,Chr|Str], CX, CR, R) -> split_regex(Str, [Chr,$\\|CX], CR, R);
+split_regex([$;|Str], CX, CR, R) when length(CR) == 2 -> split_regex(Str, [], [], [lists:reverse([lists:reverse(CX)|CR])|R]);
+split_regex([Chr|Str], CX, CR, R) -> split_regex(Str, [Chr|CX], CR, R);
+
+split_regex([], [], [], R) -> lists:reverse(R);
+split_regex([], [], CR, R) when length(CR) == 3 -> split_regex([], [], [], [lists:reverse(CR) | R]);
+split_regex([], CX, CR, R) -> split_regex([], [], [lists:reverse(CX)|CR], R).
 
 % KEYBOARD LAYOUTS
 

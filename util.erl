@@ -372,6 +372,12 @@ floor(X) ->
 
 ceil(X) -> -floor(-X).
 
+
+format_date({Y, M, D}) -> io_lib:format("~b-~2..0b-~2..0b", [Y, M, D]).
+format_time({H, M, S}) -> io_lib:format("~2..0b:~2..0b:~2..0b", [H, M, S]).
+format_datetime({Date,Time}) -> io_lib:format("~s ~s", [format_date(Date), format_time(Time)]).
+
+
 bin2hex(Bin) -> bin2hex(Bin, <<>>).
 
 bin2hex(<<>>, Out) -> Out;

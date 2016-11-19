@@ -56,7 +56,9 @@ check_presence_for(NickR) ->
 			end
 	end.
 
-check_messages_for(NickR) ->
+show_messages_for(NickR, Channel) -> check_messages_for(NickR, fun(T) -> core ! {irc,{msg,{Channel,T}}} end).
+check_messages_for(NickR) -> check_messages_for(NickR, fun(T) -> core ! {irc,{msg,{NickR,T}}} end).
+check_messages_for(NickR, MHandle) ->
 	Nick = string:to_lower(NickR),
 	lists:foldl(fun
 		({ID, {Sender,Recipient,Delivered,Timestamp,Message}}, Acc) when Recipient == Nick andalso not Delivered ->
@@ -64,7 +66,7 @@ check_messages_for(NickR) ->
 			ThenSecs = calendar:datetime_to_gregorian_seconds(Timestamp),
 			NowSecs = calendar:datetime_to_gregorian_seconds(calendar:now_to_universal_time(os:timestamp())),
 			Difference = common:format_time_difference(NowSecs - ThenSecs),
-			core ! {irc, {msg, {Nick, [Message, " - ", integer_to_list(ID), " from ", Sender, " at ", Date, $ , Time, " UTC (", Difference, " ago)"]}}},
+			MHandle([Message, " - ", integer_to_list(ID), " from ", Sender, " at ", Date, $ , Time, " UTC (", Difference, " ago)"]),
 			config:set_value(data, [?MODULE, messages, ID], {Sender, Recipient, true, Timestamp, Message}),
 			if
 				Acc == nomessages -> 1;

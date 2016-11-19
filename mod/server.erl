@@ -13,7 +13,8 @@ get_commands() ->
 		{"notes",    generic(notes,   "server"), server},
 		{"info",     generic(info,    "server"), server},
 		{"laws",     generic(laws,    "server"), server},
-		{"pm",       generic(pm,      "server"), server}
+		{"pm",       generic(pm,      "server"), server},
+		{"asearch",  generic(asearch, "server"), server}
 	].
 
 initialise() ->
@@ -81,8 +82,33 @@ gsrank(ID, Who) ->
 		T -> T
 	end.
 
+get_add_remove(Nick, "none") -> ["del ", Nick];
+get_add_remove(Nick, Rank) ->
+	case config:get_value(config, [?MODULE, chanserv, Rank]) of
+		'$none' -> none;
+		R -> io_lib:format("add ~s ~b", [Nick,R])
+	end.
+
+set_chanserv_rank(Nick, Rank, Reply, Ping) ->
+	BotNick = config:require_value(config, [bot,nick]),
+	core ! {irc, {msg, {"NickServ", ["INFO ",Nick]}}},
+	receive
+		{irc, {notice, {#user{nick="NickServ",username="services",host="services.sorcery.net"}, BotNick, [_Nick, "is"| _Realname]}}} -> % nick is registered
+			case get_add_remove(Nick, Rank) of
+				none -> core ! {irc, {msg, {Reply, [Ping, "'", Rank, "' did not have an associated ChanServ rank."]}}};
+				Cmd ->
+					core ! {raw, ["chanserv access #staffcoach ", Cmd]},
+					core ! {raw, ["chanserv access #bs12staff ", Cmd]},
+					core ! {raw, ["chanserv access #bs12admin ",Cmd]},
+					core ! {irc, {msg, {Reply, [Ping, Nick, "'s ChanServ entries updated."]}}}
+			end;
+		{irc, {notice, {#user{nick="NickServ",username="services",host="services.sorcery.net"}, BotNick, ["Nick", _Nick, "isn't", "registered."]}}} -> % not registered
+			core ! {irc, {msg, {Reply, [Ping, Nick, "'s nickname is *not* registered with NickServ; they will *not* be added to the ChanServ access lists!"]}}}
+	end.
+
 ssr(VID, ID, _, Reply, Ping, [Nick|RankT]) when RankT /= [] ->
 	Rank = string:join(RankT, " "),
+	ID == "main" andalso set_chanserv_rank(Nick, Rank, Reply, Ping),
 	ShowRank = case Rank of
 		"none" -> config:del_value(config, [?MODULE, ranks, ID, string:to_lower(Nick)]), "<none>";
 		_ -> config:set_value(config, [?MODULE, ranks, ID, string:to_lower(Nick)], Rank), [$", Rank, $"]
@@ -121,7 +147,8 @@ notes(VID, ID, Nick, Reply, Ping, [Who|_]) ->
 			case hd(orddict:fetch_keys(Dict)) of
 				"No information found on the given key." -> ["No information found on the key '", Who, "'."];
 				T ->
-					File = re:replace(base64:encode(crypto:hash(md5, T)), "/", "@", [global]),
+%					File = re:replace(base64:encode(crypto:hash(md5, T)), "/", "@", [global]),
+					File = io_lib:format("~32.16.0b", [binary:decode_unsigned(crypto:hash(md5, T))]),
 					Filename = io_lib:format("/home/bot32/www/~s.txt", [File]),
 					file:write_file(Filename, T),
 					["Following link valid for approximately ten minutes: http://nyx.gn32.uk/admin/", File, ".txt"]
@@ -351,17 +378,27 @@ check_password_generic(Pwd, Type, Value) ->
 handle_msg(ID, Chan, Mesg) ->
 	Msg = re:replace(Mesg, "[\r\n\t]+", " ", [global, {return, list}]),
 	logging:log(info, ?MODULE, "relaying to ~s: ~s", [Chan, Msg]),
-	case string:str(Msg, "Server starting up on ") of
-		1 ->
+	case Msg of
+		"Server starting up on " ++ _ ->
 			lists:foreach(fun(T) -> core ! {irc, {msg, {T, [ID, $:, $ , Msg]}}} end, config:get_value(temp, [?MODULE, notify, ID], [])),
 			config:set_value(temp, [?MODULE, notify, ID], []);
-		_ -> ok
-	end,
-	case string:str(Msg, "A round of ") of
-		1 -> lists:foreach(fun(T) -> core ! {irc, {msg, {T, [ID, $:, $ , Msg]}}} end, config:get_value(temp, [?MODULE, notify, ID], []));
+		"A round of " ++ _ ->
+			lists:foreach(fun(T) -> core ! {irc, {msg, {T, [ID, $:, $ , Msg]}}} end, config:get_value(temp, [?MODULE, notify, ID], []));
+		"Reply: " ++ _ -> ahelp_record(ID, Msg);
+		"Request for Help " ++ _ -> ahelp_record(ID, Msg);
 		_ -> ok
 	end,
 	sendmsg(Chan, Msg).
+
+ahelp_record(ID, Msg) ->
+	file:write_file(["logs/ahelp/ahelp-", ID, ".txt"], [util:format_datetime(calendar:universal_time()), " ", Msg, "\n"], [append]).
+
+asearch(VID, ID, _, Reply, Ping, Params) ->
+	os:putenv("pattern", string:join(Params, " ")),
+	os:putenv("serverid", ID),
+	Result = os:cmd("bash -c './ahelp_search.sh \"$pattern\" \"$serverid\"'"),
+	{irc, {msg, {Reply, [VID, Ping, Result]}}}.
+%	{irc, {msg, {Reply, [VID, Ping, "Search complete at http://nyx.gn32.uk/admin/", MD5, ".txt"]}}}.
 
 sendmsg(none, _) -> ok;
 sendmsg(Chan, Msg) ->

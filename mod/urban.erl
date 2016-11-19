@@ -11,7 +11,7 @@ get_commands() ->
 
 ud(#{reply:=R, ping:=P, params:=Params}) ->
 	case lists:all(fun(T) -> lists:member(T,"0123456789") end, hd(Params)) of
-		true ->
+		true when tl(Params) /= [] ->
 			N = list_to_integer(hd(Params)),
 			Term = string:join(tl(Params), " ");
 		_ ->

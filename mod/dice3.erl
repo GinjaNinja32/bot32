@@ -11,7 +11,8 @@ get_commands() ->
 		{"srun", fun srun/1, user},
 		{"sredge", fun sredge/1, user},
 		{"fate", fun fate/1, user},
-		{"rtd", fun rtd/1, user}
+		{"rtd", fun rtd/1, user},
+		{"apoc", fun apoc/1, user}
 	].
 
 get_help("dice") ->
@@ -139,6 +140,29 @@ rtd(#{reply:=Reply, ping:=Ping, nick:=Nick, selector:=Selector, params:=Params})
 	],
 	Result = dice3("d6", true, fun([T]) -> [Comment, lists:nth(T, RTD)] end),
 	send_to_all(Reply, Ping, Nick, nicks(Selector), "an RTD roll", Result).
+
+% APOCALYPSE WORLD
+
+apoc(#{reply:=RT, ping:=P, nick:=Nick, params:=Params, selector:=Selector}) ->
+	case Params of
+		[] ->
+			M = 0,
+			Comment = "";
+		_ ->
+			M = list_to_integer(hd(Params)),
+			Comment = case string:join(tl(Params), " ") of
+				[] -> [];
+				X -> [X,$:,$ ]
+			end
+	end,
+	Formatter = fun
+		([false,false,false]) -> [Comment, "\x034\x02Miss!\x03\x02"];
+		([false,false, true]) -> [Comment, "\x038\x02Weak Hit!\x03\x02"];
+		([false, true, true]) -> [Comment, "\x039\x02Strong Hit!\x03\x02"];
+		([ true, true, true]) -> [Comment, "\x0311\x02Strong Hit!\x03\x02"]
+	end,
+	Result = dice3(lists:flatten(io_lib:format("2d6+0~w>=[7, 10, 12]", [M])), true, Formatter),
+	send_to_all(RT, P, Nick, nicks(Selector), io_lib:format("a PBtA roll at mod ~b", [M]), Result).
 
 % GENERIC
 
