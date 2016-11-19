@@ -11,11 +11,13 @@ load() ->
 			complex,
 			config,
 			core,
+			json,
 			lambda,
 			logging,
 			mochijson,
 			permissions,
 			random_org,
+			runtime_report,
 			util
 		]),
 	code:add_path("./mod/bin"),

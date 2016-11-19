@@ -37,14 +37,14 @@ search(RT, P, N, Term, Display) ->
 						{ok, Value} ->
 							inet:setopts(Sock, [{packet, raw}]),
 							case gen_tcp:recv(Sock, list_to_integer(Value), 5000) of
-								{ok, Data} -> json_handle(RT, P, N, Term, Data, Display);
+								{ok, Data} -> json_handle(RT, P, N, Data, Display);
 								T -> common:debug("debug", "recv gave ~p", [T]), error
 							end;
 						error ->
 							case orddict:find('Transfer-Encoding', Dict) of
 								{ok, "chunked"} ->
 									inet:setopts(Sock, [{packet, raw}]),
-									read_chunked(RT, P, N, Term, Sock, Display);
+									read_chunked(RT, P, N, Sock, Display);
 								_ -> logging:log(error, "GOOGLE", "no Content-Length and unknown or not present Transfer-Encoding"), error
 							end
 					end;
@@ -57,10 +57,10 @@ search(RT, P, N, Term, Display) ->
 		_ -> ok
 	end.
 
-read_chunked(RT, P, N, Term, Sock, Display) ->
+read_chunked(RT, P, N, Sock, Display) ->
 	case read_chunked(Sock, []) of
 		error -> error;
-		Data -> json_handle(RT, P, N, Term, Data, Display)
+		Data -> json_handle(RT, P, N, Data, Display)
 	end.
 
 read_chunked(Sock, Data) ->
@@ -84,32 +84,22 @@ read_chunked(Sock, Data) ->
 mkurl(N, Term) ->
 	"/ajax/services/search/web?q=" ++ http_uri:encode(Term) ++ "&v=1.0&start=" ++ integer_to_list(4 * (N div 4)) ++ "&rsz=small&safe=active&hl=en".
 
-json_handle(RT, P, N, Term, RawJSON, Display) ->
-	case catch mochijson:decode(RawJSON) of
+json_handle(RT, P, N, RawJSON, Display) ->
+	case catch json:parse(RawJSON) of
 		{'EXIT', T} ->
-			logging:log(error, "GOOGLE", "Error in mochijson: ~p", [T]),
+			logging:log(error, ?MODULE, "Error parsing JSON: ~p", [T]),
 			ok;
 		JSON ->
-			Reply = case traverse_json(JSON, [struct, "responseData", struct, "results", array]) of
+			Reply = case json:traverse(JSON, [struct, "responseData", struct, "results", array]) of
 				[] -> "No results found.";
 				List ->
 					Result = lists:nth(1 + (N rem 4), List),
-					URL = traverse_json(Result, [struct, "unescapedUrl"]),
-					Title = traverse_json(Result, [struct, "titleNoFormatting"]),
-					FixedTitle = fix(Title),
+					URL = json:traverse(Result, [struct, "unescapedUrl"]),
+					Title = json:traverse(Result, [struct, "titleNoFormatting"]),
+					FixedTitle = util:fix_utf8(Title),
 					[$(, integer_to_list(N+1), $), $ , Display, ": ", URL, " - ", FixedTitle]
 			end,
 			core ! {irc, {msg, {RT, [P, Reply]}}}
-	end.
-
-fix(Title) -> util:fix_utf8(Title).
-
-traverse_json(JSON, []) -> JSON;
-traverse_json({X,T}, [X|Path]) -> traverse_json(T, Path);
-traverse_json(Dict, [Key|Path]) ->
-	case lists:keyfind(Key, 1, Dict) of
-		false -> error;
-		{_, V} -> traverse_json(V, Path)
 	end.
 
 read_headers(Sock) -> read_headers(Sock, orddict:new()).

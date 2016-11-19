@@ -25,8 +25,8 @@ ud(#{reply:=R, ping:=P, params:=Params}) ->
 			(T) when T < 128 -> [T];
 			(T) -> binary_to_list(<<T/utf8>>)
 		end, UDReply),
-	JSON = mochijson:decode(UDFixed),
-	Reply = case traverse_json(JSON, [struct, "list", array]) of
+	JSON = json:parse(UDFixed),
+	Reply = case json:traverse(JSON, [struct, "list", array]) of
 		[] -> "No results found.";
 		ResultArray ->
 			Result = lists:nth(N, ResultArray),
@@ -44,20 +44,10 @@ create_message(JSON, String, FormatJsonPaths) ->
 	io_lib:format(String, lists:map(fun
 		({T}) -> T;
 		({url,T}) ->
-			case traverse_json(JSON, T) of
+			case json:traverse(JSON, T) of
 				error -> error;
 				URL -> ?CYAN ++ ?UNDERLINE ++ URL ++ ?UNDERLINE ++ ?RESET
 			end;
-		(T) -> util:fix_utf8(traverse_json(JSON, T))
+		(T) -> util:fix_utf8(json:traverse(JSON, T))
 	end, FormatJsonPaths)).
-
-traverse_json(error, _) -> error;
-traverse_json(JSON, []) -> JSON;
-traverse_json({struct,T}, [struct|Path]) -> traverse_json(T, Path);
-traverse_json({array,T}, [array|Path]) -> traverse_json(T, Path);
-traverse_json(Dict, [Key|Path]) ->
-	traverse_json(case lists:keyfind(Key, 1, Dict) of
-		false -> error;
-		{_,V} -> V
-	end, Path).
 

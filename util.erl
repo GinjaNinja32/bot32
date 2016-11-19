@@ -308,8 +308,10 @@ receive_whois(Map) ->
 			receive_whois(Map#{cloak=>TrueHost});
 		{irc, {numeric, {{unknown, 338}, [_, _, TrueHost, ":has", "cloak"]}}} ->
 			receive_whois(Map#{cloak=>TrueHost});
-		{irc, {numeric, {{unknown, 330}, [_, _, Nickserv, ":is", "logged", "in", "as"]}}} ->
+		{irc, {numeric, {{unknown, 330}, [_, _, Nickserv, ":is", "logged", "in", "as"]}}} -> % SorceryNet
 			receive_whois(Map#{nickserv=>Nickserv});
+		{irc, {numeric, {{unknown, 307}, [_, Nick, ":has", "identified", "for", "this", "nick"]}}} -> % Rizon
+			receive_whois(Map#{nickserv=>Nick});
 		{irc, {numeric, {{unknown, 307}, _}}} ->
 			receive_whois(Map#{registered=>true});
 		{irc, {numeric, {{unknown, 671}, _}}} ->
@@ -369,3 +371,10 @@ floor(X) ->
 	trunc(X).
 
 ceil(X) -> -floor(-X).
+
+bin2hex(Bin) -> bin2hex(Bin, <<>>).
+
+bin2hex(<<>>, Out) -> Out;
+bin2hex(<<A,In/binary>>, Out) ->
+	Ahex = list_to_binary(io_lib:format("~2.16.0b",[A])),
+	bin2hex(In, <<Out/binary, Ahex/binary>>).
