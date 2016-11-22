@@ -347,6 +347,15 @@ readsock(Socket) ->
 									end;
 								_ -> bad_request
 							end;
+						"ircpm" ->
+							case lists:map(fun(X) -> orddict:find(X, Dict) end, ["src_key", "src_char", "rank", "target", "chan", "msg"]) of
+								[{ok,SKey}, {ok,SChar}, {ok,Rank}, {ok,Target}, {ok,Chan}, {ok,Msg}] ->
+									case check_password_for_channel(Pwd, Chan) of
+										{ok, ID} -> handle_ircpm(ID, SKey, SChar, Rank, Target, Chan, Msg), ok;
+										error -> forbidden
+									end;
+								_ -> bad_request
+							end;
 						"msg" ->
 							case {orddict:find("chan", Dict), orddict:find("mesg", Dict)} of
 								{{ok, Chan}, {ok, Mesg}} ->
@@ -429,6 +438,10 @@ handle_adminpm(ID, SK,SC, TK,TC, Chan, Msg) ->
 
 handle_adminhelp(ID, SK,SC, Chan, Msg) ->
 	Pre = ["Request for Help from ", key_name(SK,SC), ": "],
+	handle_admin_message(ID, Pre, Chan, Msg).
+
+handle_ircpm(ID, SK,SC, Rank, Target, Chan, Msg) ->
+	Pre = [Rank, "PM to ", Target, " from ", key_name(SK,SC), ": "],
 	handle_admin_message(ID, Pre, Chan, Msg).
 
 handle_admin_message(ID, Pre, Chan, Mesg) ->
