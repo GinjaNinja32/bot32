@@ -19,6 +19,7 @@ get_commands() ->
 
 initialise() ->
 	spawn(?MODULE, sloop, []),
+	inets:start(),
 	ok.
 
 deinitialise() ->
@@ -325,17 +326,35 @@ readsock(Socket) ->
 				T -> tl(T)
 			end,
 			Dict = byond:params2dict(Plist),
-			case case {orddict:find("pwd", Dict), orddict:find("type", Dict)} of
+			Response = case case {orddict:find("pwd", Dict), orddict:find("type", Dict)} of
 				{{ok, Pwd}, {ok, Type}} ->
 					case Type of
+						"adminpm" ->
+							case lists:map(fun(X) -> orddict:find(X, Dict) end, ["src_key", "src_char", "dst_key", "dst_char", "chan", "msg"]) of
+								[{ok,SKey}, {ok,SChar}, {ok,DKey}, {ok,DChar}, {ok,Chan}, {ok,Msg}] ->
+									case check_password_for_channel(Pwd, Chan) of
+										{ok, ID} -> handle_adminpm(ID, SKey, SChar, DKey, DChar, Chan, Msg), ok;
+										error -> forbidden
+									end;
+								_ -> bad_request
+							end;
+						"adminhelp" ->
+							case lists:map(fun(X) -> orddict:find(X, Dict) end, ["src_key", "src_char", "chan", "msg"]) of
+								[{ok,SKey}, {ok,SChar}, {ok,Chan}, {ok,Msg}] ->
+									case check_password_for_channel(Pwd, Chan) of
+										{ok, ID} -> handle_adminhelp(ID, SKey, SChar, Chan, Msg), ok;
+										error -> forbidden
+									end;
+								_ -> bad_request
+							end;
 						"msg" ->
 							case {orddict:find("chan", Dict), orddict:find("mesg", Dict)} of
 								{{ok, Chan}, {ok, Mesg}} ->
 									case check_password_for_channel(Pwd, Chan) of
-										{ok, ID} -> handle_msg(ID, Chan, Mesg);
-										error -> invalid
+										{ok, ID} -> handle_msg(ID, Chan, Mesg), ok;
+										error -> forbidden
 									end;
-								_ -> invalid
+								_ -> bad_request
 							end;
 						"runtime" ->
 							case {orddict:find("runtimes", Dict), orddict:find("revision", Dict)} of
@@ -343,19 +362,29 @@ readsock(Socket) ->
 									io:fwrite("~p\n", [R]),
 									RuntimeList = lists:map(fun byond:params2dict/1, byond:params2list(R)),
 									case check_password_for_repo(Pwd) of
-										{ok, Repo} -> runtime_report:report_runtimes(Repo, Revision, RuntimeList);
-										error -> invalid
+										{ok, Repo} -> runtime_report:report_runtimes(Repo, Revision, RuntimeList), ok;
+										error -> forbidden
 									end;
-								_ -> invalid
+								_ -> bad_request
 							end;
-						_ -> invalid
+						_ -> bad_request
 					end;
-				_ -> invalid
+				{_, {ok,_}} -> unauthorised;
+				_ -> bad_request
 			end of
-				invalid -> logging:log(info, ?MODULE, "received invalid message ~p\n", [Plist]);
-				_ -> ok
+				bad_request -> "400 Bad Request";
+				unauthorised -> "401 Unauthorised";
+				forbidden -> "403 Forbidden";
+				ok -> "204 No Content";
+				_ -> "500 Internal Server Error"
 			end,
-			gen_tcp:send(Socket, "HTTP/1.1 200 OK\r\n\r\n"),
+			if
+				Response /= "204 No Content" ->
+					logging:log(info, ?MODULE, "received invalid/error-causing message ~p", [Plist]),
+					logging:log(info, ?MODULE, "response was ~s", [Response]);
+				true -> ok
+			end,
+			gen_tcp:send(Socket, ["HTTP/1.1 ", Response, "\r\n\r\n"]),
 			gen_tcp:close(Socket);
 		{error, T} -> logging:log(error, ?MODULE, "error in readsock: ~p", [T])
 	end.
@@ -371,7 +400,7 @@ get_id_from_pass(Pass) ->
 		_ -> error
 	end.
 
-check_password_for_channel(Pwd, Chan) -> check_password_generic(Pwd, channel, Chan).
+check_password_for_channel(Pwd, Chan) -> check_password_generic(Pwd, channels, Chan).
 check_password_for_repo(Pwd) ->
 	case get_id_from_pass(Pwd) of
 		error -> error;
@@ -391,9 +420,24 @@ check_password_generic(Pwd, Type, Value) ->
 			end
 	end.
 
+key_name(Key, Char) ->
+	[hd(Key), binary_to_list(<<16#feff/utf8>>), tl(Key), $/, $(, Char, $)].
+
+handle_adminpm(ID, SK,SC, DK,DC, Chan, Msg) ->
+	Pre = ["PM ", key_name(SK, SC), "->", key_name(DK, DC), ": "],
+	handle_admin_message(ID, Pre, Chan, Msg).
+
+handle_adminhelp(ID, SK,SC, Chan, Msg) ->
+	Pre = ["Request for Help from ", key_name(SK,SC), ": "],
+	handle_admin_message(ID, Pre, Chan, Msg).
+
+handle_admin_message(ID, Pre, Chan, Mesg) ->
+	Msg = re:replace(Mesg, "[\r\n\t]+", " ", [global, {return, list}]),
+	ahelp_record(ID, [Pre, Msg]),
+	sendmsg(Chan, lists:flatten([Pre,Msg])).
+
 handle_msg(ID, Chan, Mesg) ->
 	Msg = re:replace(Mesg, "[\r\n\t]+", " ", [global, {return, list}]),
-	logging:log(info, ?MODULE, "relaying to ~s: ~s", [Chan, Msg]),
 	case Msg of
 		"Server starting up on " ++ _ ->
 			lists:foreach(fun(T) -> core ! {irc, {msg, {T, [ID, $:, $ , Msg]}}} end, config:get_value(temp, [?MODULE, notify, ID], [])),

@@ -9,15 +9,15 @@ report_runtimes({User,Repo}, Revision, Runtimes) ->
 	lists:foreach(fun(T) ->
 				case {orddict:find("id", T), orddict:find("name", T), orddict:find("info", T)} of
 					{{ok,ID}, {ok,Name}, {ok,Info}} ->
-						case config:get_value(data, [?MODULE, runtime, ID]) of
-							'$none' -> report_new_runtime(RepoPath, Revision, ID, Name, Info);
-							_ -> update_runtime(RepoPath, Revision, ID, Name, Info)
+						case config:get_value(data, [?MODULE, repo, User, Repo, runtime, ID]) of
+							'$none' -> report_new_runtime(User, Repo, RepoPath, Revision, ID, Name, Info);
+							_ -> update_runtime(User, Repo, RepoPath, Revision, ID, Name, Info)
 						end;
 					_ -> logging:log(error, ?MODULE, "Invalid runtime specification ~p", [T])
 				end
 		end, Runtimes).
 
-report_new_runtime(RepoPath, Revision, ID, Title, Info) ->
+report_new_runtime(User, Repo, RepoPath, Revision, ID, Title, Info) ->
 	Body = lists:flatten([
 		"Runtime at ", ID, " on ", Revision, ":\n",
 		"```\n",
@@ -34,39 +34,40 @@ report_new_runtime(RepoPath, Revision, ID, Title, Info) ->
 		error -> logging:log(error, ?MODULE, "Failed to create issue for runtime ~s!", [ID]);
 		JSON ->
 			IssueID = json:traverse(JSON, [struct,"number"]),
-			config:set_value(data, [?MODULE, runtime, ID, lastrev], Revision),
-			config:set_value(data, [?MODULE, runtime, ID, info], Info),
-			config:set_value(data, [?MODULE, runtime, ID, issueID], IssueID)
+			config:set_value(data, [?MODULE, repo, User, Repo, runtime, ID, lastrev], Revision),
+			config:set_value(data, [?MODULE, repo, User, Repo, runtime, ID, info], Info),
+			config:set_value(data, [?MODULE, repo, User, Repo, runtime, ID, issueID], IssueID)
 	end.
 
-update_runtime(RepoPath, Revision, ID, _Title, Info) ->
-	IssueID = config:get_value(data, [?MODULE, runtime, ID, issueID]),
+update_runtime(User, Repo, RepoPath, Revision, ID, _Title, Info) ->
+	IssueID = config:get_value(data, [?MODULE, repo, User, Repo, runtime, ID, issueID]),
 	IssuePath = [RepoPath, "/issues/", integer_to_list(IssueID)],
-	case config:get_value(data, [?MODULE, runtime, ID, lastrev]) of
+	case config:get_value(data, [?MODULE, repo, User, Repo, runtime, ID, lastrev]) of
 		Revision -> ok;
 		_OldRevision ->
 			case is_issue_open(RepoPath, IssueID) of
 				true ->
-					config:set_value(data, [?MODULE, runtime, ID, lastrev], Revision);
+					config:set_value(data, [?MODULE, repo, User, Repo, runtime, ID, lastrev], Revision);
 				false ->
-					case github_request(post,
-								IssuePath,
-								"{\"state\":\"open\"}"
-								) of
-						error -> error;
-						_ ->
-							config:set_value(data, [?MODULE, runtime, ID, lastrev], Revision),
-							config:set_value(data, [?MODULE, runtime, ID, info], Info),
-							Comment = lists:flatten([
-								"Reopening due to reoccurence on newer revision ",Revision," after being closed:\n",
-								"```\n",
-								Info,"\n",
-								"```"
-							]),
-							github_request(post,
-										   [IssuePath, "/comments"],
-										   json:write({struct,[{"body",Comment}]}))
-					end		
+					config:set_value(data, [?MODULE, repo, User, Repo, runtime, ID, lastrev], Revision),
+					config:set_value(data, [?MODULE, repo, User, Repo, runtime, ID, info], Info),
+
+					Reopening = case github_request(post,
+					                                IssuePath,
+					                                "{\"state\":\"open\"}") of
+						error -> "Please reopen";
+						_ -> "Reopening"
+					end,
+					
+					Comment = lists:flatten([
+						Reopening, " due to reoccurence on newer revision ", Revision, " after being closed:\n",
+						"```\n",
+						Info,"\n",
+						"```"
+					]),
+					github_request(post,
+					               [IssuePath, "/comments"],
+					               json:write({struct,[{"body",Comment}]}))
 			end
 	end.
 
