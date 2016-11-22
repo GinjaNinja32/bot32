@@ -330,10 +330,10 @@ readsock(Socket) ->
 				{{ok, Pwd}, {ok, Type}} ->
 					case Type of
 						"adminpm" ->
-							case lists:map(fun(X) -> orddict:find(X, Dict) end, ["src_key", "src_char", "dst_key", "dst_char", "chan", "msg"]) of
-								[{ok,SKey}, {ok,SChar}, {ok,DKey}, {ok,DChar}, {ok,Chan}, {ok,Msg}] ->
+							case lists:map(fun(X) -> orddict:find(X, Dict) end, ["src_key", "src_char", "trg_key", "trg_char", "chan", "msg"]) of
+								[{ok,SKey}, {ok,SChar}, {ok,TKey}, {ok,TChar}, {ok,Chan}, {ok,Msg}] ->
 									case check_password_for_channel(Pwd, Chan) of
-										{ok, ID} -> handle_adminpm(ID, SKey, SChar, DKey, DChar, Chan, Msg), ok;
+										{ok, ID} -> handle_adminpm(ID, SKey, SChar, TKey, TChar, Chan, Msg), ok;
 										error -> forbidden
 									end;
 								_ -> bad_request
@@ -423,8 +423,8 @@ check_password_generic(Pwd, Type, Value) ->
 key_name(Key, Char) ->
 	[hd(Key), binary_to_list(<<16#feff/utf8>>), tl(Key), $/, $(, Char, $)].
 
-handle_adminpm(ID, SK,SC, DK,DC, Chan, Msg) ->
-	Pre = ["PM ", key_name(SK, SC), "->", key_name(DK, DC), ": "],
+handle_adminpm(ID, SK,SC, TK,TC, Chan, Msg) ->
+	Pre = ["PM ", key_name(SK, SC), "->", key_name(TK, TC), ": "],
 	handle_admin_message(ID, Pre, Chan, Msg).
 
 handle_adminhelp(ID, SK,SC, Chan, Msg) ->
