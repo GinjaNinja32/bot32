@@ -24,8 +24,8 @@ units(#{reply:=RT, ping:=P, params:=Params}) ->
 			util:unicode_os_putenv("units_dst", string:join(Dst, " ")),
 			two
 	end of
-		one -> {irc, {msg, {RT, [P, get_units_reply("units -t \"$units_src\"")]}}};
-		two -> {irc, {msg, {RT, [P, get_units_reply("units -t \"$units_src\" \"$units_dst\"")]}}};
+		one -> {irc, {msg, {RT, [P, get_units_reply("units -t -- \"$units_src\"")]}}};
+		two -> {irc, {msg, {RT, [P, get_units_reply("units -t -- \"$units_src\" \"$units_dst\"")]}}};
 		T -> {irc, {msg, {RT, [P, T]}}}
 	end.
 

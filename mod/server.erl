@@ -317,6 +317,12 @@ loop(SvrSock) ->
 		{error, T} -> logging:log(error, ?MODULE, "received error ~p, exiting\n", [T])
 	end.
 
+dget(Key, Dict) ->
+	case orddict:find(Key, Dict) of
+		{ok, none} -> {ok, "*null*"};
+		X -> X
+	end.
+
 readsock(Socket) ->
 	% timeout specified just to avoid crashing the bot if bad things happen
 	case gen_tcp:recv(Socket, 0, 60000) of
@@ -326,11 +332,11 @@ readsock(Socket) ->
 				T -> tl(T)
 			end,
 			Dict = byond:params2dict(Plist),
-			Response = case case {orddict:find("pwd", Dict), orddict:find("type", Dict)} of
+			Response = case case {dget("pwd", Dict), dget("type", Dict)} of
 				{{ok, Pwd}, {ok, Type}} ->
 					case Type of
 						"adminpm" ->
-							case lists:map(fun(X) -> orddict:find(X, Dict) end, ["src_key", "src_char", "trg_key", "trg_char", "chan", "msg"]) of
+							case lists:map(fun(X) -> dget(X, Dict) end, ["src_key", "src_char", "trg_key", "trg_char", "chan", "msg"]) of
 								[{ok,SKey}, {ok,SChar}, {ok,TKey}, {ok,TChar}, {ok,Chan}, {ok,Msg}] ->
 									case check_password_for_channel(Pwd, Chan) of
 										{ok, ID} -> handle_adminpm(ID, SKey, SChar, TKey, TChar, Chan, Msg), ok;
@@ -339,7 +345,7 @@ readsock(Socket) ->
 								_ -> bad_request
 							end;
 						"adminhelp" ->
-							case lists:map(fun(X) -> orddict:find(X, Dict) end, ["src_key", "src_char", "chan", "msg"]) of
+							case lists:map(fun(X) -> dget(X, Dict) end, ["src_key", "src_char", "chan", "msg"]) of
 								[{ok,SKey}, {ok,SChar}, {ok,Chan}, {ok,Msg}] ->
 									case check_password_for_channel(Pwd, Chan) of
 										{ok, ID} -> handle_adminhelp(ID, SKey, SChar, Chan, Msg), ok;
@@ -348,7 +354,7 @@ readsock(Socket) ->
 								_ -> bad_request
 							end;
 						"ircpm" ->
-							case lists:map(fun(X) -> orddict:find(X, Dict) end, ["src_key", "src_char", "rank", "target", "chan", "msg"]) of
+							case lists:map(fun(X) -> dget(X, Dict) end, ["src_key", "src_char", "rank", "target", "chan", "msg"]) of
 								[{ok,SKey}, {ok,SChar}, {ok,Rank}, {ok,Target}, {ok,Chan}, {ok,Msg}] ->
 									case check_password_for_channel(Pwd, Chan) of
 										{ok, ID} -> handle_ircpm(ID, SKey, SChar, Rank, Target, Chan, Msg), ok;
@@ -357,7 +363,7 @@ readsock(Socket) ->
 								_ -> bad_request
 							end;
 						"msg" ->
-							case {orddict:find("chan", Dict), orddict:find("mesg", Dict)} of
+							case {dget("chan", Dict), dget("mesg", Dict)} of
 								{{ok, Chan}, {ok, Mesg}} ->
 									case check_password_for_channel(Pwd, Chan) of
 										{ok, ID} -> handle_msg(ID, Chan, Mesg), ok;
@@ -366,7 +372,7 @@ readsock(Socket) ->
 								_ -> bad_request
 							end;
 						"runtime" ->
-							case {orddict:find("runtimes", Dict), orddict:find("revision", Dict)} of
+							case {dget("runtimes", Dict), dget("revision", Dict)} of
 								{{ok, R}, {ok, Revision}} ->
 									io:fwrite("~p\n", [R]),
 									RuntimeList = lists:map(fun byond:params2dict/1, byond:params2list(R)),
@@ -447,7 +453,7 @@ handle_ircpm(ID, SK,SC, Rank, Target, Chan, Msg) ->
 handle_admin_message(ID, Pre, Chan, Mesg) ->
 	Msg = re:replace(Mesg, "[\r\n\t]+", " ", [global, {return, list}]),
 	ahelp_record(ID, [Pre, Msg]),
-	sendmsg(Chan, lists:flatten([Pre,Msg])).
+	sendmsg(Chan, lists:filter(fun(T)->T/=none end, lists:flatten([Pre,Msg]))).
 
 handle_msg(ID, Chan, Mesg) ->
 	Msg = re:replace(Mesg, "[\r\n\t]+", " ", [global, {return, list}]),
