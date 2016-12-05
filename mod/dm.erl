@@ -11,13 +11,13 @@ get_help("dm") ->
 		"Use ;;; to separate global lines from proc lines.",
 		"Use ;; to separate lines from each other; the last ;;-separated entry in the proc section will be inserted into a world.log << \"[]\" statement, unless it is blank.",
 		"Use ; as a literal ; (eg in `if(x){y(); z()}`).",
-		"Any code containing either ## or #include will not be executed for security reasons."
+		"Any code containing either ## or include (whether in a string or not) will not be executed for security reasons."
 	];
 get_help(_) -> unhandled.
 
 dm(#{reply:=Reply, ping:=Ping, params:=[String]}) ->
-	case re:run(String, "##|#include", [{capture,none}]) of
-		match -> {irc, {msg, {Reply, [Ping, "You attempted to use either ## or #include; both are blocked for security reasons."]}}};
+	case re:run(String, "##|include", [{capture,none}]) of
+		match -> {irc, {msg, {Reply, [Ping, "You attempted to use either ## or include; both are blocked for security reasons."]}}};
 		nomatch ->
 			Parts = re:split(String, ";;;", [{return, list}]),
 			case Parts of
@@ -34,10 +34,11 @@ dm(#{reply:=Reply, ping:=Ping, params:=[String]}) ->
 %			io:fwrite("~s\n", [File]),
 
 			MD5 = re:replace(base64:encode(crypto:hash(md5, File)), "/", "@", [global, {return, list}]),
+			UseMD5 = lists:sublist(MD5, 9),
 
-			file:write_file(["dm/", MD5, ".dme"], File),
+			file:write_file(["dm/", UseMD5, ".dme"], File),
 			spawn(fun() ->
-				Output = util:safe_os_cmd(["./dm_compile_run.sh ", MD5]),
+				Output = util:safe_os_cmd(["./dm_compile_run.sh ", UseMD5]),
 				core ! {irc, {msg, {Reply, [Ping, string:join(string:tokens(Output, "\n"), ";  ")]}}}
 			end),
 			ok

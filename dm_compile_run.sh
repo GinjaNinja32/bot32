@@ -13,7 +13,7 @@ export BYOND_SYSTEM=/home/nyx/byond/use
 export PATH=/home/nyx/byond/use/bin:$PATH
 export LD_LIBRARY_PATH=/home/nyx/byond/use/bin:$LD_LIBRARY_PATH
 
-output=$(DreamMaker $file.dme 2>&1)
+output=$(~/timeout --just-kill --no-info-on-success --detect-hangups -h 10 -t 10 -m 102400 DreamMaker $file.dme 2>&1)
 return=$?
 
 if [[ $return != 0 ]]; then
