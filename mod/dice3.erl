@@ -157,8 +157,8 @@ apoc(#{reply:=RT, ping:=P, nick:=Nick, params:=Params, selector:=Selector}) ->
 	end,
 	Formatter = fun
 		([false,false,false]) -> [Comment, "\x034\x02Miss!\x03\x02"];
-		([false,false, true]) -> [Comment, "\x038\x02Weak Hit!\x03\x02"];
-		([false, true, true]) -> [Comment, "\x039\x02Strong Hit!\x03\x02"];
+		([ true,false,false]) -> [Comment, "\x038\x02Weak Hit!\x03\x02"];
+		([ true, true,false]) -> [Comment, "\x039\x02Strong Hit!\x03\x02"];
 		([ true, true, true]) -> [Comment, "\x0311\x02Strong Hit!\x03\x02"]
 	end,
 	Result = dice3(lists:flatten(io_lib:format("2d6+0~w>=[7, 10, 12]", [M])), true, Formatter),

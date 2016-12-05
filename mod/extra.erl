@@ -32,7 +32,7 @@ do_extras(Tokens, ReplyChannel, ReplyPing) ->
 		[] -> ok;
 		[URL|_] -> showurl(ReplyChannel, ReplyPing, URL, "~s")
 	end,
-	WikiURL = config:get_value(config, [?MODULE, wiki, ReplyChannel], "http://wiki.baystation12.net/"),
+	WikiURL = config:get_value(config, [?MODULE, wiki, ReplyChannel], "https://wiki.baystation12.net/"),
 	case re:run(string:join(Tokens, " "), "\\[\\[([^ ][^\]]+[^ ])\\]\\]", [{capture, all_but_first, binary}]) of
 		{match, [Page]} ->
 			UR = WikiURL ++ re:replace(Page, " ", "_", [{return, list}, global]),
