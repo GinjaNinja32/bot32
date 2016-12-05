@@ -144,8 +144,8 @@ handle_irc(nick, {U=#user{nick=OldNick}, NewNick}) ->
 			distribute_event(nick, {U, NewNick})
 	end;
 
-handle_irc(notice, Params) ->
-	logging:log(info, ?MODULE, "NOTICE received: ~p", [Params]),
+handle_irc(notice, {Src, Trg, Msg}) ->
+	logging:log(info, ?MODULE, "NOTICE received from ~p to ~s: ~s", [Src, Trg, string:join(Msg, " ")]),
 	ok;
 
 handle_irc(numeric, {{rpl,away},_}) -> ok;
