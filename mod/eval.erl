@@ -10,6 +10,8 @@ get_commands() ->
 		{"evalstr", gen_eval_str(fun eval/1), eval},
 		{"bash", fun bash/1, [long], eval},
 		{"bashl", fun bashl/1, [long], eval},
+		{"py", fun py/1, [long], eval},
+		{"pyl", fun pyl/1, [long], eval},
 		{"s", fun shl/1, eval},
 		{"sdrop", fun sdrop/1, eval},
 		{"serase", fun serase/1, eval},
@@ -24,9 +26,21 @@ bash(#{reply:=Reply, ping:=Ping, params:=[Param]}) ->
 	util:unicode_os_putenv("args", Param),
 	{irc, {msg, {Reply, io_lib:format("~s~500p", [Ping, util:safe_os_cmd("bash -c \"$args\"")])}}}.
 
+py(#{reply:=Reply, ping:=Ping, params:=[Param]}) ->
+	util:unicode_os_putenv("script", Param),
+	{irc, {msg, {Reply, io_lib:format("~s~500p", [Ping, util:safe_os_cmd("python -c \"$script\"")])}}}.
+
 bashl(#{reply:=Reply, ping:=Ping, params:=[Param]}) ->
 	util:unicode_os_putenv("args", Param),
 	RRaw = util:safe_os_cmd("bash -c \"$args\""),
+	lines2channel(Reply, Ping, RRaw).
+
+pyl(#{reply:=Reply, ping:=Ping, params:=[Param]}) ->
+	util:unicode_os_putenv("script", Param),
+	RRaw = util:safe_os_cmd("python -c \"$script\""),
+	lines2channel(Reply, Ping, RRaw).
+
+lines2channel(Reply, Ping, RRaw) ->
 	R = lists:flatmap(fun
 			(10) -> [10];
 			(9) -> "    ";
@@ -40,6 +54,7 @@ bashl(#{reply:=Reply, ping:=Ping, params:=[Param]}) ->
 					_ -> core ! {irc, {msg, {Reply, [Ping, T]}}}
 				end
 		end, string:tokens(R, "\n")).
+
 
 eecho(Params=#{params:=Tokens}) ->
 	ES = gen_eval_str(fun eval/1),
