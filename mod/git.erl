@@ -68,9 +68,15 @@ load_defines(Branch) ->
 	MatchingLines = string:tokens(util:safe_os_cmd(["cd ", Home, "; git grep '#define' ", Remote, "/", Branch]), "\r\n"),
 	lists:keysort(1, lists:filtermap(fun(Line) ->
 			% origin/dev:code/setup.dm:#define FOO 2
-			case re:run(Line, <<"[^:]+:([^:]+):#define\\s+(\\S+)\\s+(.*)">>, [{capture,all_but_first,binary}]) of
-				{match, [File, Def, Val]} ->
+			case re:run(Line, <<"[^:]+:([^:]+):#define\\s+([a-zA-Z0-9_]+)(\\([^)]+\\))?(?:\\s+(.*))?">>, [{capture,all_but_first,binary}]) of
+				{match, [File, Def]} ->
+					{true, {Def, {File, <<"<no value>">>}}};
+				{match, [File, Def, <<"">>, Val]} ->
 					{true, {Def, {File, Val}}};
+				{match, [File, Def, Args, Val]} ->
+					{true, {Def, {File, <<Def/binary, Args/binary, " ", Val/binary>>}}};
+				{match, [File, Def, Args]} ->
+					{true, {Def, {File, <<Def/binary, Args/binary, " <no value>">>}}};
 				nomatch -> false
 			end
 		end, MatchingLines)).

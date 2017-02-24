@@ -28,7 +28,7 @@ report_new_runtime(User, Repo, RepoPath, Revision, ID, Title, Info) ->
 						[RepoPath, "/issues"],
 						json:write({struct,[
 							{"body", Body},
-							{"labels", {array, ["☢ runtime error ☢"]}},
+							{"labels", {array, ["runtime error ☢"]}},
 							{"title", Title}
 						]})) of
 		error -> logging:log(error, ?MODULE, "Failed to create issue for runtime ~s!", [ID]);

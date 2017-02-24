@@ -65,7 +65,7 @@ isalias(#{reply:=Reply, ping:=Ping, params:=Params}) ->
 
 parse(Params) ->
 	{ok, lists:map(fun(T) ->
-		case re:run(T, <<"(\\\\|\\*)([0-9]+)">>, [{capture, all_but_first, binary}]) of
+		case re:run(T, <<"^(\\\\|\\*)([0-9]+)$">>, [{capture, all_but_first, binary}]) of
 			{match, [<< "*">>, SNum]} -> {binary_to_integer(SNum)};
 			{match, [<<"\\">>, SNum]} -> binary_to_integer(SNum);
 			nomatch -> T

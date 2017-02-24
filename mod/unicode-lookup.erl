@@ -3,7 +3,7 @@
 
 get_commands() ->
 	[
-		{"unicode", fun unicode/1, [short], admin}
+		{"unicode", fun unicode/1, [short], user}
 	].
 
 unicode(#{reply:=Reply, ping:=Ping, params:=[Codepoint]}) ->

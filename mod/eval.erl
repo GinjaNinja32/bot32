@@ -83,7 +83,7 @@ shl(#{reply:=RT, ping:=P, params:=Params}) ->
 						{value, Value, NewBinds} ->
 							config:set_value(data, [eval, shell], NewBinds),
 							{irc, {msg, {RT, [P, io_lib:format("~500p", [Value])]}}};
-						{'EXIT', {Reason, Stack}} -> {irc, {msg, {RT, [P, format_reasonstack(Reason, Stack)]}}};
+						{'EXIT', {Reason, Stack}} when is_list(Stack) -> {irc, {msg, {RT, [P, format_reasonstack(Reason, Stack)]}}};
 						{'EXIT', Term} -> {irc, {msg, {RT, [P, io_lib:format("Code exited with ~p", [Term])]}}};
 						Term -> {irc, {msg, {RT, [P, io_lib:format("Code threw ~p", [Term])]}}}
 					end;
@@ -128,7 +128,7 @@ gen_eval(Func) ->
 		end,
 		case catch Func(Str) of
 			{ok, Value} -> {irc, {msg, {ReplyTo, [Ping, re:replace(io_lib:format("~w", [Value]), "[\r\n]", "")]}}};
-			{'EXIT', {Reason, Stack}} -> {irc, {msg, {ReplyTo, [Ping, format_reasonstack(Reason, Stack)]}}};
+			{'EXIT', {Reason, Stack}} when is_list(Stack) -> {irc, {msg, {ReplyTo, [Ping, format_reasonstack(Reason, Stack)]}}};
 			{'EXIT', Term} -> {irc, {msg, {ReplyTo, [Ping, io_lib:format("Code exited with ~p", [Term])]}}};
 			{cerr, Term} -> {irc, {msg, {ReplyTo, [Ping, Term]}}};
 			Term -> {irc, {msg, {ReplyTo, [Ping, io_lib:format("Code threw ~p", [Term])]}}}
@@ -145,7 +145,7 @@ gen_eval_str(Func) ->
 		end,
 		case catch Func(Str) of
 			{ok, Value} -> {irc, {msg, {ReplyTo, [Ping, re:replace(io_lib:format("~s", [Value]), "[\r\n]", "")]}}};
-			{'EXIT', {Reason, Stack}} -> {irc, {msg, {ReplyTo, [Ping, format_reasonstack(Reason, Stack)]}}};
+			{'EXIT', {Reason, Stack}} when is_list(Stack) -> {irc, {msg, {ReplyTo, [Ping, format_reasonstack(Reason, Stack)]}}};
 			{'EXIT', Term} -> {irc, {msg, {ReplyTo, [Ping, io_lib:format("Code exited with ~p", [Term])]}}};
 			{cerr, Term} -> {irc, {msg, {ReplyTo, [Ping, Term]}}};
 			Term -> {irc, {msg, {ReplyTo, [Ping, io_lib:format("Code threw ~p", [Term])]}}}

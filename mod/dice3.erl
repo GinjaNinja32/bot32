@@ -263,7 +263,7 @@ parseExpr(Expr) when is_list(Expr) ->
 parseExpr(T) -> T.
 
 parseExpression(Lst) ->
-	Priority = [['d', 'i'], ['!','L','l','H','h'], ['*','/'], ['+','-'], ['>','>=','<=','<','='], ['c', 's', '#']],
+	Priority = [['d', 'i'], ['!','L','l','H','h'], ['*','/'], ['+','-'], ['>','>=','<=','<','='], ['s'], ['c', '#']],
 	lists:foldl(fun parseLeftAssoc/2, Lst, Priority).
 
 parseLeftAssoc(_, error) -> error;
@@ -387,7 +387,7 @@ evaluate(Tree, Expand) ->
 							(T) when T >= Trg -> [3,$0,$9,integer_to_list(T),3,2,2];
 							(T) -> integer_to_list(T)
 						end, Dice),
-					{[$[,AS,$d,BS,$!,XS,$=,2,$[,string:join(Lst, ", "),$],2,$]], lists:sum(Dice)}
+					{[$[,AS,$d,BS,$!,XS,$=,2,$[,string:join(Lst, ", "),$],2,$]], Dice}
 			end;
 
 		{Op, X, Y} when Op=='L' orelse Op=='l' orelse Op=='H' orelse Op=='h' ->

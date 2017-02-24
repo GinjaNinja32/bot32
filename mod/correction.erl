@@ -21,12 +21,12 @@ do_regex(What, Regexes, Chan, Nick) ->
 	catch lists:foldl(fun
 		({N,____,_},_) when What == self andalso N /= Nick -> ok;
 		({N,Type,T},_) ->
-			case catch apply_all_check(T, Regexes) of
+			case catch apply_all(T, Regexes) of
 				err_nochange ->
 					ok;
 				NewT ->
 					remove_line(N, Chan, Type, T),
-					Show = apply_all(T, Regexes),
+					Show = diff(T, NewT),
 					add_line(N, Chan, Type, NewT),
 					case Type of
 						msg ->
@@ -38,7 +38,7 @@ do_regex(What, Regexes, Chan, Nick) ->
 			end
 		end, foo, config:get_value(temp, [?MODULE, lines, Chan], [])).
 
-apply_all_check(Line, Regexes) ->
+apply_all(Line, Regexes) ->
 	lists:foldl(fun({F,R,O},L) ->
 			case re:replace(L,F,R,[{return,binary}|O]) of
 				L ->
@@ -47,10 +47,8 @@ apply_all_check(Line, Regexes) ->
 			end
 		end, Line, Regexes).
 
-apply_all(Line, Regexes) ->
-	lists:foldl(fun({F,R,O},L) ->
-			re:replace(L,F,[2,R,2],[{return,binary}|O])
-		end, Line, Regexes).
+diff(A, B) ->
+	B.
 
 remove_line(Nick, Chan, Type, Line) ->
 	config:mod_get_value(temp, [?MODULE, lines, Chan],
@@ -70,6 +68,7 @@ add_line(Nick, Chan, Type, Line) ->
 	ok.
 
 parse_regex([$s,$s,$/|Rest]) -> parse_regex0(Rest, self);
+parse_regex([$o,$s,$/|Rest]) -> parse_regex0(Rest, all);
 parse_regex([$s,$/|Rest]) -> parse_regex0(Rest, all);
 parse_regex(_) -> false.
 

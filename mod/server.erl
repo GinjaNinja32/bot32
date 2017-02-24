@@ -168,7 +168,7 @@ notes(VID, ID, Nick, Reply, Ping, [Who|_]) ->
 					File = io_lib:format("~32.16.0b", [binary:decode_unsigned(crypto:hash(md5, T))]),
 					Filename = io_lib:format("/home/bot32/www/~s.txt", [File]),
 					file:write_file(Filename, T),
-					["Following link valid for approximately ten minutes: http://nyx.gn32.uk/admin/", File, ".txt"]
+					["Following link valid for approximately ten minutes: http://thanatos.gn32.uk/admin/", File, ".txt"]
 			end
 	end,
 	{irc, {msg, {TrueReply, [TruePing, VID, RMsg]}}}.
@@ -195,13 +195,14 @@ info(VID, ID, _, Reply, Ping, What) ->
 				{ok,_} -> % specific player
 					D = fun(T) ->
 						case orddict:find(T, Dict) of
+							{ok, none} -> "null";
 							{ok, V} -> V;
 							error -> "???"
 						end
 					end,
 					Damage = case D("damage") of
 						"non-living" -> "non-living";
-						Dmg -> string:join(lists:map(fun({A,B}) -> [A,": ",B] end, byond:params2dict(Dmg)), ", ")
+						Dmg -> string:join(lists:map(fun({A,none}) -> [A,": null"]; ({A,B}) -> [A,": ",B] end, byond:params2dict(Dmg)), ", ")
 					end,
 					Space = <<16#a0/utf8>>,
 					[

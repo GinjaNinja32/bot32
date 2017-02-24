@@ -107,7 +107,7 @@ check_utf8(<<_/utf8, B/binary>>) -> check_utf8(B);
 check_utf8(_) -> false.
 
 handle_irc(ctcp, {action, Chan, User=#user{nick=Nick}, Tokens}) ->
-	case permissions:hasperm(User, ignore) of
+	case permissions:hasperm(User, Chan, ignore) of
 		true ->
 			logging:log(ignore, ?MODULE, "Ignoring ~s!~s@~s ACTION: ~s.", [Nick, User#user.username, User#user.host, string:join(Tokens, " ")]),
 			ok;

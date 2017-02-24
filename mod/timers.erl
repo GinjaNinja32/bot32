@@ -79,8 +79,8 @@ handle_expiry(Data) ->
 				case lists:member(message, config:get_value(config, [bot, modules])) of
 					true -> message:create_message("timer system", Nick, Msg);
 					false -> ok
-				end
+				end;
 			_ ->
-				core ! {irc, {msg, {Nick, Msg}}};
+				core ! {irc, {msg, {Nick, Msg}}}
 		end
 	end}.

@@ -79,6 +79,8 @@ mul(A, B) ->
 divd(A, B) when ?is_number(A) andalso ?is_number(B) -> A / B;
 divd(A, B) ->
 	P = real(B)*real(B) + imag(B)*imag(B),
-	{X,Y} = mul(A, conj(B)),
-	decomplex({X/P, Y/P}).
+	case mul(A, conj(B)) of
+		{X, Y} -> decomplex({X/P, Y/P});
+		X -> X/P
+	end.
 
