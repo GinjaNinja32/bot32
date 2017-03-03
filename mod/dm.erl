@@ -46,7 +46,8 @@ dm(#{reply:=Reply, ping:=Ping, params:=[String]}) ->
 
 file(PreLines, MainSetup, MainValue) ->
 	[
-		"#include \"util.dm\"",
+		"#include \"util.dm\"\n",
+		"/world/loop_checks = 0\n",
 		lists:map(fun(T) -> ["\n" | string:strip(T)] end, PreLines),
 		"\n/world/New()\n\tdm_eval()\n\tdel(src)\n/proc/dm_eval()",
 		lists:map(fun(T) -> ["\n\t" | string:strip(T)] end, MainSetup),

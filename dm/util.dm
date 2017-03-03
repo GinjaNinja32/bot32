@@ -3,6 +3,38 @@
 #define floor(x) round(x)
 #define clamp(x, low, high) max((low),min((high),(x)))
 
+#define BENCH(NAME, ITERS, CODE) \
+	do{ \
+		var/s = world.timeofday ;\
+		for(var/i = 1 to (ITERS)) {\
+			CODE ;\
+		} ;\
+		var/e = world.timeofday ;\
+		world.log << "[NAME]: [e-s] ds" ;\
+	} while(0)
+#define BENCHK(NAME, ITERS, CODE) \
+	do{ \
+		var/s = world.timeofday ;\
+		for(var/j = 1 to 1000) {\
+		for(var/i = 1 to (ITERS)) {\
+			CODE ;\
+		} ;\
+		} ;\
+		var/e = world.timeofday ;\
+		world.log << "[NAME]: [e-s] ds" ;\
+	} while(0)
+#define BENCHM(NAME, ITERS, CODE) \
+	do{ \
+		var/s = world.timeofday ;\
+		for(var/j = 1 to 1000000) {\
+		for(var/i = 1 to (ITERS)) {\
+			CODE ;\
+		} ;\
+		} ;\
+		var/e = world.timeofday ;\
+		world.log << "[NAME]: [e-s] ds" ;\
+	} while(0)
+
 /proc/fold() return foldl(arglist(args))
 /proc/foldl(proc, list/L, initial=L)
 	var/x = initial

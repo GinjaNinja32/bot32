@@ -6,7 +6,7 @@
 
 get_commands() ->
 	[
-		{"update", fun(#{reply:=Reply}) -> {update, Reply} end, host}
+		{"update", fun(#{reply:=Reply}) -> bot ! {update, Reply} end, host}
 	].
 
 init() ->
