@@ -384,3 +384,19 @@ bin2hex(<<>>, Out) -> Out;
 bin2hex(<<A,In/binary>>, Out) ->
 	Ahex = list_to_binary(io_lib:format("~2.16.0b",[A])),
 	bin2hex(In, <<Out/binary, Ahex/binary>>).
+
+
+group(____, _____, [  ]) -> ok;
+group(Func, Count, List) when length(List) =< Count ->
+	Func(List);
+group(Func, Count, List) ->
+	Func(lists:sublist(List, Count)),
+	group(Func, Count, lists:nthtail(Count, List)).
+
+groupstrs(Func, Len, List, Sep) -> groupstrs(Func, Len, List, Sep, "").
+
+groupstrs(_,    _,   [     ], _,   [ ]) -> ok;
+groupstrs(Func, _,   [     ], _,   Str) -> Func(Str);
+groupstrs(Func, Len, List   , Sep, Str) when length(Str) >= Len -> Func(Str), groupstrs(Func, Len, List, Sep, "");
+groupstrs(Func, Len, [Hd|Tl], Sep, [ ]) -> groupstrs(Func, Len, Tl, Sep, Hd);
+groupstrs(Func, Len, [Hd|Tl], Sep, Str) -> groupstrs(Func, Len, Tl, Sep, Str ++ Sep ++ Hd).

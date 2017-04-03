@@ -122,7 +122,6 @@ decode_content(Content, Signature) ->
 	case catch json:parse(Content) of
 		{'EXIT', T} -> logging:log(error, "GITHUB", "Error parsing JSON: ~p", [T]);
 		JSON ->
-			file:write_file("json.crl", io_lib:format("~p",[JSON])),
 			case handle_decoded(JSON) of
 				{User, Repo, Messages} ->
 					case check_signature(Content, Signature, User, Repo) of
