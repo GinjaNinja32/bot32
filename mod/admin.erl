@@ -232,7 +232,13 @@ kickban(#{reply:=RT, ping:=P}) ->
 	{irc, {msg, {RT, [P, "Provide a user to kick and an optional reason"]}}}.
 
 ban_host(Host) ->
-	["*.", string:join(tl(string:tokens(Host, ".")), ".")].
+	Toks = string:tokens(Host, "."),
+	case lists:last(Toks) of
+		"IP" ->
+			["*.", string:join(tl(tl(Toks)), ".")];
+		_ ->
+			["*.", string:join(tl(Toks), ".")]
+	end.
 
 raw(#{params:=Params}) ->
 	core ! {raw, string:join(Params, " ")},
