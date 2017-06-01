@@ -93,10 +93,10 @@ parse_time(TimeStr) ->
 			end
 	end.
 
-san(Hr, Min) when  0 > Hr  -> san(Hr+24, Min);
-san(Hr, Min) when 23 < Hr  -> san(Hr-24, Min);
-san(Hr, Min) when  0 > Min -> san(Hr, Min+60);
-san(Hr, Min) when 60 < Min -> san(Hr, Min-60);
+san(Hr, Min) when  0  > Hr  -> san(Hr+24, Min);
+san(Hr, Min) when 24 =< Hr  -> san(Hr-24, Min);
+san(Hr, Min) when  0  > Min -> san(Hr, Min+60);
+san(Hr, Min) when 60 =< Min -> san(Hr, Min-60);
 san(Hr, Min) -> {Hr, Min}.
 
 format(Hr, Min) when 60 =< Min -> format(Hr+1, Min-60);
