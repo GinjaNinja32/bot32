@@ -34,8 +34,8 @@ time_convert([Time,TZ]) ->
 				{Hr, Min} ->
 					{_,{CHr,CMin,_}} = calendar:now_to_universal_time(os:timestamp()),
 					{SH, SM} = case {Hr - TZHr - CHr, Min - TZMin - CMin} of
-						{A,B} when B < 0 -> {A-1 - (-B div 60), B};
-						{A,B} -> {A + (B div 60),B}
+						{A,B} when B < 0 -> {A-1 - (-B div 60), (B rem 60)};
+						{A,B} -> {A + (B div 60), (B rem 60)}
 					end,
 					{H, M} = san(SH, SM),
 					if
@@ -94,7 +94,7 @@ parse_time(TimeStr) ->
 	end.
 
 san(Hr, Min) when  0 > Hr  -> san(Hr+24, Min);
-san(Hr, Min) when 24 < Hr  -> san(Hr-24, Min);
+san(Hr, Min) when 23 < Hr  -> san(Hr-24, Min);
 san(Hr, Min) when  0 > Min -> san(Hr, Min+60);
 san(Hr, Min) when 60 < Min -> san(Hr, Min-60);
 san(Hr, Min) -> {Hr, Min}.
