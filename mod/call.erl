@@ -31,7 +31,12 @@ call(#{origin:=User, nick:=OriginNick, reply:=Reply, ping:=Ping, params:=Params}
 				false -> {irc, {msg, {Reply, [Ping, "You are not authorised to do that!"]}}};
 				ok ->
 					Nickname = string:join(Nick, " "),
-					config:set_value(data, [?MODULE, Usr], Nickname),
-					{irc, {msg, {Reply, [Ping, "Done."]}}}
+					case string:str(string:to_lower(Nickname), "doot") of
+						0 ->
+							config:set_value(data, [?MODULE, Usr], Nickname),
+							{irc, {msg, {Reply, [Ping, "Done."]}}};
+						_ ->
+							{irc, {msg, {Reply, [Ping, "Please don't try to make me ping the bot-I'm-not-going-to-ping-but-you-know-which-I-mean."]}}}
+					end
 			end
 	end.
