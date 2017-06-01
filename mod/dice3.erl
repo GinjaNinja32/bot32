@@ -514,12 +514,12 @@ rollraw(N, M) ->
 
 roll_total(N, M) ->
 	io:fwrite("recursively rolling ~bd~b\n", [N, M]),
-	Total = roll_total(N, M, 0),
-	io:fwrite("rolled ~b\n", [Total]),
+	Total = roll_total(N, M, []),
+	io:fwrite("rolled ~p\n", [Total]),
 	Total.
 
 roll_total(0, _, Total) -> Total;
-roll_total(N, M, Total) -> roll_total(N-1, M, Total + random:uniform(M)).
+roll_total(N, M, Total) -> roll_total(N-1, M, [random:uniform(M)|Total]).
 
 get_n_m(N, M) ->
 	case get_avail(M) of
