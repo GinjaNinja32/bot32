@@ -152,9 +152,8 @@ players(RT, _, _, S, P, _, Name) ->
 				_ ->
 					Players = byond:params2dict(safeget(Dict, "playerlist")),
 					Ordered = lists:sort(lists:map(fun({X,_}) -> re:replace(X, [32], <<160/utf8>>, [{return, binary}, global]) end, Players)),
-					Binaried = lists:map(fun(<<A/utf8, B/binary>>) -> <<A/utf8, ?Sep/utf8, B/binary>> end, Ordered),
-					{_, Str, _, _} = lists:foldl(fun acc_players/2, {0, hd(Binaried), RT, Name}, tl(Binaried)),
-					core ! {irc, {msg, {RT, [Name, "Players: ", Str]}}}
+					Names = lists:map(fun(<<A/utf8, B/binary>>) -> binary_to_list(<<A/utf8, ?Sep/utf8, B/binary>>) end, Ordered),
+					util:groupstrs(fun(T) -> core!{irc,{msg,{RT,[Name, "Players: ", T]}}} end, 250, Names, ", ")
 			end
 	end.
 
@@ -176,10 +175,3 @@ safeget(Dict, Key) ->
 		{ok, V} -> V;
 		error -> "???"
 	end.
-
-acc_players(Name, {20, Acc, RT, SName}) ->
-	core ! {irc, {msg, {RT, [SName, "Players: ", Acc]}}},
-	{0, Name, RT, SName};
-acc_players(Name, {Num, Acc, RT, SName}) -> {Num+1, <<Acc/binary, ", ", Name/binary>>, RT, SName}.
-
-
