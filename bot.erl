@@ -22,7 +22,7 @@ init() ->
 	config:offer_value(config, [bot, real], "Bot32"),
 	config:offer_value(config, [bot, prefix], "!"),
 	config:offer_value(config, [bot, channels], []),
-	config:offer_value(config, [bot, modules], []),
+	config:offer_value(config, [bot, modules], [command,modules]),
 	config:offer_value(config, [bot, on_join], []),
 	config:offer_value(config, [bot, pass], none),
 	config:offer_value(config, [bot, names], []),
