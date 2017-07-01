@@ -444,11 +444,11 @@ handle_adminpm(ID, SK,SC, TK,TC, Chan, Msg) ->
 	handle_admin_message(ID, Pre, Chan, Msg).
 
 handle_adminhelp(ID, SK,SC, Chan, Msg) ->
-	Pre = ["Request for Help from ", key_name(SK,SC), ": "],
+	Pre = ["HELP from ", key_name(SK,SC), ": "],
 	handle_admin_message(ID, Pre, Chan, Msg).
 
 handle_ircpm(ID, SK,SC, Rank, Target, Chan, Msg) ->
-	Pre = [Rank, "PM to ", Target, " from ", key_name(SK,SC), ": "],
+	Pre = [Rank, " PM to ", Target, " from ", key_name(SK,SC), ": "],
 	handle_admin_message(ID, Pre, Chan, Msg).
 
 handle_admin_message(ID, Pre, Chan, Mesg) ->
