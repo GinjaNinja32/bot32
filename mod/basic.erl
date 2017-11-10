@@ -50,10 +50,20 @@ collapse_or_string([T|L], COpt, Options) -> collapse_or_string(L, [COpt,32|T], O
 i2l(T, S) when T < 10 -> [S] ++ integer_to_list(T);
 i2l(T, _) -> integer_to_list(T).
 
-colors(#{reply:=ReplyTo, ping:=Ping}) -> {irc, {msg, {ReplyTo, [Ping,
-		lists:map(fun(X) -> [3,i2l(X,$0),i2l(X,$ )] end, lists:seq(0,15)),
-		lists:map(fun(X) -> [3,$,,i2l(X,$0),i2l(X,$ )] end, lists:seq(0,15))
-	]}}}.
+colors(#{reply:=ReplyTo, ping:=Ping}) ->
+	core ! {irc, {msg, {ReplyTo, [Ping,
+		lists:map(fun(X) -> [3,i2l(X,$0),i2l(X,$ ),32] end, lists:seq(0,15))
+	]}}},
+
+	core ! {irc, {msg, {ReplyTo, [Ping,
+		lists:map(fun(X) -> [3,$,,i2l(X,$0),i2l(X,$ ),32] end, lists:seq(0,15))
+	]}}},
+
+	lists:foreach(fun(T) ->
+		core ! {irc, {msg, {ReplyTo, [Ping,
+			lists:map(fun(X) -> [3,i2l(X+T,$0),i2l(X+T,$ ),32] end, lists:seq(0,11))
+		]}}}
+		end, [16, 28, 40, 52, 64, 76, 88]).
 
 ping(#{reply:=ReplyTo, ping:=Ping}) -> {irc, {msg, {ReplyTo, [Ping, "Pong!"]}}}.
 pong(#{reply:=ReplyTo, ping:=Ping}) -> {irc, {msg, {ReplyTo, [Ping, "Ping!"]}}}.
@@ -72,7 +82,8 @@ dancereply() ->
 		[":D/--<", ":D|--<", ":D\\--<"],
 		[[ping, "No."]],
 		[[ping, "What sort of bot do you think I am?!"]],
-		["<(^_^<)", "(>^_^)>", "<(^_^<)"]
+		["<(^_^<)", "(>^_^)>", "<(^_^<)"],
+		["< (^V^) <", "> (^v^) >", "^ (^v^) v", "v (^v^) ^"]
 	].
 danceweights(Nick) ->
 	H = h(Nick),

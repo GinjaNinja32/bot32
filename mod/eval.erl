@@ -44,7 +44,6 @@ lines2channel(Reply, Ping, RRaw) ->
 	R = lists:flatmap(fun
 			(10) -> [10];
 			(9) -> "    ";
-			(T) when T < 32 -> [];
 			(T) -> [T]
 		end, RRaw),
 	lists:foreach(fun

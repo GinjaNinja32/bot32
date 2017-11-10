@@ -11,6 +11,7 @@ get_commands() ->
 		{"delmsg", fun delmsg/1, [{"id", integer}], user},
 		{"sent", fun sent/1, user},
 		{"pending", fun pending/1, admin},
+		{"whosent", fun whosent/1, admin},
 		{"retargmsg", fun retarget/1, [{"id",integer}, {"target",short}], user}
 	].
 
@@ -37,7 +38,7 @@ new_message(#{nick:=Origin, reply:=ReplyTo, ping:=Ping, params:=[Targets, Messag
 				true -> Sent;
 				false ->
 					core ! {irc, {msg, {ReplyTo, [Ping, create_message(Origin, Target, Message)]}}},
-					[string:to_lower(Target), Sent]
+					[string:to_lower(Target) | Sent]
 			end
 		end, [], string:tokens(Targets, "/,")).
 
@@ -160,6 +161,18 @@ pending(#{reply:=Reply, ping:=Ping}) ->
 
 	core ! {irc, {msg, {Reply, [Ping, io_lib:format("There are ~b pending messages to ~b recipients.", [Pending, length(Recipients)])]}}},
 	pendingf(Reply, Ping, PendingLst).
+
+whosent(#{reply:=Reply, ping:=Ping, params:=Params}) ->
+	lists:foldl(fun(T,_) ->
+		ID = list_to_integer(T),
+		case config:get_value(data, [?MODULE, messages, ID]) of
+			'$none' -> core ! {irc, {msg, {Reply, [Ping, io_lib:format("Message ~b does not exist.", [ID])]}}};
+			{Src,Dst,_,_,_} ->
+				core ! {irc, {msg, {Reply, [Ping, io_lib:format("Message ~b was sent to ~s by ~s.", [ID, Dst, Src])]}}}
+		end end,
+		0,
+		Params),
+	ok.
 
 pendingf(R, P, Lst) -> pendingf(R, P, tl(Lst), [hd(Lst)]).
 

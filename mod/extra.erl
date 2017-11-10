@@ -6,10 +6,12 @@ showurl(Channel, Ping, URL, Format, NotFound) -> spawn(?MODULE, showurl_raw, [Ch
 
 showurl_raw(Channel, Ping, URL, Format, NotFound) ->
 	os:putenv("url", URL),
-	case re:replace(util:safe_os_cmd("./urltitle.sh $url"), "^[ \\t\\n]+(.*[^ \\t\\n])[ \\t\\n]+$", "\\1", [{return, binary}]) of
+	URLAndTitle = util:safe_os_cmd("./urltitle_canonical.sh $url"),
+	{CanonicalURL, Title} = lists:splitwith(fun(T) -> T /= 10 end, URLAndTitle),
+	case re:replace(Title, "^\\s*|\\s*$", "", [{return, binary}]) of
 		<<>> when NotFound /= false -> core ! {irc, {msg, {Channel, [Ping, NotFound]}}};
 		<<>> -> ok;
-		Sh -> core ! {irc, {msg, {Channel, [Ping, io_lib:format(Format, [util:parse_htmlentities(Sh)])]}}}
+		Sh -> core ! {irc, {msg, {Channel, [Ping, io_lib:format(Format, [CanonicalURL, util:parse_htmlentities(Sh)])]}}}
 	end.
 
 pre_command(Command, Args) ->
@@ -30,13 +32,21 @@ pre_command(Command, Args) ->
 do_extras(Tokens, ReplyChannel, ReplyPing) ->
 	case lists:dropwhile(fun(X) -> re:run(X, "^https?://.*$", [{capture, none}]) /= match end, Tokens) of
 		[] -> ok;
-		[URL|_] -> showurl(ReplyChannel, ReplyPing, URL, "~s")
+		[URL|_] -> showurl(ReplyChannel, ReplyPing, URL, "~i~s")
 	end,
-	WikiURL = config:get_value(config, [?MODULE, wiki, ReplyChannel], "https://wiki.baystation12.net/"),
-	case re:run(string:join(Tokens, " "), "\\[\\[([^ ][^\]]+[^ ])\\]\\]", [{capture, all_but_first, binary}]) of
-		{match, [Page]} ->
-			UR = WikiURL ++ re:replace(Page, " ", "_", [{return, list}, global]),
-			showurl(ReplyChannel, ReplyPing, UR, UR ++ " - ~s", "Page not found!");
+	case re:run(string:join(Tokens, " "), "\\[\\[(?:([^ ][^| ]*)\\|)?([^ ][^\]]+[^ ])\\]\\]", [{capture, all_but_first, binary}]) of
+		{match, [Sel, Page]} ->
+			WikiURL = case Sel of
+				<<>> -> config:get_value(config, [?MODULE, wiki, ReplyChannel], "https://wiki.baystation12.net/");
+				T -> config:get_value(config, [?MODULE, wikiselect, T])
+			end,
+			case WikiURL of
+				'$none' ->
+					core ! {irc, {msg, {ReplyChannel, [ReplyPing, io_lib:format("wiki '~s' not found", [Sel])]}}};
+				_ ->
+					UR = WikiURL ++ re:replace(Page, " ", "_", [{return, list}, global]),
+					showurl(ReplyChannel, ReplyPing, UR, "~s - ~s", "Page not found!")
+			end;
 		_ -> ok
 	end,
 	do_pr_linking(Tokens, ReplyChannel, ReplyPing),
@@ -49,7 +59,7 @@ russian_keymap() ->
 		{1051,75},{1052,86},{1053,89},{1054,74},{1055,71},{1056,72},
 		{1057,67},{1058,78},{1059,69},{1060,65},{1061,91},{1062,87},
 		{1063,88},{1064,73},{1065,79},{1066,93},{1067,83},{1068,77},
-		{1069,39},{1070,46},{1071,90},{1072,102},{1073,44},{1074,100},
+		{1069,64},{1070,46},{1071,90},{1072,102},{1073,44},{1074,100},
 		{1075,117},{1076,108},{1077,116},{1078,59},{1079,112},{1080,98},
 		{1081,113},{1082,114},{1083,107},{1084,118},{1085,121},{1086,106},
 		{1087,103},{1088,104},{1089,99},{1090,110},{1091,101},{1092,97},

@@ -109,7 +109,7 @@ check_utf8(_) -> false.
 handle_irc(ctcp, {action, Chan, User=#user{nick=Nick}, Tokens}) ->
 	case permissions:hasperm(User, Chan, ignore) of
 		true ->
-			logging:log(ignore, ?MODULE, "Ignoring ~s!~s@~s ACTION: ~s.", [Nick, User#user.username, User#user.host, string:join(Tokens, " ")]),
+			%logging:log(ignore, ?MODULE, "Ignoring ~s!~s@~s ACTION: ~s.", [Nick, User#user.username, User#user.host, string:join(Tokens, " ")]),
 			ok;
 		false ->
 			distribute_event(ctcp, {action, Chan, User, Tokens})
@@ -121,7 +121,7 @@ handle_irc(msg, Params={User=#user{nick=Nick}, Channel, Tokens}) ->
 		true ->
 	case permissions:hasperm(User, ignore) of
 		true ->
-			logging:log(ignore, ?MODULE, "Ignoring ~s!~s@~s: ~s.", [Nick, User#user.username, User#user.host, string:join(Tokens, " ")]),
+			%logging:log(ignore, ?MODULE, "Ignoring ~s!~s@~s: ~s.", [Nick, User#user.username, User#user.host, string:join(Tokens, " ")]),
 			distribute_event(msg_ignored, {User, Channel, Tokens}),
 			ok;
 		false ->
@@ -150,7 +150,7 @@ handle_irc(notice, {Src, Trg, Msg}) ->
 
 handle_irc(numeric, {{rpl,away},_}) -> ok;
 handle_irc(numeric, {{A,B},Params}) ->
-	logging:log(info, ?MODULE, "Numeric received: ~p_~p ~s", [A,B,string:join(Params," ")]),
+	logging:log(debug, ?MODULE, "Numeric received: ~p_~p ~s", [A,B,string:join(Params," ")]),
 	distribute_event(numeric, {{A,B}, Params});
 
 handle_irc(Type, Params) ->

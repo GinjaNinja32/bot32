@@ -82,20 +82,20 @@ handle_sock(Socket) ->
 						ok ->
 							gen_tcp:send(Socket, "HTTP/1.1 204 No Content\r\n\r\n");
 						error ->
-							logging:log(info, "GITHUB", "HTTP request with incorrect signature from ~s: ~p ~p ~p", [fname(Socket), A, B, Dict]),
+							logging:log(debug, "GITHUB", "HTTP request with incorrect signature from ~s: ~p ~p ~p", [fname(Socket), A, B, Dict]),
 							gen_tcp:send(Socket, "HTTP/1.1 403 Forbidden\r\n\r\n")
 					end;
 				error ->
-					logging:log(info, "GITHUB", "HTTP request with no signature from ~s: ~p ~p ~p", [fname(Socket), A, B, Dict]),
+					logging:log(debug, "GITHUB", "HTTP request with no signature from ~s: ~p ~p ~p", [fname(Socket), A, B, Dict]),
 					gen_tcp:send(Socket, "HTTP/1.1 403 Forbidden\r\n\r\n")
 			end,
 			gen_tcp:close(Socket);
 		{ok, T} ->
-			logging:log(info, "GITHUB", "HTTP request from ~s: ~p", [fname(Socket), T]),
+			logging:log(debug, "GITHUB", "HTTP request from ~s: ~p", [fname(Socket), T]),
 			gen_tcp:send(Socket, "HTTP/1.1 403 Forbidden\r\n\r\n"),
 			gen_tcp:close(Socket);
 		{error, T} ->
-			logging:log(info, "GITHUB", "HTTP error to ~s: ~p", [fname(Socket), T]),
+			logging:log(debug, "GITHUB", "HTTP error to ~s: ~p", [fname(Socket), T]),
 			gen_tcp:close(Socket)
 	end.
 
@@ -129,8 +129,9 @@ decode_content(Content, Signature) ->
 						true ->
 							Channels = config:get_value(config, [?MODULE, channels, User, Repo], ["#bot32-test"]),
 							lists:foreach(fun(M) ->
+								MM = util:fix_utf8(M),
 								lists:foreach(fun(T) ->
-									core ! {irc, {msg, {T, M}}}
+									core ! {irc, {msg, {T, MM}}}
 								end, Channels)
 							end, Messages)
 					end;
@@ -163,7 +164,7 @@ handle_decoded(JSON) ->
 			} of
 		{"opened", _, error, _} ->
 			RepoStruct = json:traverse(JSON, [struct, "pull_request", struct, "base", struct, "repo"]),
-			[create_message(JSON, "[~s] ~s opened pull request #~b: ~s (" ++ ?BRANCH ++ "~s" ++ ?RESET ++ "..." ++ ?BRANCH ++ "~s" ++ ?RESET ++ ") ~s", [
+			[create_message(JSON, "[~ts] ~ts opened pull request #~b: ~ts (" ++ ?BRANCH ++ "~ts" ++ ?RESET ++ "..." ++ ?BRANCH ++ "~ts" ++ ?RESET ++ ") ~ts", [
 					{reponame, [struct, "pull_request", struct, "base", struct, "repo"]},
 					[struct, "sender", struct, "login"],
 					[struct, "pull_request", struct, "number"],
@@ -174,7 +175,7 @@ handle_decoded(JSON) ->
 				])];
 		{"reopened", _, error, _} ->
 			RepoStruct = json:traverse(JSON, [struct, "pull_request", struct, "base", struct, "repo"]),
-			[create_message(JSON, "[~s] ~s reopened pull request #~b: ~s (" ++ ?BRANCH ++ "~s" ++ ?RESET ++ "..." ++ ?BRANCH ++ "~s" ++ ?RESET ++ ") ~s", [
+			[create_message(JSON, "[~ts] ~ts reopened pull request #~b: ~ts (" ++ ?BRANCH ++ "~ts" ++ ?RESET ++ "..." ++ ?BRANCH ++ "~ts" ++ ?RESET ++ ") ~ts", [
 					{reponame, [struct, "pull_request", struct, "base", struct, "repo"]},
 					[struct, "sender", struct, "login"],
 					[struct, "pull_request", struct, "number"],
@@ -185,7 +186,7 @@ handle_decoded(JSON) ->
 				])];
 		{"closed", _, error, _} ->
 			RepoStruct = json:traverse(JSON, [struct, "pull_request", struct, "base", struct, "repo"]),
-			[create_message(JSON, "[~s] ~s closed pull request #~b: ~s (" ++ ?BRANCH ++ "~s" ++ ?RESET ++ "..." ++ ?BRANCH ++ "~s" ++ ?RESET ++ ") ~s", [
+			[create_message(JSON, "[~ts] ~ts closed pull request #~b: ~ts (" ++ ?BRANCH ++ "~ts" ++ ?RESET ++ "..." ++ ?BRANCH ++ "~ts" ++ ?RESET ++ ") ~s", [
 					{reponame, [struct, "pull_request", struct, "base", struct, "repo"]},
 					[struct, "sender", struct, "login"],
 					[struct, "pull_request", struct, "number"],
@@ -196,7 +197,7 @@ handle_decoded(JSON) ->
 				])];
 		{"opened", error, _, _} ->
 			RepoStruct = json:traverse(JSON, [struct, "repository"]),
-			[create_message(JSON, "[~s] ~s opened issue #~b: ~s ~s", [
+			[create_message(JSON, "[~ts] ~ts opened issue #~b: ~ts ~ts", [
 					{reponame, [struct, "repository"]},
 					[struct, "sender", struct, "login"],
 					[struct, "issue", struct, "number"],
@@ -205,7 +206,7 @@ handle_decoded(JSON) ->
 				])];
 		{"reopened", error, _, _} ->
 			RepoStruct = json:traverse(JSON, [struct, "repository"]),
-			[create_message(JSON, "[~s] ~s reopened issue #~b: ~s ~s", [
+			[create_message(JSON, "[~ts] ~ts reopened issue #~b: ~ts ~ts", [
 					{reponame, [struct, "repository"]},
 					[struct, "sender", struct, "login"],
 					[struct, "issue", struct, "number"],
@@ -214,7 +215,7 @@ handle_decoded(JSON) ->
 				])];
 		{"closed", error, _, _} ->
 			RepoStruct = json:traverse(JSON, [struct, "repository"]),
-			[create_message(JSON, "[~s] ~s closed issue #~b: ~s ~s", [
+			[create_message(JSON, "[~ts] ~ts closed issue #~b: ~ts ~ts", [
 					{reponame, [struct, "repository"]},
 					[struct, "sender", struct, "login"],
 					[struct, "issue", struct, "number"],
@@ -225,13 +226,13 @@ handle_decoded(JSON) ->
 			RepoStruct = json:traverse(JSON, [struct, "repository"]),
 			case json:traverse(JSON, [struct, "state"]) of
 				"success" ->
-					logging:log(info, ?MODULE, "Travis SUCCESS: ~s", [json:traverse(JSON, [struct, "commit", struct, "sha"])]),
+					logging:log(debug, ?MODULE, "Travis SUCCESS: ~s", [json:traverse(JSON, [struct, "commit", struct, "sha"])]),
 					ok;
 				"pending" ->
-					logging:log(info, ?MODULE, "Travis PENDING: ~s", [json:traverse(JSON, [struct, "commit", struct, "sha"])]),
+					logging:log(debug, ?MODULE, "Travis PENDING: ~s", [json:traverse(JSON, [struct, "commit", struct, "sha"])]),
 					ok;
 				Status ->
-					logging:log(info, ?MODULE, "Travis ~s: ~s", [string:to_upper(Status), json:traverse(JSON, [struct, "commit", struct, "sha"])]),
+					logging:log(debug, ?MODULE, "Travis ~s: ~s", [string:to_upper(Status), json:traverse(JSON, [struct, "commit", struct, "sha"])]),
 					case case json:traverse(JSON, [struct, "target_url"]) of
 						URL when is_list(URL) ->
 							os:putenv("url", URL),
@@ -242,21 +243,24 @@ handle_decoded(JSON) ->
 						_ -> error
 					end of
 						{ok, Travis} ->
-
-							RepoId = create_message(JSON, "~s", [{reponame, [struct, "repository"]}]),
-							[create_message(Travis, "[~s] Commit ~s '~s' has ~s CI: ~s ~s", [
-									{RepoId},
-									{hash, [struct, "commit"]},
-									{trunc_newline, [struct, "message"]},
-									{case Status of
-										"failure" -> "failed";
-										"error" -> "errored"
-									end},
-									{create_message(JSON, "~s", [ciurl])},
-									[struct, "compare_url"]
-								])];
+							case json:traverse(Travis, [struct, "started_at"]) of
+								null -> ok; % travis cancelled build before it started
+								_ ->
+									RepoId = create_message(JSON, "~ts", [{reponame, [struct, "repository"]}]),
+									[create_message(Travis, "[~ts] Commit ~ts '~ts' has ~ts CI: ~ts ~ts", [
+											{RepoId},
+											{hash, [struct, "commit"]},
+											{trunc_newline, [struct, "message"]},
+											{case Status of
+												"failure" -> "failed";
+												"error" -> "errored"
+											end},
+											{create_message(JSON, "~s", [ciurl])},
+											[struct, "compare_url"]
+										])]
+							end;
 						error ->
-							[create_message(JSON, "[~s] Commit ~s on ~s has ~s CI: ~s ~s", [
+							[create_message(JSON, "[~ts] Commit ~ts on ~ts has ~ts CI: ~ts ~ts", [
 									{reponame, [struct, "repository"]},
 									{hash, [struct, "commit", struct, "sha"]},
 									cibranch,

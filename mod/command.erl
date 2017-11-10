@@ -6,7 +6,7 @@
 handle_event(msg, Params = {User=#user{nick=Nick}, Channel, Tokens}) ->
 	case parse_command(Tokens) of
 		{RCommand, RArguments, Selector} ->
-			logging:log(info, ?MODULE, "Command in ~s from ~s: ~s~s ~s", [Channel, Nick, RCommand, if Selector /= [] -> [$@|Selector]; true -> [] end, string:join(RArguments, " ")]),
+			logging:log(debug, ?MODULE, "Command in ~s from ~s: ~s~s ~s", [Channel, Nick, RCommand, if Selector /= [] -> [$@|Selector]; true -> [] end, string:join(RArguments, " ")]),
 			{Command, Arguments} = lists:foldl(fun(Module, {C,A}) ->
 					util:call_or(Module, pre_command, [C, A], {C, A})
 				end, {RCommand, RArguments}, config:require_value(config, [bot, modules])),

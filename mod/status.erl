@@ -36,7 +36,8 @@ get_commands() ->
 		{"admins",   generic(admins), user},
 		{"mode",     generic(mode), user},
 		{"manifest", generic(manifest), user},
-		{"revision", generic(revision), user}
+		{"revision", generic(revision), user},
+		{"update?",  generic(check_update), user}
 	].
 
 get_help("address") -> ["Get the address of the specified server." | help()];
@@ -72,7 +73,9 @@ generic(Func) ->
 		case orddict:find(canonicalise(ServerID), servers()) of
 			{ok, {Addr,Port,Name}} -> spawn(status, Func, [RT, P, O, Addr, Port, canonicalise(ServerID), Name]), ok;
 			error -> {irc, {msg, {RT, [P, "Illegal argument!"]}}}
-		end
+		end;
+	   (#{reply:=RT,ping:=P}) ->
+		{irc, {msg, {RT, [P, "Please provide a single server ID or byond:// URL argument!"]}}}
 	end.
 
 address(RT, Ping, _, S, P, _, Name) ->
@@ -85,7 +88,7 @@ status(RT, S, P, Name, SilenceErrors) ->
 		{error, _} when SilenceErrors -> ok;
 		{error, X} -> core ! {irc, {msg, {RT, io_lib:format("~sError: ~p", [Name, X])}}};
 		Dict ->
-			Display = [{"Players", "players"}, {"Mode", "mode"}, {"Station Time", "stationtime"}, {"Round Duration", "roundduration"}, {"Map", "map"}],
+			Display = [{"Players", "players"}, {"Active Players", "active_players"}, {"Mode", "mode"}, {"Station Time", "stationtime"}, {"Round Duration", "roundduration"}, {"Map", "map"}],
 			DispParts = lists:filtermap(fun({Disp,Key}) ->
 				case orddict:find(Key, Dict) of
 					{ok, V} -> {true, [Disp, ": ", V]};
@@ -175,3 +178,30 @@ safeget(Dict, Key) ->
 		{ok, V} -> V;
 		error -> "???"
 	end.
+
+% UPDATE CHECKER
+
+check_update(RT, _, _, S, P, ID, Name) ->
+	case config:get_value(config, [?MODULE, repobase, ID]) of
+		'$none' ->
+			io:fwrite("~w\n", [ID]),
+			core ! {irc, {msg, {RT, "I don't have a repo configured for that server!"}}};
+		Repo ->
+			Branch = config:require_value(config, [?MODULE, repobranch, ID]),
+			Github = config:require_value(config, [?MODULE, repogithub, ID]),
+			case byond:send(S, P, "revision") of
+				{error, X} -> core ! {irc, {msg, {RT, io_lib:format("~sError: ~p", [Name, X])}}};
+				Dict ->
+					case orddict:find("revision", Dict) of
+						error -> core ! {irc, {msg, {RT, [P, "Server did not reply with a valid revision."]}}};
+						{ok, Rev} ->
+							os:putenv("rev", Rev),
+							os:putenv("repo", Repo),
+							os:putenv("branch", Branch),
+							os:putenv("github", Github),
+							Reply = util:safe_os_cmd("bash -c './getrev.sh \"$rev\" \"$repo\" \"$branch\" \"$github\"'"),
+							core ! {irc, {msg, {RT, Reply}}}
+					end
+			end
+	end.
+

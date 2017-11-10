@@ -4,7 +4,7 @@
 -include("definitions.hrl").
 
 message_all_rank(Category, Message, Rank) ->
-	logging:log(info, Rank, "~s: ~s", [Category, Message]),
+	logging:log(debug, Rank, "~s: ~s", [Category, Message]),
 	lists:foreach(fun
 			({nickserv,Nick}) -> core ! {irc, {msg, {Nick, [Category, ": ", Message]}}};
 			({N,_,_}) -> core ! {irc, {msg, {N, [Category, ": ", Message]}}}

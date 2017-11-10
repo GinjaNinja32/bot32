@@ -123,7 +123,6 @@ pick_quote(Q) ->
 add_quote(Category, String) ->
 	Quotes = config:get_value(data, [?MODULE], []),
 	Regexed = util:regex_escape(String),
-	common:debug("quote", Regexed),
 	case lists:filter(fun({_, Q}) ->
 				re:run(Q, <<"^", Regexed/binary, "$">>, [{capture, none}, caseless]) == match
 			end, Quotes) of

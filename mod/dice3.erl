@@ -10,6 +10,7 @@ get_commands() ->
 		{"gurps", fun gurps/1, user},
 		{"srun", fun srun/1, user},
 		{"sredge", fun sredge/1, user},
+		{"sr3", fun sr3/1, [{"target",integer},{"dice",integer}], user},
 		{"fate", fun fate/1, user},
 		{"rtd", fun rtd/1, user},
 		{"apoc", fun apoc/1, user}
@@ -30,7 +31,7 @@ get_help(_) -> unhandled.
 % utils
 
 nicks(Sel) ->
-	string:tokens(Sel, ":/|").
+	string:tokens(Sel, ":/|,").
 
 send_to_all(RT, P, Nick, Others, DiceString, Result) ->
 	case lists:member("-", Others) of
@@ -101,6 +102,24 @@ get_sr_edge(N, Sixes, D) ->
 	{_, NewDice} = rollraw(N, 6),
 	S = util:count(fun(T) -> T == 6 end, NewDice),
 	get_sr_edge(S, S+Sixes, NewDice ++ D).
+
+% SHADOWRUN - 3rd ed; not sure what the above is
+
+sr3(#{reply:=RT,ping:=P,nick:=Nick,params:=[Target,Dice],selector:=Selector}) ->
+	if
+		Dice < 0 orelse 100 < Dice -> {irc, {msg, {RT, [P, "Invalid number of dice - must be between 1 and 99"]}}};
+		Target < 1 orelse 100 < Target -> {irc, {msg, {RT, [P, "Invalid target - must be between 1 and 99"]}}};
+		true ->
+			Formatter = fun(Results) ->
+				Successes = util:count(fun(R) -> R >= Target end, Results),
+				Failures = util:count(fun(R) -> R == 1 end, Results),
+				io_lib:format("~b success~s, ~b failure~s", [Successes, util:s(Successes, "es"), Failures, util:s(Failures)])
+			end,
+
+			Reply = dice3(lists:flatten(io_lib:format("~b#(sd6!)", [Dice])), true, Formatter),
+
+			send_to_all(RT, P, Nick, nicks(Selector), io_lib:format("a Shadowrun 3rd Ed. test, ~b dice vs ~b", [Dice, Target]), Reply)
+	end.
 
 % FATE
 
@@ -512,11 +531,7 @@ rollraw(N, M) ->
 		_ -> {ok, lists:map(fun(_) -> random:uniform(M) end, lists:duplicate(N, x))}
 	end.
 
-roll_total(N, M) ->
-	io:fwrite("recursively rolling ~bd~b\n", [N, M]),
-	Total = roll_total(N, M, []),
-	io:fwrite("rolled ~p\n", [Total]),
-	Total.
+roll_total(N, M) -> roll_total(N, M, []).
 
 roll_total(0, _, Total) -> Total;
 roll_total(N, M, Total) -> roll_total(N-1, M, [random:uniform(M)|Total]).
@@ -524,12 +539,12 @@ roll_total(N, M, Total) -> roll_total(N-1, M, [random:uniform(M)|Total]).
 get_n_m(N, M) ->
 	case get_avail(M) of
 		List when length(List) >= N ->
-			common:debug("dice-cache", "using ~b of ~b available d~bs", [N, length(List), M]),
+			logging:log(debug, ?MODULE, "[cache] using ~b of ~b available d~bs", [N, length(List), M]),
 			{A,B} = lists:split(N, List),
 			set_avail(M, B),
 			A;
 		List when length(List) =< N ->
-			common:debug("dice-cache", "request for ~b of ~b available d~bs, fetching 100 more", [N, length(List), M]),
+			logging:log(debug, ?MODULE, "[cache] request for ~b of ~b available d~bs, fetching 100 more", [N, length(List), M]),
 			NewHundred = random_org:generate(100, 1, M),
 			NewList = List ++ NewHundred,
 			{A,B} = lists:split(N, NewList),

@@ -18,13 +18,12 @@ handle_event(ctcp, {action, Chan, #user{nick=Nick}, Tokens}) ->
 handle_event(_, _) -> ok.
 
 do_regex(What, Regexes, Chan, Nick) ->
-	catch lists:foldl(fun
-		({N,____,_},_) when What == self andalso N /= Nick -> ok;
-		({N,Type,T},_) ->
-			case catch apply_all(T, Regexes) of
-				err_nochange ->
-					ok;
-				NewT ->
+	try
+		lists:foldl(fun
+			({N,____,_},_) when What == self andalso N /= Nick -> ok;
+			({N,Type,T},_) ->
+				try
+					NewT = apply_all(T, Regexes),
 					remove_line(N, Chan, Type, T),
 					Show = diff(T, NewT),
 					add_line(N, Chan, Type, NewT),
@@ -35,8 +34,14 @@ do_regex(What, Regexes, Chan, Nick) ->
 							core ! {irc, {msg, {Chan, ["* ", N, " ", Show]}}}
 					end,
 					throw(end_iteration)
-			end
-		end, foo, config:get_value(temp, [?MODULE, lines, Chan], [])).
+				catch
+					throw:err_nochange ->
+						ok
+				end
+			end, foo, config:get_value(temp, [?MODULE, lines, Chan], []))
+	catch
+		throw:end_iteration -> ok
+	end.
 
 apply_all(Line, Regexes) ->
 	lists:foldl(fun({F,R,O},L) ->
@@ -100,13 +105,12 @@ split_regex(Str) -> split_regex(Str, [], [], []).
 
 split_regex(_, _, CR, _) when length(CR) > 3 -> false;
 
-split_regex([$ |Str], [], [], R) -> split_regex(Str, [], [], R); % ignore spaces before first / in each regex
 split_regex([$/|Str], [], [], R) -> split_regex(Str, [], [], R); % skip the first /
 split_regex([$/|Str], CX, CR, R) -> split_regex(Str, [], [lists:reverse(CX)|CR], R);
 
 split_regex([$\\,$/|Str], CX, CR, R) -> split_regex(Str, [$/|CX], CR, R);
 split_regex([$\\,Chr|Str], CX, CR, R) -> split_regex(Str, [Chr,$\\|CX], CR, R);
-split_regex([$;|Str], CX, CR, R) when length(CR) == 2 -> split_regex(Str, [], [], [lists:reverse([lists:reverse(CX)|CR])|R]);
+split_regex([$;|Str], CX, CR, R) when length(CR) == 2 -> split_regex(lists:dropwhile(fun(C) -> C == $  end, Str), [], [], [lists:reverse([lists:reverse(CX)|CR])|R]);
 split_regex([Chr|Str], CX, CR, R) -> split_regex(Str, [Chr|CX], CR, R);
 
 split_regex([], [], [], R) -> lists:reverse(R);

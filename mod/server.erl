@@ -164,7 +164,6 @@ notes(VID, ID, Nick, Reply, Ping, [Who|_]) ->
 			case hd(orddict:fetch_keys(Dict)) of
 				"No information found on the given key." -> ["No information found on the key '", Who, "'."];
 				T ->
-%					File = re:replace(base64:encode(crypto:hash(md5, T)), "/", "@", [global]),
 					File = io_lib:format("~32.16.0b", [binary:decode_unsigned(crypto:hash(md5, T))]),
 					Filename = io_lib:format("/home/bot32/www/~s.txt", [File]),
 					file:write_file(Filename, T),
@@ -304,18 +303,24 @@ sloop() ->
 
 loop(SvrSock) ->
 	case receive
-		stop -> stop
+		stop ->
+			logging:log(info, ?MODULE, "loop received 'stop'..."),
+			stop
 	after
 		100 ->
 			case gen_tcp:accept(SvrSock, 100) of
 				{ok, Socket} -> readsock(Socket);
 				{error, timeout} -> ok;
-				{error, X} -> {error, X}
+				{error, X} ->
+					logging:log(info, ?MODULE, "accept() returned {error,~p}", [X]),
+					{error, X}
 			end
 	end of
 		ok -> loop(SvrSock);
-		stop -> ok;
-		{error, T} -> logging:log(error, ?MODULE, "received error ~p, exiting\n", [T])
+		stop ->
+			logging:log(info, ?MODULE, "loop() received 'stop', returning"),
+			ok;
+		{error, T} -> logging:log(error, ?MODULE, "received error ~p, exiting", [T])
 	end.
 
 dget(Key, Dict) ->
@@ -375,10 +380,11 @@ readsock(Socket) ->
 						"runtime" ->
 							case {dget("runtimes", Dict), dget("revision", Dict)} of
 								{{ok, R}, {ok, Revision}} ->
-									io:fwrite("~p\n", [R]),
 									RuntimeList = lists:map(fun byond:params2dict/1, byond:params2list(R)),
 									case check_password_for_repo(Pwd) of
-										{ok, Repo} -> runtime_report:report_runtimes(Repo, Revision, RuntimeList), ok;
+										{ok, Repo} ->
+											runtime_report:report_runtimes(Repo, Revision, RuntimeList),
+											ok;
 										error -> forbidden
 									end;
 								_ -> bad_request
@@ -402,6 +408,7 @@ readsock(Socket) ->
 			end,
 			gen_tcp:send(Socket, ["HTTP/1.1 ", Response, "\r\n\r\n"]),
 			gen_tcp:close(Socket);
+		{ok, X} -> logging:log(info, ?MODULE, "received non-GET recv ~p", [X]);
 		{error, T} -> logging:log(error, ?MODULE, "error in readsock: ~p", [T])
 	end.
 

@@ -1,14 +1,13 @@
 -module(runtime_report).
--export([report_runtimes/3]).
+-export([report_runtimes/3, github_request/3]).
 
 -include("definitions.hrl").
 
 report_runtimes({User,Repo}, Revision, Runtimes) ->
 	RepoPath = ["/repos/",User,"/",Repo],
-	io:fwrite("~p\n", [Runtimes]),
 	lists:foreach(fun(T) ->
 				case {orddict:find("id", T), orddict:find("name", T), orddict:find("info", T)} of
-					{{ok,ID}, {ok,Name}, {ok,Info}} ->
+					{{ok,ID}, {ok,Name}, {ok,Info}} when ID /= none ->
 						case config:get_value(data, [?MODULE, repo, User, Repo, runtime, ID]) of
 							'$none' -> report_new_runtime(User, Repo, RepoPath, Revision, ID, Name, Info);
 							_ -> update_runtime(User, Repo, RepoPath, Revision, ID, Name, Info)
@@ -93,7 +92,6 @@ github_request(Type, Path, Body) ->
 		[] -> {lists:flatten(["https://api.github.com",Path]), Headers};
 		__ -> {lists:flatten(["https://api.github.com",Path]), Headers, "application/json", lists:flatten(Body)}
 	end,
-	io:fwrite("request ~p ~p\n", [Type, Request]),
 	case httpc:request(Type, Request, [], []) of
 		{ok, {{_, Code, _}, _Headers, RecvBody}} when Code >= 200 andalso Code =< 299->
 			json:parse(RecvBody);

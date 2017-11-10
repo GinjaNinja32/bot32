@@ -3,7 +3,7 @@
 case $1 in
 	search)
 		term=$(echo $2 | sed 's/ /+/g')
-		curl -s "http://store.steampowered.com/search/?term=$term" |
+		curl -s "http://store.steampowered.com/search/?cc=gb&term=$term" |
 				grep -Po '(?<=data-ds-appid=")[0-9]+(?=")' |
 				head -1
 		;;
