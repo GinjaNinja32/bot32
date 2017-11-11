@@ -221,7 +221,7 @@ tokens1() ->
 	 {"+", '+'}, {"-", '-'}, {"*", '*'}, {"/", '/'},
 	 {"(", '('}, {")", ')'}, {"d", 'd'}, {"#", '#'},
 	 {"h", 'h'}, {"H", 'H'}, {"l", 'l'}, {"L", 'L'},
-	 {"s", 's'}, {"i", 'i'}, {"c", 'c'}
+	 {"s", 's'}, {"i", 'i'}, {"c", 'c'}, {"F", 'F'}
 	].
 
 tokenise([$;|Rst], T) -> {T, [string:strip(Rst), ": "]};
@@ -318,7 +318,7 @@ parseLeftAssoc(OpList, Toks) ->
 is_acceptable_left('c', _) -> false;
 is_acceptable_left('s', _) -> false;
 is_acceptable_left(_, L) -> is_tuple(L) orelse is_number(L) orelse is_list(L) orelse L == '%'.
-is_acceptable_right(_, R, _) -> is_tuple(R) orelse is_number(R) orelse is_list(R) orelse R == '%'.
+is_acceptable_right(_, R, _) -> is_tuple(R) orelse is_number(R) orelse is_list(R) orelse R == '%' orelse R == 'F'.
 
 default_left('c') -> '$'; % dummy, it has no left arg
 default_left('s') -> '$'; % ditto
@@ -501,6 +501,7 @@ evaluate(Tree, Expand) ->
 		T when is_list(T) -> {io_lib:format("~p", [T]), T};
 		'$' -> {"", '$'};
 		'%' -> {"%", 100};
+		'F' -> {"F", [-1, 0, 1]};
 		T -> {integer_to_list(T), T}
 	end.
 
