@@ -1,10 +1,9 @@
 #define NUM_E 2.71828183
 #define NUM_SQRT2 1.41421356
 
-#define PI						3.1415
+#define PI						3.14159265
 #define SPEED_OF_LIGHT			3e8		//not exact but hey!
 #define SPEED_OF_LIGHT_SQ		9e+16
-#define INFINITY				1e31	//closer then enough
 
 //atmos
 #define R_IDEAL_GAS_EQUATION	8.31	//kPa*L/(K*mol)
@@ -15,19 +14,8 @@
 
 #define SHORT_REAL_LIMIT 16777216
 
-//"fancy" math for calculating time in ms from tick_usage percentage and the length of ticks
-//percent_of_tick_used * (ticklag * 100(to convert to ms)) / 100(percent ratio)
-//collapsed to percent_of_tick_used * tick_lag
-#define TICK_DELTA_TO_MS(percent_of_tick_used) ((percent_of_tick_used) * world.tick_lag)
-#define TICK_USAGE_TO_MS(starting_tickusage) (TICK_DELTA_TO_MS(TICK_USAGE_REAL - starting_tickusage))
-
 #define PERCENT(val) (round(val*100, 0.1))
 #define CLAMP01(x) (CLAMP(x, 0, 1))
-
-//time of day but automatically adjusts to the server going into the next day within the same round.
-//for when you need a reliable time number that doesn't depend on byond time.
-#define REALTIMEOFDAY (world.timeofday + (MIDNIGHT_ROLLOVER * MIDNIGHT_ROLLOVER_CHECK))
-#define MIDNIGHT_ROLLOVER_CHECK ( GLOB.rollovercheck_last_timeofday != world.timeofday ? update_midnight_rollover() : GLOB.midnight_rollovers )
 
 #define SIGN(x) (x!=0 ? x / abs(x) : 0)
 
@@ -47,7 +35,11 @@
 // Cotangent
 #define COT(x) (1 / TAN(x))
 
+// Cosecant
 #define CSC(x) (1 / sin(x))
+
+// Secant
+#define SEC(x) (1 / cos(x))
 
 #define DEFAULT(a, b) (a ? a : b)
 
@@ -64,7 +56,7 @@
 
 #define ISABOUTEQUAL(a, b, deviation) (deviation ? abs(a - b) <= deviation : abs(a - b) <= 0.1)
 
-#define ISEVEN(x) (x % 2 == 0)
+#define ISEVEN(x) (MODULUS(x, 2) == 0)
 
 #define ISODD(x) (!ISEVEN(x))
 
@@ -82,9 +74,6 @@
 
 // Returns the nth root of x.
 #define ROOT(n, x) (x ** (1 / n))
-
-// secant
-#define SEC(x) (1 / cos(x))
 
 // The quadratic formula. Returns a list with the solutions, or an empty list
 // if they are imaginary.
