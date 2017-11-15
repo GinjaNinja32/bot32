@@ -203,9 +203,10 @@ count(Func, List) ->
 		end, 0, List).
 
 s(N) -> s(N, "s").
+s(N,P) -> s(N,"",P).
 
-s(1,_) -> "";
-s(_,T) -> T.
+s(1,S,_) -> S;
+s(_,_,P) -> P.
 
 waitfor(Ident) ->
 	case whereis(Ident) of

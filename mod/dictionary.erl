@@ -43,7 +43,8 @@ parse_reply(Text, N) ->
 								Num -> io_lib:format("(~b of ~b): ~s ~s", [N, Num, Term, lists:nth(N, Meanings)])
 							end;
 						true ->
-							io_lib:format("There are only ~b definitions!", [length(Meanings)])
+							Count = length(Meanings),
+							io_lib:format("There ~s only ~b definition~s for '~s'!", [util:s(Count,"is","are"), Count, util:s(Count), Term])
 					end
 			end
 	end.
