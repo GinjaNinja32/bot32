@@ -5,29 +5,25 @@
 #define SPEED_OF_LIGHT			3e8		//not exact but hey!
 #define SPEED_OF_LIGHT_SQ		9e+16
 
-//atmos
-#define R_IDEAL_GAS_EQUATION	8.31	//kPa*L/(K*mol)
-#define ONE_ATMOSPHERE			101.325	//kPa
-#define T0C						273.15	// 0degC
-#define T20C					293.15	// 20degC
-#define TCMB					2.7		// -270.3degC
-
 #define SHORT_REAL_LIMIT 16777216
 
-#define PERCENT(val) (round(val*100, 0.1))
+#define PERCENT(val) (round((val)*100, 0.1))
 #define CLAMP01(x) (CLAMP(x, 0, 1))
 
-#define SIGN(x) (x!=0 ? x / abs(x) : 0)
+#define SIGN(x) ( (x)!=0 ? (x) / abs(x) : 0 )
 
-#define ATAN2(x, y) ( !x && !y ? 0 : (y >= 0 ? arccos(x / sqrt(x*x + y*y)) : -arccos(x / sqrt(x*x + y*y)) ) )
+#define CEILING(x, y) ( -round(-(x) / (y)) * (y) )
 
-#define CEILING(x, y) (-round(-x / y) * y)
-
-#define FLOOR(x, y) (round(x / y) * y)
+// round() acts like floor(x, 1) by default but can't handle other values
+#define FLOOR(x, y) ( round((x) / (y)) * (y) )
 
 #define CLAMP(CLVALUE,CLMIN,CLMAX) ( max( (CLMIN), min((CLVALUE), (CLMAX)) ) )
 
-#define MODULUS(x, y) (x - y * round(x / y))
+// Similar to clamp but the bottom rolls around to the top and vice versa. min is inclusive, max is exclusive
+#define WRAP(val, min, max) ( min == max ? min : (val) - (round(((val) - (min))/((max) - (min))) * ((max) - (min))) )
+
+// Real modulus that handles decimals
+#define MODULUS(x, y) ( (x) - (y) * round((x) / (y)) )
 
 // Tangent
 #define TAN(x) (sin(x) / cos(x))
@@ -35,45 +31,49 @@
 // Cotangent
 #define COT(x) (1 / TAN(x))
 
-// Cosecant
-#define CSC(x) (1 / sin(x))
-
 // Secant
 #define SEC(x) (1 / cos(x))
 
-#define DEFAULT(a, b) (a ? a : b)
+// Cosecant
+#define CSC(x) (1 / sin(x))
+
+#define ATAN2(x, y) ( !(x) && !(y) ? 0 : (y) >= 0 ? arccos((x) / sqrt((x)*(x) + (y)*(y))) : -arccos((x) / sqrt((x)*(x) + (y)*(y))) )
 
 // Greatest Common Divisor - Euclid's algorithm
 /proc/Gcd(a, b)
-	return b ? Gcd(b, a % b) : a
+	return b ? Gcd(b, (a) % (b)) : a
 
 // Least Common Multiple
 #define Lcm(a, b) (abs(a) / Gcd(a, b) * abs(b))
 
-#define INVERSE(x) (1/x)
+#define INVERSE(x) ( 1/(x) )
 
-#define INVERSE_SQUARE(initial_strength,cur_distance,initial_distance) (initial_strength*(initial_distance**2/cur_distance**2))
+// Used for calculating the radioactive strength falloff
+#define INVERSE_SQUARE(initial_strength,cur_distance,initial_distance) ( (initial_strength)*((initial_distance)**2/(cur_distance)**2) )
 
-#define ISABOUTEQUAL(a, b, deviation) (deviation ? abs(a - b) <= deviation : abs(a - b) <= 0.1)
+#define ISABOUTEQUAL(a, b, deviation) (deviation ? abs((a) - (b)) <= deviation : abs((a) - (b)) <= 0.1)
 
-#define ISEVEN(x) (MODULUS(x, 2) == 0)
+#define ISEVEN(x) (x % 2 == 0)
 
-#define ISODD(x) (!ISEVEN(x))
+#define ISODD(x) (x % 2 != 0)
 
 // Returns true if val is from min to max, inclusive.
 #define ISINRANGE(val, min, max) (min <= val && val <= max)
 
+// Same as above, exclusive.
+#define ISINRANGE_EX(val, min, max) (min < val && val > max)
+
 #define ISINTEGER(x) (round(x) == x)
 
-#define ISMULTIPLE(x, y) (x % y == 0)
+#define ISMULTIPLE(x, y) ((x) % (y) == 0)
 
 // Performs a linear interpolation between a and b.
 // Note that amount=0 returns a, amount=1 returns b, and
 // amount=0.5 returns the mean of a and b.
-#define LERP(a, b, amount) (amount ? (a + (b - a) * amount) : (a + (b - a) * 0.5)
+#define LERP(a, b, amount) (amount ? ((a) + ((b) - (a)) * (amount)) : ((a) + ((b) - (a)) * 0.5)
 
 // Returns the nth root of x.
-#define ROOT(n, x) (x ** (1 / n))
+#define ROOT(n, x) ((x) ** (1 / (n)))
 
 // The quadratic formula. Returns a list with the solutions, or an empty list
 // if they are imaginary.
@@ -90,43 +90,19 @@
 		return
 	. += (-b - root) / bottom
 
-#define TODEGREES(radians) (radians * 57.2957795)
+#define TODEGREES(radians) ((radians) * 57.2957795)
 
-#define TORADIANS(degrees) (degrees * 0.0174532925)
+#define TORADIANS(degrees) ((degrees) * 0.0174532925)
 
 // Will filter out extra rotations and negative rotations
 // E.g: 540 becomes 180. -180 becomes 180.
-#define SIMPLIFYDEGREES(degrees) ((degrees*SIGN(DEGREES))%360)
+#define SIMPLIFY_DEGREES(degrees) (MODULUS((degrees), 360))
 
-// min is inclusive, max is exclusive
-#define WRAP(val, min, max) (val - ((round(val - min) / (max - min)) * (max - min)))
+#define GET_ANGLE_OF_INCIDENCE(face, input) (MODULUS((face) - (input), 360))
 
-#define NORM_ROT(rot) ((((rot % 360) + (rot - round(rot, 1))) >= 0) ? ((rot % 360) + (rot - round(rot, 1))) : (((rot % 360) + (rot - round(rot, 1))) + 360))
-
-/proc/get_angle_of_incidence(face_angle, angle_in, auto_normalize = TRUE)
-	var/angle_in_s = NORM_ROT(angle_in)
-	var/face_angle_s = NORM_ROT(face_angle)
-	var/incidence = face_angle_s - angle_in_s
-	var/incidence_s = incidence
-	while(incidence_s < -90)
-		incidence_s += 180
-	while(incidence_s > 90)
-		incidence_s -= 180
-	if(auto_normalize)
-		return incidence_s
-	else
-		return incidence
-
-//A logarithm that converts an integer to a number scaled between 0 and 1 (can be tweaked to be higher).
+//A logarithm that converts an integer to a number scaled between 0 and 1.
 //Currently, this is used for hydroponics-produce sprite transforming, but could be useful for other transform functions.
-//Kept for documentation reasons
-///proc/TRANSFORMUSINGVARIABLE(input, inputmaximum, scaling_modifier = 0)
-//
-//		var/inputToDegrees = (input/inputmaximum)*180 //Converting from a 0 -> 100 scale to a 0 -> 180 scale. The 0 -> 180 scale corresponds to degrees
-//		var/size_factor = ((-cos(inputToDegrees) +1) /2) //returns a value from 0 to 1
-//
-//		return size_factor + scaling_modifier //scale mod of 0 results in a number from 0 to 1. A scale modifier of +0.5 returns 0.5 to 1.5
-#define TRANSFORM_USING_VARIABLE(input, max, scale) ( ((input/max)*180) + (-cos((input/max)*180)) )
+#define TRANSFORM_USING_VARIABLE(input, max) ( sin((90*(input))/(max))**2 )
 
 //converts a uniform distributed random number into a normal distributed one
 //since this method produces two random numbers, one is saved for subsequent calls
@@ -153,6 +129,26 @@
 		gaussian_next = R2 * working
 	return (mean + stddev * R1)
 #undef ACCURACY
+
+// Returns a list where [1] is all x values and [2] is all y values that overlap between the given pair of rectangles
+/proc/get_overlap(x1, y1, x2, y2, x3, y3, x4, y4)
+	var/list/region_x1 = list()
+	var/list/region_y1 = list()
+	var/list/region_x2 = list()
+	var/list/region_y2 = list()
+
+	// These loops create loops filled with x/y values that the boundaries inhabit
+	// ex: list(5, 6, 7, 8, 9)
+	for(var/i in min(x1, x2) to max(x1, x2))
+		region_x1["[i]"] = TRUE
+	for(var/i in min(y1, y2) to max(y1, y2))
+		region_y1["[i]"] = TRUE
+	for(var/i in min(x3, x4) to max(x3, x4))
+		region_x2["[i]"] = TRUE
+	for(var/i in min(y3, y4) to max(y3, y4))
+		region_y2["[i]"] = TRUE
+
+	return list(region_x1 & region_x2, region_y1 & region_y2)
 
 #define BENCH(NAME, ITERS, CODE) \
 	do{ \
