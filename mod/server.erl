@@ -37,6 +37,26 @@ waitfordeath(Pid) ->
 
 %
 
+encode_for_server(ID, Text) ->
+	case config:get_value(config, [?MODULE, servers, ID, encoding]) of
+		utf8 -> Text;
+		w1251 -> w1251:encode(Text);
+		T ->
+			logging:log(error, ?MODULE, "unknown encoding ~p for ~p, using UTF-8", [T, ID]),
+			Text
+	end.
+
+decode_from_server(ID, Text) ->
+	case config:get_value(config, [?MODULE, servers, ID, encoding]) of
+		utf8 -> Text;
+		w1251 -> w1251:decode(Text);
+		T ->
+			logging:log(error, ?MODULE, "unknown encoding ~p for ~p, using UTF-8", [T, ID]),
+			Text
+	end.
+
+%
+
 generic(Cmd, ReqPerm) ->
 	fun(#{origin:=User, nick:=Nick, reply:=Reply, ping:=Ping, params:=Params, selector:=Selector}) ->
 		case if
@@ -136,9 +156,9 @@ ssr(_, _, _, Reply, Ping, _) -> {irc, {msg, {Reply, [Ping, "Provide a nick and a
 pm(VID, ID, Nick, Reply, Ping, [Who | Msg]) when Msg /= [] ->
 	RMsg = case send2server(ID, "?adminmsg=~s;msg=~s;key=~s;sender=~s;rank=~s", [
 					Who,
-					string:join(Msg, " "),
+					encode_for_server(ID, string:join(Msg, " ")),
 					config:get_value(config, [?MODULE, servers, ID, pass]),
-					Nick,
+					encode_for_server(ID, Nick),
 					config:get_value(config, [?MODULE, ranks, ID, string:to_lower(Nick)], "Unknown")
 				]) of
 		{error, T} -> io_lib:format("Error: ~p", [T]);
@@ -189,7 +209,7 @@ age(VID, ID, _, Reply, Ping, [Who|_]) ->
 
 info(VID, ID, _, Reply, Ping, What) ->
 	RMsg = case send2server(ID, "?info=~s;key=~s", [
-					string:join(What, " "),
+					encode_for_server(ID, string:join(What, " ")),
 					config:get_value(config, [?MODULE, servers, ID, pass])
 				]) of
 		{error, T} -> io_lib:format("Error: ~p", [T]);
@@ -223,7 +243,7 @@ info(VID, ID, _, Reply, Ping, What) ->
 
 laws(VID, ID, _, Reply, Ping, What) ->
 	RMsg = case send2server(ID, "?laws=~s;key=~s", [
-					string:join(What, " "),
+					encode_for_server(ID, string:join(What, " ")),
 					config:get_value(config, [?MODULE, servers, ID, pass])
 				]) of
 		{error, T} -> io_lib:format("Error: ~p", [T]);
