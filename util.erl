@@ -226,7 +226,7 @@ waitfor_gone(Ident) ->
 % os:cmd() returns non-strings that re:replace can't handle, this fixes them
 safe_os_cmd(String) ->
 	lists:flatmap(fun
-			(T) when T < 256 -> [T];
+			(T) when T < 128 -> [T];
 			(T) -> binary_to_list(<<T/utf8>>)
 		end, unicode_os_cmd(String)).
 

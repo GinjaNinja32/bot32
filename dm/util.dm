@@ -100,3 +100,12 @@
 			intag = !intag
 		p++
 	return t
+
+/proc/seq(lo, hi, st=1)
+	if(isnull(hi))
+		hi = lo
+		lo = 1
+
+	. = list()
+	for(var/x in lo to hi step st)
+		. += x

@@ -6,7 +6,6 @@
 get_commands() ->
 	[
 		{"search", fun search/1, user},
-		{"reload_git", fun reload/1, admin},
 		{"defined", fun defined/1, user}
 	].
 
@@ -17,9 +16,11 @@ deinitialise() ->
 
 %
 
-branch_params(Params, Type) ->
+branch_params(Params, Channel, Type) ->
 	case Params of
-		[X] -> {<<"dev">>, [X]};
+		[_] ->
+			ID = config:get_value(config, [?MODULE, default, list_to_binary(Channel)], <<"bay">>),
+			{ID, Params};
 		[] -> error;
 		_ ->
 			case config:get_value(temp, [?MODULE, Type, list_to_binary(string:to_lower(hd(Params)))]) of
@@ -28,20 +29,38 @@ branch_params(Params, Type) ->
 			end
 	end.
 
-search(#{reply:=Reply, ping:=Ping, params:=Params}) ->
-	case branch_params(Params, trees) of
+do_extras(Tokens, Reply, Ping) ->
+	case re:run(string:join(Tokens, " "), "(?:\\s|^)\\[(?:([^[ ][^| ]*)\\|)?([^]# ]*[^]#0-9 ][^]# ]*)(?:(#[^] ]+))?\\](\\s|$)", [{capture, all_but_first, binary}]) of
+		{match, [RawID, File, ExtraParams, _]} ->
+			ID = case RawID of
+				<<>> -> config:get_value(config, [?MODULE, default, list_to_binary(Reply)], <<"bay">>);
+				_ -> RawID
+			end,
+			case search_tree(ID, File, ExtraParams) of
+				"No matches found." -> ok;
+				Result ->
+					core ! {irc, {msg, {Reply, [Ping, Result]}}}
+			end;
+		_ -> ok
+	end,
+	ok.
+
+search(#{reply:=Reply, ping:=Ping, params:=Params, selector:=Selector}) ->
+	Line = case Selector of
+		"" -> "";
+		_ -> io_lib:format("#L~s", [Selector])
+	end,
+
+	case branch_params(Params, Reply, trees) of
 		error -> {irc, {msg, {Reply, [Ping, "Provide a valid branch to search!"]}}};
 		{BR, PR} ->
+			io:fwrite("~p ~p\n", [BR, PR]),
 			SearchString = list_to_binary(string:to_lower(string:join(PR, " "))),
-			{irc, {msg, {Reply, [Ping, search_tree(BR, SearchString)]}}}
+			{irc, {msg, {Reply, [Ping, search_tree(BR, SearchString, Line)]}}}
 	end.
 
-reload(#{reply:=ReplyTo, ping:=Ping}) ->
-	load_trees(),
-	{irc, {msg, {ReplyTo, [Ping, "Reloaded Git file tree"]}}}.
-
 defined(#{reply:=Reply, ping:=Ping, params:=Params}) ->
-	case branch_params(Params, defines) of
+	case branch_params(Params, Reply, defines) of
 		error -> {irc, {msg, {Reply, [Ping, "Provide a valid branch to search!"]}}};
 		{BR, PR} ->
 			Def = hd(PR),
@@ -55,17 +74,21 @@ defined(#{reply:=Reply, ping:=Ping, params:=Params}) ->
 %
 
 load_trees() ->
-	update(),
 	lists:foreach(fun(T) ->
-			BinT = list_to_binary(T),
-			config:set_value(temp, [?MODULE, trees, BinT], load_tree(T)),
-			config:set_value(temp, [?MODULE, defines, BinT], load_defines(T))
-		end, ["master", "dev", "kunpeng"]).
+			io:fwrite("~s 1\n", [T]),
+			update(T),
+			io:fwrite("~s 2\n", [T]),
+			config:set_value(temp, [?MODULE, trees, T], load_tree(T)),
+			io:fwrite("~s 3\n", [T]),
+			config:set_value(temp, [?MODULE, defines, T], load_defines(T)),
+			io:fwrite("~s 4\n", [T])
+		end, config:get_value(config, [?MODULE, defs], [])).
 
-load_defines(Branch) ->
-	Home = config:require_value(config, [?MODULE, location]),
-	Remote = config:get_value(config, [?MODULE, remote], "upstream"),
-	MatchingLines = string:tokens(util:safe_os_cmd(["cd ", Home, "; git grep '#define' ", Remote, "/", Branch]), "\r\n"),
+load_defines(ID) ->
+	Home = config:require_value(config, [?MODULE, location, ID]),
+	Branch = config:require_value(config, [?MODULE, branch, ID]),
+	Remote = config:get_value(config, [?MODULE, remote, ID], <<"origin">>),
+	MatchingLines = string:tokens(util:safe_os_cmd(["cd ", binary_to_list(Home), "; git grep '#define' ", binary_to_list(Remote), "/", binary_to_list(Branch)]), "\r\n"),
 	lists:keysort(1, lists:filtermap(fun(Line) ->
 			% origin/dev:code/setup.dm:#define FOO 2
 			case re:run(Line, <<"[^:]+:([^:]+):#define\\s+([a-zA-Z0-9_]+)(\\([^)]+\\))?(?:\\s+(.*))?">>, [{capture,all_but_first,binary}]) of
@@ -81,18 +104,21 @@ load_defines(Branch) ->
 			end
 		end, MatchingLines)).
 
-load_tree(Branch) ->
-	Home = config:require_value(config, [?MODULE, location]),
-	Remote = config:get_value(config, [?MODULE, remote], "upstream"),
-	lists:map(fun list_to_binary/1, string:tokens(util:safe_os_cmd(["cd ",Home,"; git ls-files --with-tree ",Remote,"/", Branch]), "\r\n")).
+load_tree(ID) ->
+	Home = config:require_value(config, [?MODULE, location, ID]),
+	Remote = config:get_value(config, [?MODULE, remote, ID], <<"origin">>),
+	Branch = config:get_value(config, [?MODULE, branch, ID], <<"master">>),
+	lists:map(fun list_to_binary/1, string:tokens(util:safe_os_cmd(["cd ",binary_to_list(Home),"; git ls-files --with-tree ",binary_to_list(Remote),"/", binary_to_list(Branch)]), "\r\n")).
 
-search_tree(Branch, String) ->
-	Tree = config:require_value(temp, [?MODULE, trees, Branch]),
+search_tree(ID, String, ExtraParams) ->
+	Tree = config:require_value(temp, [?MODULE, trees, ID]),
+	GHLoc = config:require_value(config, [?MODULE, github, ID]),
+	Branch = config:get_value(config, [?MODULE, branch, ID], <<"master">>),
 	case lists:filter(fun(T) ->
 				binary:match(util:bin_to_lower(T), String) /= nomatch
 			end, Tree) of
 		[] -> "No matches found.";
-		[Match] -> ["http://github.com/Baystation12/Baystation12/blob/", Branch, "/", re:replace(Match, " ", "%20", [global, {return, list}])];
+		[Match] -> ["https://github.com/", GHLoc, "/blob/", Branch, "/", re:replace(Match, " ", "%20", [global, {return, list}]), ExtraParams];
 		Multi ->
 			["Multiple results found: ", join_list_max_len(Multi, "; ", 300)]
 	end.
@@ -106,10 +132,10 @@ join_list_max_len(List, Separator, Length, Complete) when byte_size(hd(List))+le
 join_list_max_len(List, Separator, Length, []) -> join_list_max_len(tl(List), Separator, Length-byte_size(hd(List)), [hd(List)]);
 join_list_max_len(List, Separator, Length, Complete) -> join_list_max_len(tl(List), Separator, Length-length(Separator)-byte_size(hd(List)), [Complete, Separator, hd(List)]).
 
-update() ->
-	Home = config:require_value(config, [?MODULE, location]),
-	Remote = config:get_value(config, [?MODULE, remote], "upstream"),
+update(ID) ->
+	Home = config:require_value(config, [?MODULE, location, ID]),
+	Remote = config:get_value(config, [?MODULE, remote, ID], <<"origin">>),
 	os:cmd([
-		"cd ",Home,";",
-		"git fetch ",Remote,";"
+		"cd ",binary_to_list(Home),";",
+		"git fetch ",binary_to_list(Remote),";"
 	]).

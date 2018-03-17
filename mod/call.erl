@@ -31,7 +31,8 @@ call(#{origin:=User, nick:=OriginNick, reply:=Reply, ping:=Ping, params:=Params}
 				false -> {irc, {msg, {Reply, [Ping, "You are not authorised to do that!"]}}};
 				ok ->
 					Nickname = string:join(Nick, " "),
-					case string:str(string:to_lower(Nickname), "doot") of
+					% case string:str(string:to_lower(Nickname), "doot") of
+					case 0 of
 						0 ->
 							config:set_value(data, [?MODULE, Usr], Nickname),
 							{irc, {msg, {Reply, [Ping, "Done."]}}};

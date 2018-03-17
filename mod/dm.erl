@@ -3,7 +3,8 @@
 
 get_commands() ->
 	[
-		{"dm", fun dm/1, [{"string to evaluate", long}], user}
+		{"dm", fun dm/1, [{"string to evaluate", long}], user},
+		{"dml", fun dml/1, [{"string to evaluate", long}], user}
 	].
 
 get_help("dm") ->
@@ -13,9 +14,18 @@ get_help("dm") ->
 		"Use ; as a literal ; (eg in `if(x){y(); z()}`).",
 		"Any code containing either ## or include (whether in a string or not) will not be executed for security reasons."
 	];
+get_help("dml") ->
+	[
+		"Multi-line-output version of !dm"
+	] ++ get_help("dm");
 get_help(_) -> unhandled.
 
 dm(#{reply:=Reply, ping:=Ping, params:=[String]}) ->
+	dmrun(Reply, Ping, String, false).
+dml(#{reply:=Reply, ping:=Ping, params:=[String]}) ->
+	dmrun(Reply, Ping, String, true).
+
+dmrun(Reply, Ping, String, Multiline) ->
 	case re:run(String, "##|include", [{capture,none}]) of
 		match -> {irc, {msg, {Reply, [Ping, "You attempted to use either ## or include; both are blocked for security reasons."]}}};
 		nomatch ->
@@ -38,8 +48,11 @@ dm(#{reply:=Reply, ping:=Ping, params:=[String]}) ->
 
 			file:write_file(["dm/", UseMD5, ".dme"], File),
 			spawn(fun() ->
+				util:unicode_os_putenv("multiline", if Multiline -> "true"; true -> "false" end),
 				Output = util:safe_os_cmd(["./dm_compile_run.sh ", UseMD5]),
-				core ! {irc, {msg, {Reply, [Ping, string:join(string:tokens(Output, "\n"), ";  ")]}}}
+				lists:foreach(fun(Line) ->
+						core ! {irc, {msg, {Reply, [Ping, Line]}}}
+					end, string:tokens(Output, "\n"))
 			end),
 			ok
 	end.

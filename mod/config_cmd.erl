@@ -25,12 +25,12 @@ c(#{reply:=Reply, ping:=Ping, params:=Params, selector:=Selector}) ->
 									Path = erl_parse:normalise(PA),
 									Val = erl_parse:normalise(VA),
 									config:set_value(C, Path, Val),
-									core ! {irc, {msg, {Reply, [Ping, io_lib:format("Set ~p:~p to ~500p.", [C, Path, Val])]}}};
+									core ! {irc, {msg, {Reply, [Ping, io_lib:format("Set ~p:~p to ~99999p.", [C, Path, Val])]}}};
 								PA = {cons,_,_,_} ->
 									Path = erl_parse:normalise(PA),
-									core ! {irc, {msg, {Reply, [Ping, io_lib:format("Value of ~p:~p: ~500p", [C, Path, config:get_value(C, Path)])]}}};
+									core ! {irc, {msg, {Reply, [Ping, io_lib:format("Value of ~p:~p: ~99999p", [C, Path, config:get_value(C, Path)])]}}};
 								X ->
-									core ! {irc, {msg, {Reply, [Ping, io_lib:format("Unknown abstract expression ~500p", [X])]}}}
+									core ! {irc, {msg, {Reply, [Ping, io_lib:format("Unknown abstract expression ~99999p", [X])]}}}
 							end
 						end, ExprList);
 				{error, {_,_,Desc}} ->

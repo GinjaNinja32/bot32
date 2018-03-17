@@ -164,8 +164,15 @@ getrank(#{reply:=ReplyTo, ping:=Ping, params:=[Mask]}) ->
 	end,
 	{irc, {msg, {ReplyTo, [Ping, Reply]}}}.
 
-whorank(#{reply:=ReplyTo, ping:=Ping}) ->
-	Reply = util:binary_join(lists:map(fun({N,_,_})->N; (C) -> <<"CH:", C/binary>> end, orddict:fetch_keys(config:require_value(config, [permissions]))), <<",">>),
+whorank(#{reply:=ReplyTo, ping:=Ping, params:=Params}) ->
+	Who = case Params of
+		[RankStr] ->
+			Rank = list_to_atom(RankStr),
+			orddict:fetch_keys(lists:filter(fun({_,V}) -> lists:member(Rank, V) end, config:require_value(config, [permissions])));
+		[] ->
+			orddict:fetch_keys(config:require_value(config, [permissions]))
+	end,
+	Reply = util:binary_join(lists:map(fun({N,U,H})-> <<N/binary, "!", U/binary, "@", H/binary>>; ({nickserv,N}) -> <<"NS:", N/binary>>; (C) -> <<"CH:", C/binary>> end, Who), <<", ">>),
 	{irc, {msg, {ReplyTo, [Ping, Reply]}}}.
 
 join(#{reply:=ReplyTo, ping:=Ping, params:=[]}) ->

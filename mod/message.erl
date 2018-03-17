@@ -177,12 +177,12 @@ whosent(#{reply:=Reply, ping:=Ping, params:=Params}) ->
 pendingf(R, P, Lst) -> pendingf(R, P, tl(Lst), [hd(Lst)]).
 
 pendingf(R, P, [], B) ->
-	core ! {irc, {msg, {R, [P, string:join(lists:reverse(B), ", ")]}}},
+	core ! {irc, {msg, {R, [P, string:join(lists:reverse(B), " ")]}}},
 	ok;
 pendingf(R, P, [A|Rst], B) ->
 	if
 		length(B) > 19 ->
-			core ! {irc, {msg, {R, [P, string:join(lists:reverse(B), ", ")]}}},
+			core ! {irc, {msg, {R, [P, string:join(lists:reverse(B), " ")]}}},
 			pendingf(R, P, Rst, [A]);
 		true ->
 			pendingf(R, P, Rst, [A|B])

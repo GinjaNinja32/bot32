@@ -24,8 +24,6 @@ pre_command(Command, Args) ->
 			end,
 			NewCmd = de_russian_single(Command),
 
-			io:fwrite("~p ~p\n", [NewCmd, NewArgs]),
-
 			{NewCmd, NewArgs}
 	end.
 

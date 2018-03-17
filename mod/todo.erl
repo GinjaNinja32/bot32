@@ -85,6 +85,9 @@ todo(P=#{nick:=Nick, reply:=Reply, ping:=Ping, params:=[Opt, StrN]}) ->
 todo(#{nick:=Nick, reply:=Reply, ping:=Ping, params:=[]}) ->
 	show_todos(Nick, Reply, Ping, false);
 
+todo(#{nick:=Nick, reply:=Reply, ping:=Ping, params:=["list"]}) ->
+	show_todos(Nick, Reply, Ping, false);
+
 todo(#{nick:=Nick, reply:=Reply, ping:=Ping, params:=["all"]}) ->
 	show_todos(Nick, Reply, Ping, true);
 

@@ -1,3 +1,5 @@
+%% coding: latin-1
+
 -module(correction).
 -compile(export_all).
 
@@ -164,21 +166,35 @@ names() ->
 	[
 		{dvorak(), ["dvorak", "dv", "d"]},
 		{russian(), ["russian", "ru", "r"]},
-		{qwerty(), ["qwerty", "qw", "q"]}
+		{qwerty(), ["qwerty", "qw", "q"]},
+		{french(), ["french", "fr", "f"]}
 	].
 
 indexof(Element, List) -> indexof(Element, List, 1).
 
 indexof(E, <<E/utf8, _/binary>>, N) -> N;
 indexof(E, <<_/utf8, R/binary>>, N) -> indexof(E, R, N+1);
-indexof(_, <<>>, _) -> 0.
+indexof(_, <<>>, _) -> 0;
+indexof(_, Bin, _) ->
+	logging:log(error, ?MODULE, "what ~w\n", [Bin]),
+	0.
 
 charat(1, <<A/utf8, _/binary>>) -> A;
 charat(T, <<_/utf8, R/binary>>) -> charat(T-1, R).
 
-russian() -> <<"ё1234567890-=йцукенгшщзхъ/фывапролджэячсмитьбю.Ё!\"№;%:?*()_+ЙЦУКЕНГШЩЗХЪ|ФЫВАПРОЛДЖЭЯЧСМИТЬБЮ,">>.
-dvorak()  -> <<"`1234567890[]',.pyfgcrl/=\aoeuidhtns-;qjkxbmwvz~!@#$%^&*(){}\"<>PYFGCRL?+|AOEUIDHTNS_:QJKXBMWVZ">>.
-qwerty()  -> <<"`1234567890-=qwertyuiop[]\asdfghjkl;'zxcvbnm,./~!@#$%^&*()_+QWERTYUIOP{}|ASDFGHJKL:\"ZXCVBNM<>?">>.
+russian() -> <<"ё1234567890-=",  "йцукенгшщзхъ/",  "фывапролджэ",  "ячсмитьбю.",
+               "Ё!\"№;%:?*()_+", "ЙЦУКЕНГШЩЗХЪ|",  "ФЫВАПРОЛДЖЭ",  "ЯЧСМИТЬБЮ,">>.
+dvorak()  -> <<"`1234567890[]",  "',.pyfgcrl/=\\", "aoeuidhtns-",  ";qjkxbmwvz",
+               "~!@#$%^&*(){}",  "\"<>PYFGCRL?+|", "AOEUIDHTNS_",  ":QJKXBMWVZ">>.
+qwerty()  -> <<"`1234567890-=",  "qwertyuiop[]\\", "asdfghjkl;'",  "zxcvbnm,./",
+               "~!@#$%^&*()_+",  "QWERTYUIOP{}|",  "ASDFGHJKL:\"", "ZXCVBNM<>?">>.
+french()  -> <<"?1234567890°+",  "azertyuiop¨£µ",  "qsdfghjklm%",  "wxcvbn?./§",
+               "²&é\"'(-è_çà)=", "AZERTYUIOP^$*",  "QSDFGHJKLMù",  "WXCVBN,;:!">>.
+
+% `1234567890-=
+%  qwertyuiop[]
+%  asdfghjkl;'#
+%  \zxcvbnm,./
 
 convert(String, From, To) ->
     binary_to_list(deseparate(lists:map(fun(S) ->

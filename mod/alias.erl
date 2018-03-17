@@ -13,9 +13,9 @@ pre_command(Command, Args) ->
 	LCommand = string:to_lower(Command),
 	case config:get_value(data, [?MODULE, aliases, LCommand]) of
 		'$none' -> {Command, Args};
-		{V, _} when Args == none -> {V, none};
-		{V, Spec} -> {V, apply(Spec, Args)};
-		V -> {V, Args}
+		{V, _} when Args == none -> pre_command(V, none);
+		{V, Spec} -> pre_command(V, apply(Spec, Args));
+		V -> pre_command(V, Args)
 	end.
 
 apply(Spec, Args) ->

@@ -19,11 +19,11 @@ fetch(Src, Dst, Query) ->
 	util:unicode_os_putenv("query", re:replace(Query, " ", "%20", [global])),
 	Reply = util:safe_os_cmd("curl -s --user-agent \"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.75 Safari/537.36\" \"https://translate.google.com/translate_a/single?client=gtx&sl=$srclang&tl=$dstlang&dt=t&q=$query\""),
 
-	case re:run(Reply, "\\[\\[\\[\"([^\"]+)\",\"([^\"]+)\".*", [{capture, all_but_first, binary}]) of
-		{match, [BinFinal, _]} ->
+	case re:run(Reply, "\\[\\[\\[\"([^\"]+)\",\"(?:[^\"]+)\".*", [{capture, all_but_first, binary}]) of
+		{match, [BinFinal]} ->
 			BinFinal;
 		X ->
-			io:fwrite("~w -> ~tp\n", [list_to_binary(Reply), X]),
+			logging:log(info, ?MODULE, "regex match got ~w -> ~tp\n", [list_to_binary(Reply), X]),
 			"Unknown error."
 	end.
 

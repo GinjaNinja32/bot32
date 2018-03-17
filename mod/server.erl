@@ -178,7 +178,12 @@ age(VID, ID, _, Reply, Ping, [Who|_]) ->
 					config:get_value(config, [?MODULE, servers, ID, pass])
 				]) of
 		{error, T} -> io_lib:format("Error: ~p", [T]);
-		Dict -> ["Age of ", Who, ": ", hd(orddict:fetch_keys(Dict))]
+		Dict ->
+			Age = hd(orddict:fetch_keys(Dict)),
+			AsInt = list_to_integer(Age, 10),
+			NowDays = calendar:date_to_gregorian_days(element(1, calendar:now_to_datetime(erlang:timestamp()))),
+			{Y,M,D} = calendar:gregorian_days_to_date(NowDays - AsInt),
+			io_lib:format("Age of ~s: ~s (~b-~2..0b-~2..0b)", [Who, hd(orddict:fetch_keys(Dict)), Y, M, D])
 	end,
 	{irc, {msg, {Reply, [Ping, VID, RMsg]}}}.
 

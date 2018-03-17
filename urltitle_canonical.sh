@@ -1,5 +1,9 @@
 #! /bin/bash
 
+if [ -z "$DEBUG" ]; then
+	DEBUG=false
+fi
+
 URL="$1"
 if [ -n $bot32 ]; then
 	useragent="bot32/$bot32 (http://github.com/GinjaNinja32/bot32; ginjaninja32+bot32@gmail.com)"
@@ -50,4 +54,43 @@ readit() {
 	echo "$title"
 }
 
-wget -4 --header="Accept-Language: en-gb, en;q=0.7" --header="User-Agent: $useragent" -qT 10 -O - "$URL" | readit
+data="$(wget -4 --header="Accept-Language: en-gb, en;q=0.7" --header="User-Agent: $useragent" -qT 10 -O - --save-headers $URL)"
+
+html="$(echo "$data" | grep -aEA999999 '^\s*$')"
+
+datatype="$(echo "$html" 2>/dev/null | file -)"
+if $DEBUG; then
+	echo "datatype: $datatype"
+fi
+if [[ "$datatype" != *text* ]]; then
+	echo "datatype is not text"
+	exit 0
+fi
+
+charset="$(echo "$data" | grep -aE '^$|Content-Type:.*charset=.*' | head -n1 | sed -r 's/Content-Type:.*charset=(\S+).*/\1/g')"
+if $DEBUG; then
+	echo "charset: $charset"
+fi
+
+if [[ "$charset" == "" ]]; then
+	charset="$(echo "$html" | grep -aE '<meta [^>]*charset="?[^"]+"?>' | sed -r 's/.*charset="?([^"]+)"?>.*/\1/g' | head -n1)"
+	if $DEBUG; then
+		echo "charset: $charset"
+	fi
+fi
+
+if [[ "$charset" == "" ]]; then
+	ncharset="$(echo "$html" | uchardet)"
+	if [[ "$ncharset" != "ascii/unknown" ]]; then
+		charset="$ncharset"
+		if $DEBUG; then
+			echo "charset: $charset"
+		fi
+	fi
+fi
+
+if [[ "$charset" != "" && "$charset" != "utf8" ]]; then
+        html="$(echo "$html" | iconv -f "$charset" -t utf8 -)"
+fi
+
+echo "$html" 2>/dev/null | readit

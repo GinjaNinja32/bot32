@@ -10,6 +10,7 @@ get_commands() ->
 		{"evalstr", gen_eval_str(fun eval/1), eval},
 		{"bash", fun bash/1, [long], eval},
 		{"bashl", fun bashl/1, [long], eval},
+		{"bashld", fun bashld/1, [long], eval},
 		{"py", fun py/1, [long], eval},
 		{"pyl", fun pyl/1, [long], eval},
 		{"s", fun shl/1, eval},
@@ -24,23 +25,28 @@ get_commands() ->
 
 bash(#{reply:=Reply, ping:=Ping, params:=[Param]}) ->
 	util:unicode_os_putenv("args", Param),
-	{irc, {msg, {Reply, io_lib:format("~s~500p", [Ping, util:safe_os_cmd("bash -c \"$args\"")])}}}.
+	{irc, {msg, {Reply, io_lib:format("~s~99999p", [Ping, util:safe_os_cmd("bash -c \"$args\"")])}}}.
 
 py(#{reply:=Reply, ping:=Ping, params:=[Param]}) ->
 	util:unicode_os_putenv("script", Param),
-	{irc, {msg, {Reply, io_lib:format("~s~500p", [Ping, util:safe_os_cmd("python -c \"$script\"")])}}}.
+	{irc, {msg, {Reply, io_lib:format("~s~99999p", [Ping, util:safe_os_cmd("python -c \"$script\"")])}}}.
 
 bashl(#{reply:=Reply, ping:=Ping, params:=[Param]}) ->
 	util:unicode_os_putenv("args", Param),
 	RRaw = util:safe_os_cmd("bash -c \"$args\""),
-	lines2channel(Reply, Ping, RRaw).
+	lines2channel(Reply, Ping, "", RRaw).
+
+bashld(#{reply:=Reply, ping:=Ping, params:=[Param]}) ->
+	util:unicode_os_putenv("args", Param),
+	RRaw = util:safe_os_cmd("bash -c \"$args\""),
+	lines2channel(Reply, [Ping,"`|"], "`", RRaw).
 
 pyl(#{reply:=Reply, ping:=Ping, params:=[Param]}) ->
 	util:unicode_os_putenv("script", Param),
 	RRaw = util:safe_os_cmd("python -c \"$script\""),
-	lines2channel(Reply, Ping, RRaw).
+	lines2channel(Reply, Ping, "", RRaw).
 
-lines2channel(Reply, Ping, RRaw) ->
+lines2channel(Reply, Pre, Post, RRaw) ->
 	R = lists:flatmap(fun
 			(10) -> [10];
 			(9) -> "    ";
@@ -50,7 +56,7 @@ lines2channel(Reply, Ping, RRaw) ->
 			(T) ->
 				case string:strip(T) of
 					[] -> ok;
-					_ -> core ! {irc, {msg, {Reply, [Ping, T]}}}
+					_ -> core ! {irc, {msg, {Reply, [Pre, T, Post]}}}
 				end
 		end, string:tokens(R, "\n")).
 
@@ -81,7 +87,7 @@ shl(#{reply:=RT, ping:=P, params:=Params}) ->
 					case catch erl_eval:exprs(Forms, Bindings) of
 						{value, Value, NewBinds} ->
 							config:set_value(data, [eval, shell], NewBinds),
-							{irc, {msg, {RT, [P, io_lib:format("~500p", [Value])]}}};
+							{irc, {msg, {RT, [P, io_lib:format("~99999p", [Value])]}}};
 						{'EXIT', {Reason, Stack}} when is_list(Stack) -> {irc, {msg, {RT, [P, format_reasonstack(Reason, Stack)]}}};
 						{'EXIT', Term} -> {irc, {msg, {RT, [P, io_lib:format("Code exited with ~p", [Term])]}}};
 						Term -> {irc, {msg, {RT, [P, io_lib:format("Code threw ~p", [Term])]}}}
@@ -94,7 +100,7 @@ shl(#{reply:=RT, ping:=P, params:=Params}) ->
 sshow(#{reply:=RT, ping:=P}) ->
 	case config:get_value(data, [eval, shell]) of
 		'$none' -> {irc, {msg, {RT, [P, "No state found."]}}};
-		V -> {irc, {msg, {RT, [P, io_lib:format("~500p", [V])]}}}
+		V -> {irc, {msg, {RT, [P, io_lib:format("~99999p", [V])]}}}
 	end.
 
 serase(#{reply:=RT, ping:=P, params:=A}) when length(A) /= 1 -> {irc, {msg, {RT, [P, "Provide a single var name."]}}};
@@ -106,7 +112,7 @@ serase(#{reply:=RT, ping:=P, params:=[Var]}) ->
 			case orddict:find(Atom, Vars) of
 				{ok, Val} ->
 					config:set_value(data, [eval, shell], orddict:erase(Atom, Vars)),
-					io_lib:format("Dropped value ~500p.", [Val]);
+					io_lib:format("Dropped value ~99999p.", [Val]);
 				error ->
 					io_lib:format("No variable ~s found.", [Var])
 			end

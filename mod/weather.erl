@@ -16,13 +16,16 @@ get_commands() ->
 		{"weather", fun weather/1, user}
 	].
 
-weather(#{reply:=RT, ping:=P, params:=Params}) -> {irc, {msg, {RT, [P, weather2(Params)]}}}.
+weather(#{reply:=RT, ping:=P, params:=[]}) -> {irc, {msg, {RT, [P, "Provide a location to look up weather for."]}}};
+weather(#{reply:=RT, ping:=P, params:=Params}) ->
+	spawn(fun() ->
+		weather2(RT, P, Params)
+	end).
 
-weather2([]) -> "Provide a location to look up weather for.";
-weather2(Place) ->
+weather2(RT, P, Place) ->
 	os:putenv("location", string:join(Place, "+")),
 	Reply = os:cmd("/home/bot32/weather.sh $location"),
-	parse_reply(Reply).
+	core ! {irc, {msg, {RT, [P, parse_reply(Reply)]}}}.
 
 parse_reply([]) -> "Error; does the location exist?";
 parse_reply(Text) ->
