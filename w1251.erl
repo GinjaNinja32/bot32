@@ -30,7 +30,6 @@ mapping() -> [
 	{16#045B, 1},
 	{16#045F, 1},
 	{16#00A0, 1}, % A0
-	{16#0000, 1},
 	{16#040E, 1},
 	{16#045E, 1},
 	{16#0408, 1},
@@ -59,7 +58,7 @@ mapping() -> [
 ].
 
 encode_single(Codepoint) ->
-	encode_single(Codepoint, 16#7F, mapping()).
+	encode_single(Codepoint, 16#80, mapping()).
 
 encode_single(_, _, []) -> $?;
 encode_single(Codepoint, N, [{Point, Count}|_]) when Point =< Codepoint andalso Codepoint < Point+Count ->
@@ -69,7 +68,7 @@ encode_single(Codepoint, N, [{Point, Count}|Rest]) ->
 	encode_single(Codepoint, N+Count, Rest).
 
 decode_single(Byte) ->
-	decode_single(Byte - 16#7F, mapping()).
+	decode_single(Byte - 16#80, mapping()).
 
 decode_single(_, []) -> 16#FFFD; % U+FFFD REPLACEMENT CHARACTER
 decode_single(Offset, [{Point, Count}|_]) when Offset < Count ->
