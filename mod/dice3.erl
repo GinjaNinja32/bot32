@@ -5,15 +5,15 @@
 
 get_commands() ->
 	[
-		{"dice", fun dice/1, user},
-		{"edice", fun edice/1, user},
-		{"gurps", fun gurps/1, user},
-		{"srun", fun srun/1, user},
-		{"sredge", fun sredge/1, user},
+		{"dice", fun dice/1, [{"dice string", long, "d6"}], user},
+		{"edice", fun edice/1, [{"dice string", long, "d6"}], user},
+		{"gurps", fun gurps/1, [{"target",integer}, {"comment",long,""}], user},
+		{"srun", fun srun/1, [{"dice",integer}], user},
+		{"sredge", fun sredge/1, [{"dice",integer}], user},
 		{"sr3", fun sr3/1, [{"target",integer},{"dice",integer}], user},
-		{"fate", fun fate/1, user},
-		{"rtd", fun rtd/1, user},
-		{"apoc", fun apoc/1, user}
+		{"fate", fun fate/1, [{"modifier",integer,0}], user},
+		{"rtd", fun rtd/1, [{"comment",long,""}], user},
+		{"apoc", fun apoc/1, [{"modifier",integer,0},{"comment",long,""}], user}
 	].
 
 get_help("dice") ->
@@ -45,37 +45,29 @@ send_to_all(RT, P, Nick, Others, DiceString, Result) ->
 
 % GURPS
 
-gurps(#{reply:=RT, ping:=P, nick:=Nick, params:=Params, selector:=Selector}) ->
-	case Params of
-		[] ->
-			Result = dice3("3d6", true),
-			send_to_all(RT, P, Nick, nicks(Selector), "3d6", Result);
-		_ ->
-			T = list_to_integer(hd(Params)),
-			Comment = case string:join(tl(Params), " ") of
-				[] -> [];
-				X -> [X,$:,$ ]
-			end,
-			Targets = if
-				T >= 16 -> [6, 16,   17];
-				T == 15 -> [5, 15,   16];
-				T >=  7 -> [4,  T,   16];
-				true    -> [4,  T, T+10]
-			end,
-			Formatter = fun
-				([false,false,false]) -> [Comment, "\x036\x02Critical Failure!\x03\x02"];
-				([false,false, true]) -> [Comment, "\x035\x02Failure!\x03\x02"];
-				([false, true, true]) -> [Comment, "\x033\x02Success!\x03\x02"];
-				([ true, true, true]) -> [Comment, "\x0310\x02Critical Success!\x03\x02"]
-			end,
-			Result = dice3(lists:flatten(io_lib:format("3d6<=~w", [Targets])), true, Formatter),
-			send_to_all(RT, P, Nick, nicks(Selector), io_lib:format("a GURPS test at skill ~b", [T]), Result)
-	end.
+gurps(#{reply:=RT, ping:=P, nick:=Nick, params:=[T,RawComment], selector:=Selector}) ->
+	Comment = case RawComment of
+		[] -> [];
+		X -> [X,$:,$ ]
+	end,
+	Targets = if
+		T >= 16 -> [6, 16,   17];
+		T == 15 -> [5, 15,   16];
+		T >=  7 -> [4,  T,   16];
+		true    -> [4,  T, T+10]
+	end,
+	Formatter = fun
+		([false,false,false]) -> [Comment, "\x036\x02Critical Failure!\x03\x02"];
+		([false,false, true]) -> [Comment, "\x035\x02Failure!\x03\x02"];
+		([false, true, true]) -> [Comment, "\x033\x02Success!\x03\x02"];
+		([ true, true, true]) -> [Comment, "\x0310\x02Critical Success!\x03\x02"]
+	end,
+	Result = dice3(lists:flatten(io_lib:format("3d6<=~w", [Targets])), true, Formatter),
+	send_to_all(RT, P, Nick, nicks(Selector), io_lib:format("a GURPS test at skill ~b", [T]), Result).
 
 % SHADOWRUN
 
-srun(#{reply:=RT,ping:=P,nick:=Nick,params:=Params,selector:=Selector}) ->
-	T = list_to_integer(hd(Params)),
+srun(#{reply:=RT,ping:=P,nick:=Nick,params:=[T],selector:=Selector}) ->
 	{_, Dice} = rollraw(T, 6),
 	{One,FivePlus} = lists:foldl(fun(1, {O,F}) -> {O+1,F}; (N, {O,F}) when N >= 5 -> {O, F+1}; (_, D) -> D end, {0,0}, Dice),
 	Summary = io_lib:format("~b failure~s, ~b hit~s", [One, util:s(One), FivePlus, util:s(FivePlus)]),
@@ -85,8 +77,7 @@ srun(#{reply:=RT,ping:=P,nick:=Nick,params:=Params,selector:=Selector}) ->
 		true -> Summary
 	end,
 	send_to_all(RT, P, Nick, nicks(Selector), io_lib:format("a Shadowrun test with ~b dice", [T]), Reply).
-sredge(#{reply:=RT,ping:=P,nick:=Nick,params:=Params, selector:=Selector}) ->
-	T = list_to_integer(hd(Params)),
+sredge(#{reply:=RT,ping:=P,nick:=Nick,params:=[T], selector:=Selector}) ->
 	{ExtraDice, Dice} = get_sr_edge(T, 0, []),
 	{One,FivePlus} = lists:foldl(fun(1, {O,F}) -> {O+1,F}; (N, {O,F}) when N >= 5 -> {O, F+1}; (_, D) -> D end, {0,0}, Dice),
 	Summary = io_lib:format("~b failure~s, ~b hit~s (rolled ~b six~s)", [One, util:s(One), FivePlus, util:s(FivePlus), ExtraDice, util:s(ExtraDice, "es")]),
@@ -123,11 +114,7 @@ sr3(#{reply:=RT,ping:=P,nick:=Nick,params:=[Target,Dice],selector:=Selector}) ->
 
 % FATE
 
-fate(#{reply:=RT, ping:=P,nick:=Nick,params:=Params, selector:=Selector}) ->
-	N = case Params of
-		[] -> 0;
-		[NS] -> list_to_integer(NS)
-	end,
+fate(#{reply:=RT, ping:=P,nick:=Nick,params:=[N], selector:=Selector}) ->
 	{_, RawDice} = rollraw(4, 3),
 	Dice = lists:map(fun(T) -> T-2 end, RawDice), % d3-2 is equivalent to a single FATE die
 	Str = lists:map(fun(-1) -> ?LRED ++ "-" ++ ?RESET;
@@ -144,8 +131,8 @@ show(0) -> ?WHITE ++ "+0" ++ ?RESET.
 
 % RTD
 
-rtd(#{reply:=Reply, ping:=Ping, nick:=Nick, selector:=Selector, params:=Params}) ->
-	Comment = case string:join(Params, " ") of
+rtd(#{reply:=Reply, ping:=Ping, nick:=Nick, selector:=Selector, params:=[RawComment]}) ->
+	Comment = case RawComment of
 		[] -> [];
 		X -> [X,$:,$ ]
 	end,
@@ -162,17 +149,10 @@ rtd(#{reply:=Reply, ping:=Ping, nick:=Nick, selector:=Selector, params:=Params})
 
 % APOCALYPSE WORLD
 
-apoc(#{reply:=RT, ping:=P, nick:=Nick, params:=Params, selector:=Selector}) ->
-	case Params of
-		[] ->
-			M = 0,
-			Comment = "";
-		_ ->
-			M = list_to_integer(hd(Params)),
-			Comment = case string:join(tl(Params), " ") of
-				[] -> [];
-				X -> [X,$:,$ ]
-			end
+apoc(#{reply:=RT, ping:=P, nick:=Nick, params:=[M, RawComment], selector:=Selector}) ->
+	Comment = case RawComment of
+		"" -> "";
+		_ -> [RawComment, $:, $ ]
 	end,
 	Formatter = fun
 		([false,false,false]) -> [Comment, "\x034\x02Miss!\x03\x02"];
@@ -188,8 +168,7 @@ apoc(#{reply:=RT, ping:=P, nick:=Nick, params:=Params, selector:=Selector}) ->
 dice(X) -> dice(X, false).
 edice(X) -> dice(X, true).
 
-dice (#{reply:=RT,ping:=P,nick:=Nick,params:=Params, selector:=Selector}, Expand) ->
-	DiceString = string:join(Params, " "),
+dice (#{reply:=RT,ping:=P,nick:=Nick,params:=[DiceString], selector:=Selector}, Expand) ->
 	Reply = dice3(DiceString, Expand),
 	send_to_all(RT, P, Nick, nicks(Selector), DiceString, Reply).
 
