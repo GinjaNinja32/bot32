@@ -1,8 +1,42 @@
 
+#define enc json_encode
+#define dec json_decode
+
 #define ceil(x) (-round(-(x)))
 #define floor(x) round(x)
 #define clamp(x, low, high) max((low),min((high),(x)))
 
+#define BENCHT(NAME, ITERS, CODE) \
+	do{ \
+		var/s = world.tick_usage ;\
+		for(var/i = 1 to (ITERS)) {\
+			CODE ;\
+		} ;\
+		var/e = world.tick_usage ;\
+		world.log << "[NAME]: [(e-s) * world.tick_lag] ms" ;\
+	} while(0)
+#define BENCHTK(NAME, ITERS, CODE) \
+	do{ \
+		var/s = world.tick_usage ;\
+		for(var/j = 1 to 1000) {\
+		for(var/i = 1 to (ITERS)) {\
+			CODE ;\
+		} ;\
+		} ;\
+		var/e = world.tick_usage ;\
+		world.log << "[NAME]: [(e-s) * world.tick_lag] ms" ;\
+	} while(0)
+#define BENCHTM(NAME, ITERS, CODE) \
+	do{ \
+		var/s = world.tick_usage ;\
+		for(var/j = 1 to 1000000) {\
+		for(var/i = 1 to (ITERS)) {\
+			CODE ;\
+		} ;\
+		} ;\
+		var/e = world.tick_usage ;\
+		world.log << "[NAME]: [(e-s) * world.tick_lag] ms" ;\
+	} while(0)
 #define BENCH(NAME, ITERS, CODE) \
 	do{ \
 		var/s = world.timeofday ;\
@@ -109,3 +143,30 @@
 	. = list()
 	for(var/x in lo to hi step st)
 		. += x
+
+/proc/num2hex(num, padlength)
+	var/global/list/hexdigits = list("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "A", "B", "C", "D", "E", "F")
+
+	. = ""
+	while(num > 0)
+		var/hexdigit = hexdigits[(num & 0xF) + 1]
+		. = "[hexdigit][.]"
+		num >>= 4 //go to the next half-byte
+
+	//pad with zeroes
+	var/left = padlength - length(.)
+	while (left-- > 0)
+		. = "0[.]"
+
+//Randomize: Return the list in a random order
+/proc/shuffle(var/list/L)
+	if(!L)
+		return
+
+	L = L.Copy()
+
+	for(var/i=1; i<L.len; i++)
+		L.Swap(i, rand(i,L.len))
+	return L
+
+#define typeid(x) (length("\ref[x]") == 12 ? copytext("\ref[x]", 4, 6) : "0[copytext("\ref[x]", 4, 5)]")
