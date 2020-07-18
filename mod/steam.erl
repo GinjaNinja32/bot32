@@ -1,12 +1,13 @@
 -module(steam).
 -compile(export_all).
 
-search(Term) ->
+search(Term, CC) ->
 	case lists:all(fun(T) -> lists:member(T, "0123456789") end, Term) of
 		true -> Term;
 		false ->
 			os:putenv("steamsearch", Term),
-			case util:safe_os_cmd("./steam.sh search \"$steamsearch\"") of
+			os:putenv("steamcc", CC),
+			case util:safe_os_cmd("./steam.sh search \"$steamsearch\" \"$steamcc\"") of
 				"" -> error;
 				ID -> lists:droplast(ID) % remove trailing \n
 			end
@@ -24,38 +25,55 @@ get_commands() ->
 		{"steam", fun steam/1, [long], user}
 	].
 
-steam(#{reply:=Reply, ping:=Ping, params:=[Param], selector:=[]}) ->
-	case search(Param) of
-		error -> {irc, {msg, {Reply, [Ping, "No results for '", Param, "'."]}}};
-		ID ->
-			JSON_UK = info(ID, "uk"),
-			JSON_US = info(ID, "us"),
-			JSON_EU = info(ID, "fr"), % "eu" here seems to give USD?
-			R = create_message([{eu,JSON_EU}, {uk,JSON_UK}, {us,JSON_US}],
-								"[STEAM] ~s (~s / ~s / ~s~s) (~s) https://store.steampowered.com/app/~b/", [
-					{utf8fix, [uk, struct, "name"]},
-					{price, [uk, struct, "price_overview"]},
-					{price, [us, struct, "price_overview"]},
-					{price, [eu, struct, "price_overview"]},
-					{discount, [uk, struct, "price_overview"]},
-					{platforms, [uk, struct, "platforms"]},
-					[uk, struct, "steam_appid"]
-				]),
-			{irc, {msg, {Reply, [Ping, R]}}}
-	end;
-steam(#{reply:=Reply, ping:=Ping, params:=[Param], selector:=CC}) ->
-	case search(Param) of
-		error -> {irc, {msg, {Reply, [Ping, "No results for '", Param, "'."]}}};
-		ID ->
-			JSON = info(ID, CC),
-			R = create_message(JSON, "[STEAM] ~s (~s~s) (~s) https://store.steampowered.com/app/~b/", [
-					{utf8fix, [struct, "name"]},
-					{price, [struct, "price_overview"]},
-					{discount, [struct, "price_overview"]},
-					{platforms, [struct, "platforms"]},
-					[struct, "steam_appid"]
-				]),
-			{irc, {msg, {Reply, [Ping, R]}}}
+steam(#{reply:=Reply, ping:=Ping, params:=[Param], selector:=Selector}) ->
+	Regions = case Selector of
+		"" -> ["uk","us","fr"];
+		_ -> string:tokens(Selector, ",")
+	end,
+	case length(Regions) of
+		0 -> {irc, {msg, {Reply, [Ping, "No country codes specified!"]}}};
+		_ ->
+			case search(Param, hd(Regions)) of
+				error -> {irc, {msg, {Reply, [Ping, "No results for '", Param, "'."]}}};
+				ID ->
+					[R0 | R] = Regions,
+					JSON0 = info(ID, R0),
+					JSON = lists:map(fun(T) -> info(ID, T) end, R),
+					%JSON_UK = info(ID, "uk"),
+					%JSON_US = info(ID, "us"),
+					%JSON_EU = info(ID, "fr"), % "eu" here seems to give USD?
+					%logging:log(info, ?MODULE, "[STEAM] ~s", [JSON_UK]),
+
+					Price = case {traverse_json(JSON0, [struct,"is_free"]), traverse_json(JSON0, [struct,"price_overview"])} of
+						{true,_} ->
+							"Free";
+						{false,error} ->
+							"Price unknown";
+						{false,_} ->
+							string:join(lists:map(fun(T) -> create_message(T, "~s", [{price, [struct,"price_overview"]}]) end, [JSON0 | JSON]), " / ") ++ create_message(JSON0, "~s", [{discount, [struct,"price_overview"]}])
+%							create_message([{eu,JSON_EU}, {uk,JSON_UK}, {us,JSON_US}],
+%								"~s / ~s / ~s~s", [
+%								{price, [uk, struct, "price_overview"]},
+%								{price, [us, struct, "price_overview"]},
+%								{price, [eu, struct, "price_overview"]},
+%								{discount, [uk, struct, "price_overview"]}
+%							])
+					end,
+					ReleaseDate = case traverse_json(JSON0, [struct,"release_date",struct,"coming_soon"]) of
+						true ->
+							"Available: " ++ traverse_json(JSON0, [struct,"release_date",struct,"date"]);
+						false ->
+							"Released: " ++ traverse_json(JSON0, [struct,"release_date",struct,"date"])
+					end,
+					Message = create_message(JSON0, "[STEAM] ~s (~s) (~s) (~s) <https://store.steampowered.com/app/~b/>", [
+						{utf8fix, [struct, "name"]},
+						{Price},
+						{ReleaseDate},
+						{platforms, [struct, "platforms"]},
+						[struct, "steam_appid"]
+					]),
+					{irc, {msg, {Reply, [Ping, Message]}}}
+			end
 	end.
 
 create_message(JSON, String, FormatJsonPaths) ->
@@ -71,7 +89,7 @@ create_message(JSON, String, FormatJsonPaths) ->
 				]), "/");
 			({price, T}) ->
 				case traverse_json(JSON, T) of
-					error -> "Free";
+					error -> "???";
 					Price ->
 						case traverse_json(Price, [struct, "initial"]) == traverse_json(Price, [struct, "final"]) of
 							true ->

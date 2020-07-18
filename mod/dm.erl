@@ -4,7 +4,9 @@
 get_commands() ->
 	[
 		{"dm", fun dm/1, [{"string to evaluate", long}], user},
-		{"dml", fun dml/1, [{"string to evaluate", long}], user}
+		{"dml", fun dml/1, [{"string to evaluate", long}], user},
+		{"dms", fun dms/1, [{"string to evaluate", long}], eval},
+		{"dmsl", fun dmsl/1, [{"string to evaluate", long}], eval}
 	].
 
 get_help("dm") ->
@@ -20,15 +22,23 @@ get_help("dml") ->
 	] ++ get_help("dm");
 get_help(_) -> unhandled.
 
+dms(#{reply:=Reply, ping:=Ping, params:=[String]}) ->
+	dmrun(Reply, Ping, String, false, true).
+dmsl(#{reply:=Reply, ping:=Ping, params:=[String]}) ->
+	dmrun(Reply, Ping, String, true, true).
 dm(#{reply:=Reply, ping:=Ping, params:=[String]}) ->
-	dmrun(Reply, Ping, String, false).
+	dmrun(Reply, Ping, String, false, false).
 dml(#{reply:=Reply, ping:=Ping, params:=[String]}) ->
-	dmrun(Reply, Ping, String, true).
+	dmrun(Reply, Ping, String, true, false).
 
-dmrun(Reply, Ping, String, Multiline) ->
+dmrun(Reply, Ping, InString, Multiline, Secure) ->
+	String = case {hd(InString), lists:last(InString)} of
+		{$`, $`} -> lists:droplast(tl(InString));
+		_ -> InString
+	end,
 	case re:run(String, "##|include", [{capture,none}]) of
-		match -> {irc, {msg, {Reply, [Ping, "You attempted to use either ## or include; both are blocked for security reasons."]}}};
-		nomatch ->
+		match when not Secure -> {irc, {msg, {Reply, [Ping, "You attempted to use either ## or include; both are blocked for security reasons."]}}};
+		_ ->
 			Parts = re:split(String, ";;;", [{return, list}]),
 			case Parts of
 				[Main] -> Pre = [], ok;
@@ -49,10 +59,15 @@ dmrun(Reply, Ping, String, Multiline) ->
 			file:write_file(["dm/", UseMD5, ".dme"], File),
 			spawn(fun() ->
 				util:unicode_os_putenv("multiline", if Multiline -> "true"; true -> "false" end),
+				util:unicode_os_putenv("secure", if Secure -> "true"; true -> "false" end),
 				Output = util:safe_os_cmd(["./dm_compile_run.sh ", UseMD5]),
-				lists:foreach(fun(Line) ->
-						core ! {irc, {msg, {Reply, [Ping, Line]}}}
-					end, string:tokens(Output, "\n"))
+				case string:tokens(Output, "\n") of
+					[] -> core ! {irc, {msg, {Reply, [Ping, "<no output>"]}}};
+					Lines ->
+						lists:foreach(fun(Line) ->
+								core ! {irc, {msg, {Reply, [Ping, Line]}}}
+							end, Lines)
+				end
 			end),
 			ok
 	end.

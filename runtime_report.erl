@@ -27,7 +27,7 @@ report_new_runtime(User, Repo, RepoPath, Revision, ID, Title, Info) ->
 						[RepoPath, "/issues"],
 						json:write({struct,[
 							{"body", Body},
-							{"labels", {array, ["runtime error ☢"]}},
+							{"labels", {array, ["runtime error"]}},
 							{"title", Title}
 						]})) of
 		error -> logging:log(error, ?MODULE, "Failed to create issue for runtime ~s!", [ID]);
@@ -66,7 +66,9 @@ update_runtime(User, Repo, RepoPath, Revision, ID, _Title, Info) ->
 					]),
 					github_request(post,
 					               [IssuePath, "/comments"],
-					               json:write({struct,[{"body",Comment}]}))
+					               json:write({struct,[{"body",Comment}]}));
+				T ->
+					logging:log("failed to check status of issue ~p #~p: ~p", RepoPath, IssueID, T)
 			end
 	end.
 

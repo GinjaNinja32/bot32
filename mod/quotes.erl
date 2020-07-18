@@ -40,8 +40,14 @@ addquote(#{reply:=ReplyTo, ping:=Ping, params:=[]}) ->
 addquote(#{reply:=ReplyTo, ping:=Ping, params:=[_]}) ->
 	{irc, {msg, {ReplyTo, [Ping, "Please provide a quote."]}}};
 addquote(#{reply:=ReplyTo, ping:=Ping, params:=Params}) ->
-	Reply = add_quote(string:to_lower(hd(Params)), string:strip(string:join(tl(Params), " "))),
-	{irc, {msg, {ReplyTo, [Ping, Reply]}}}.
+	LowerCat = string:to_lower(hd(Params)),
+	case lists:all(fun(T) -> ($a =< T andalso T =< $z) orelse ($0 =< T andalso T =< $9) orelse T == $_ end, LowerCat) of
+		true ->
+			Reply = add_quote(string:to_lower(hd(Params)), string:strip(string:join(tl(Params), " "))),
+			{irc, {msg, {ReplyTo, [Ping, Reply]}}};
+		false ->
+			{irc, {msg, {ReplyTo, [Ping, "Failed to add quote: category must be A-Z, a-z, 0-9 and underscore only. If your quote is something like '<person1> something funny', use 'addquote person1 <person1> something funny'"]}}}
+	end.
 
 gen_genmatch(Params, Nick) ->
 	Regexed = util:regex_escape(string:to_lower(string:join(Params, " "))),
@@ -117,7 +123,7 @@ get_quote_word(String) ->
 
 pick_quote([]) -> "No matching quotes.";
 pick_quote(Q) ->
-	{Cat, Quote} = lists:nth(random:uniform(length(Q)), Q),
+	{Cat, Quote} = lists:nth(rand:uniform(length(Q)), Q),
 	<<"\"", Quote/binary, "\" - ", Cat/binary>>.
 
 add_quote(Category, String) ->

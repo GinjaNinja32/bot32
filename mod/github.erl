@@ -236,7 +236,7 @@ handle_decoded(JSON) ->
 					case case json:traverse(JSON, [struct, "target_url"]) of
 						URL when is_list(URL) ->
 							os:putenv("url", URL),
-							case catch json:parse(util:safe_os_cmd("curl -s $(echo $url | sed 's#travis-ci.org#api.travis-ci.org/repos#')")) of
+							case catch json:parse(util:safe_os_cmd("curl -s \"$(echo \"$url\" | sed 's#travis-ci.org#api.travis-ci.org/repos#')\"")) of
 								{'EXIT',T} -> logging:log(error, ?MODULE, "Error parsing JSON: ~p", [T]), error;
 								T -> {ok, T}
 							end;
@@ -360,7 +360,7 @@ create_message(JSON, String, FormatJsonPaths) ->
 			({trunc_newline,T}) ->
 				case json:traverse(JSON, T) of
 					error -> error;
-					Lst -> lists:takewhile(fun(X) -> X /= 10 end, Lst)
+					Lst -> util:fix_utf8(lists:takewhile(fun(X) -> X /= 10 end, Lst))
 				end;
 			({reponame, RepoStruct}) ->
 				case json:traverse(JSON, RepoStruct ++ [struct, "fork"]) of

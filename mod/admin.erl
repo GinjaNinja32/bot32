@@ -24,8 +24,12 @@ get_commands() ->
 		{"cmode", fun mode/1, admin},
 		{"kick", fun kick/1, chanban},
 		{"kickban", fun kickban/1, chanban},
-		{"raw", fun raw/1, host}
+		{"raw", fun raw/1, host},
+		{"whoami", fun whoami/1, user}
 	].
+
+whoami(#{reply:=Reply, ping:=Ping, origin:=User=#user{nick=Nick, username=Username, host=Host}}) ->
+	{irc, {msg, {Reply, io_lib:format("~sYou are ~s!~s@~s with permissions ~10000p", [Ping, Nick, Username, Host, permissions:rankof(User)])}}}.
 
 tuplefor(N,U,H) -> {list_to_binary(string:to_lower(N)), list_to_binary(U), list_to_binary(H)}.
 
@@ -77,11 +81,10 @@ gnsperm(#{reply:=Reply, ping:=Ping, params:=[NS]}) ->
 editrank(#{reply:=ReplyTo, ping:=Ping, params:=[]}) -> {irc, {msg, {ReplyTo, [Ping, "Provide a rank to edit and one or more nicks (+ users/masks)"]}}};
 editrank(#{reply:=ReplyTo, ping:=Ping, params:=[_]}) -> {irc, {msg, {ReplyTo, [Ping, "Provide one or more nicks (+ users/masks)"]}}};
 editrank(#{reply:=ReplyTo, ping:=Ping, params:=[Rank | Masks]}) ->
-	NewDict = lists:foldl(fun(Mask, Dict) ->
+	lists:foreach(fun(Mask) ->
 		case re:run(Mask, "^([^!@]+)!([^!@]+)@([^!@]+)$", [{capture, all_but_first, list}]) of
 			nomatch ->
-				core ! {irc, {msg, {ReplyTo, [Ping, "Failed to parse ", Mask, " as a Nick!User@Host string!"]}}},
-				Dict;
+				core ! {irc, {msg, {ReplyTo, [Ping, "Failed to parse ", Mask, " as a Nick!User@Host string!"]}}};
 			{match,[N,U,H]} ->
 				Usr = #user{nick=string:to_lower(N), username=U, host=H},
 				CRank = permissions:rankof(Usr),
@@ -96,10 +99,12 @@ editrank(#{reply:=ReplyTo, ping:=Ping, params:=[Rank | Masks]}) ->
 					"user" -> [user];
 					R -> [user, list_to_atom(R)]
 				end,
-				core ! {irc, {msg, {ReplyTo, [Ping, "Changed the permissions of ",N,$!,U,$@,H," to ",io_lib:format("~w", [NewList]),$.]}}},
-				orddict:store(tuplefor(N,U,H), NewList, Dict)
-		end end, config:require_value(config, [permissions]), Masks),
-	config:set_value(config, [permissions], cleandict(NewDict)).
+				setperm(tuplefor(N, U, H), NewList),
+				core ! {irc, {msg, {ReplyTo, [Ping, "Changed the permissions of ",N,$!,U,$@,H," to ",io_lib:format("~w", [NewList]),$.]}}}
+		end end, Masks).
+
+setperm(Key, [user]) -> config:del_value(config, [permissions, Key]);
+setperm(Key, Perms)  -> config:set_value(config, [permissions, Key], Perms).
 
 setrank(#{reply:=ReplyTo, ping:=Ping, params:=[]}) -> {irc, {msg, {ReplyTo, [Ping, "Please provide a rank to grant and one or more nicks!"]}}};
 setrank(#{reply:=ReplyTo, ping:=Ping, params:=[Rank]}) -> {irc, {msg, {ReplyTo, [Ping, "Please provide one or more nicks to grant ", Rank, " to!"]}}};
@@ -207,10 +212,10 @@ action(#{params:=Params}) -> {irc, {ctcp, {action, hd(Params), string:join(tl(Pa
 
 prefix(#{reply:=ReplyTo, ping:=Ping, params:=[]}) ->
 	Prefix = config:require_value(config, [bot, prefix]),
-	{irc, {msg, {ReplyTo, [Ping, "Prefix is: ", Prefix]}}};
+	{irc, {msg, {ReplyTo, [Ping, "Prefix is: ", util:fix_utf8(Prefix)]}}};
 prefix(#{reply:=ReplyTo, ping:=Ping, params:=Params}) ->
 	Prefix = hd(Params),
-	config:set_value(config, [bot, prefix], Prefix),
+	config:set_value(config, [bot, prefix], util:utf8_chars(list_to_binary(Prefix))),
 	{irc, {msg, {ReplyTo, [Ping, "Prefix set to ", Prefix]}}}.
 
 mode(#{nick:=ReplyTo, reply:=ReplyTo, ping:=Ping}) -> {irc, {msg, {ReplyTo, [Ping, "Use this in a channel, not query."]}}};

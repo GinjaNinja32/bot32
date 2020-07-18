@@ -11,6 +11,7 @@ get_commands() ->
 		{"rot13", fun rot_thirteen/1, [{"string", long}], user},
 		{"rot", fun rot_n/1, [integer, {"string", long}], user},
 		{"colors", fun colors/1, user},
+		{"colors2", fun colors2/1, user},
 		{"colours", fun colors/1, user},
 		{"coin", fun coin/1, user}
 	].
@@ -56,7 +57,7 @@ colors(#{reply:=ReplyTo, ping:=Ping}) ->
 	]}}},
 
 	core ! {irc, {msg, {ReplyTo, [Ping,
-		lists:map(fun(X) -> [3,$,,i2l(X,$0),i2l(X,$ ),32] end, lists:seq(0,15))
+		lists:map(fun(X) -> [3,$1,$5,$,,i2l(X,$0),i2l(X,$ ),32] end, lists:seq(0,15))
 	]}}},
 
 	lists:foreach(fun(T) ->
@@ -64,6 +65,13 @@ colors(#{reply:=ReplyTo, ping:=Ping}) ->
 			lists:map(fun(X) -> [3,i2l(X+T,$0),i2l(X+T,$ ),32] end, lists:seq(0,11))
 		]}}}
 		end, [16, 28, 40, 52, 64, 76, 88]).
+
+colors2(#{reply:=ReplyTo, ping:=Ping}) ->
+	lists:foreach(fun({T,R}) ->
+		core ! {irc, {msg, {ReplyTo, [Ping,
+			lists:map(fun(X) -> [3,i2l(X+T,$0),i2l(X+T,$ ),32] end, lists:seq(0,R))
+		]}}}
+		end, [{0,15}, {16,15}, {32,15}, {48,15}, {64,15}, {80,15}, {96,3}]).
 
 ping(#{reply:=ReplyTo, ping:=Ping}) -> {irc, {msg, {ReplyTo, [Ping, "Pong!"]}}}.
 pong(#{reply:=ReplyTo, ping:=Ping}) -> {irc, {msg, {ReplyTo, [Ping, "Ping!"]}}}.
@@ -85,16 +93,14 @@ dancereply() ->
 		["<(^_^<)", "(>^_^)>", "<(^_^<)"],
 		["< (^V^) <", "> (^v^) >", "^ (^v^) v", "v (^v^) ^"]
 	].
-danceweights(Nick) ->
+danceweighted(Nick) ->
 	H = h(Nick),
 	put(dance_rng, {H rem 1000000, ((H div 1000000) rem 1000000), H div 1000000000000}),
-	lists:map(fun(_) ->
+	lists:map(fun(R) ->
 			{N, State} = random:uniform_s(10, get(dance_rng)),
 			put(dance_rng, State),
-			N
+			{N, R}
 		end, dancereply()).
-danceweighted(Nick) ->
-	lists:zip(danceweights(Nick), dancereply()).
 
 h(Nick) -> h(Nick, 0).
 h([],T) -> T;

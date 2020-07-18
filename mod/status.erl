@@ -106,11 +106,14 @@ revision(RT, _, _, S, P, ID, Name) ->
 			Date = safeget(Dict, "date"),
 			Rev = safeget(Dict, "revision"),
 			GID = safeget(Dict, "gameid"),
-			DD = safeget(Dict, "dd_version"),
-			DM = safeget(Dict, "dm_version"),
+			DDV = safeget(Dict, "dd_version"),
+			DDB = safeget(Dict, "dd_build"),
+			DMV = safeget(Dict, "dm_version"),
+			DMB = safeget(Dict, "dm_build"),
+			Str = io_lib:format("Game ID: ~s. DM: ~s.~s; DD: ~s.~s", [GID, DMV, DMB, DDV, DDB]),
 			Msg = case config:get_value(config, [?MODULE, github, ID]) of
-				'$none' -> io_lib:format("~sRevision: ~s on ~s at ~s. Game ID: ~s. DM: ~s; DD: ~s", [Name, Rev, Branch, Date, GID, DM, DD]);
-				URL -> io_lib:format("~sRevision: ~s on ~s at ~s: ~s. Game ID: ~s. DM: ~s; DD: ~s", [Name, lists:sublist(Rev, 8), Branch, Date, [URL,Rev], GID, DM, DD])
+				'$none' -> io_lib:format("~sRevision: ~s on ~s at ~s. ~s", [Name, Rev, Branch, Date, Str]);
+				URL -> io_lib:format("~sRevision: ~s on ~s at ~s: ~s. ~s", [Name, lists:sublist(Rev, 8), Branch, Date, [URL,Rev], Str])
 			end,
 			core ! {irc, {msg, {RT, Msg}}}
 	end.
@@ -156,7 +159,7 @@ players(RT, _, _, S, P, _, Name) ->
 					Players = byond:params2dict(safeget(Dict, "playerlist")),
 					Ordered = lists:sort(lists:map(fun({X,_}) -> re:replace(X, [32], <<160/utf8>>, [{return, binary}, global]) end, Players)),
 					Names = lists:map(fun(<<A/utf8, B/binary>>) -> binary_to_list(<<A/utf8, ?Sep/utf8, B/binary>>) end, Ordered),
-					util:groupstrs(fun(T) -> core!{irc,{msg,{RT,[Name, "Players: ", T]}}} end, 250, Names, ", ")
+					util:groupstrs(fun(T) -> core!{irc,{msg,{RT,[Name, "Players (", integer_to_list(length(Names)), "): ", T]}}} end, 250, Names, ", ")
 			end
 	end.
 

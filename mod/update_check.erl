@@ -7,7 +7,7 @@ get_commands() ->
 	].
 
 checkupdate(#{reply:=Reply, ping:=Ping}) ->
-	case byond:send("baystation12.net", 8000, "revision") of
+	case byond:send("play.baystation12.net", 8000, "revision") of
 		{error, X} -> {irc, {msg, {Reply, [Ping, io_lib:format("Error: ~p", [X])]}}};
 		Dict ->
 			case orddict:find("revision", Dict) of

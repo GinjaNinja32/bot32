@@ -6,12 +6,13 @@ showurl(Channel, Ping, URL, Format, NotFound) -> spawn(?MODULE, showurl_raw, [Ch
 
 showurl_raw(Channel, Ping, URL, Format, NotFound) ->
 	os:putenv("url", URL),
-	URLAndTitle = util:safe_os_cmd("./urltitle_canonical.sh $url"),
+	URLAndTitle = util:safe_os_cmd("./urltitle_canonical.sh \"$url\""),
 	{CanonicalURL, Title} = lists:splitwith(fun(T) -> T /= 10 end, URLAndTitle),
 	case re:replace(Title, "^\\s*|\\s*$", "", [{return, binary}]) of
 		<<>> when NotFound /= false -> core ! {irc, {msg, {Channel, [Ping, NotFound]}}};
 		<<>> -> ok;
-		Sh -> core ! {irc, {msg, {Channel, [Ping, io_lib:format(Format, [CanonicalURL, util:parse_htmlentities(Sh)])]}}}
+		Sh ->
+			core ! {irc, {msg, {Channel, [Ping, io_lib:format(Format, [CanonicalURL, util:parse_htmlentities(Sh)])]}}}
 	end.
 
 pre_command(Command, Args) ->
@@ -32,19 +33,23 @@ do_extras(Tokens, ReplyChannel, ReplyPing) ->
 		[] -> ok;
 		[URL|_] -> showurl(ReplyChannel, ReplyPing, URL, "~i~s")
 	end,
-	case re:run(string:join(Tokens, " "), "\\[\\[(?:([^ ][^| ]*)\\|)?([^ ][^\]]+[^ ])\\]\\]", [{capture, all_but_first, binary}]) of
-		{match, [Sel, Page]} ->
-			WikiURL = case Sel of
-				<<>> -> config:get_value(config, [?MODULE, wiki, ReplyChannel], "https://wiki.baystation12.net/");
-				T -> config:get_value(config, [?MODULE, wikiselect, T])
-			end,
-			case WikiURL of
-				'$none' ->
-					core ! {irc, {msg, {ReplyChannel, [ReplyPing, io_lib:format("wiki '~s' not found", [Sel])]}}};
-				_ ->
-					UR = WikiURL ++ re:replace(Page, " ", "_", [{return, list}, global]),
-					showurl(ReplyChannel, ReplyPing, UR, "~s - ~s", "Page not found!")
-			end;
+	case re:run(string:join(Tokens, " "), "\\[\\[(?:([^ ][^| ]*)\\|)?([^ ][^\]]+[^ ])\\]\\]", [{capture, all_but_first, binary}, global]) of
+		{match, Lst} ->
+			spawn(fun() -> 
+				lists:foreach(fun([Sel, Page]) ->
+					WikiURL = case Sel of
+						<<>> -> config:get_value(config, [?MODULE, wiki, ReplyChannel], "https://wiki.baystation12.net/");
+						T -> config:get_value(config, [?MODULE, wikiselect, T])
+					end,
+					case WikiURL of
+						'$none' ->
+							core ! {irc, {msg, {ReplyChannel, [ReplyPing, io_lib:format("wiki '~s' not found", [Sel])]}}};
+						_ ->
+							UR = WikiURL ++ re:replace(Page, " ", "_", [{return, list}, global]),
+							showurl_raw(ReplyChannel, ReplyPing, UR, "~s - ~s", "Page not found!")
+					end end,
+					Lst)
+			      end);
 		_ -> ok
 	end,
 	do_pr_linking(Tokens, ReplyChannel, ReplyPing),
@@ -57,18 +62,20 @@ russian_keymap() ->
 		{1051,75},{1052,86},{1053,89},{1054,74},{1055,71},{1056,72},
 		{1057,67},{1058,78},{1059,69},{1060,65},{1061,91},{1062,87},
 		{1063,88},{1064,73},{1065,79},{1066,93},{1067,83},{1068,77},
-		{1069,64},{1070,46},{1071,90},{1072,102},{1073,44},{1074,100},
+		{1069,64},{1070,62},{1071,90},{1072,102},{1073,44},{1074,100},
 		{1075,117},{1076,108},{1077,116},{1078,59},{1079,112},{1080,98},
 		{1081,113},{1082,114},{1083,107},{1084,118},{1085,121},{1086,106},
 		{1087,103},{1088,104},{1089,99},{1090,110},{1091,101},{1092,97},
 		{1093,91},{1094,119},{1095,120},{1096,105},{1097,111},{1098,93},
-		{1099,115},{1100,109},{1101,39},{1102,46},{1103,122},{1105,96}
+		{1099,115},{1100,109},{1101,39},{1102,46},{1103,122},{1105,96},
+
+		{1110,83}, {1030,115} % Ukrainian і І
 	].
 
 do_russian(Tokens, ReplyChannel, ReplyPing) ->
 	String = utf8(list_to_binary(string:join(Tokens, " "))),
 	case is_russian(String) of
-		true -> core ! {irc, {msg, {ReplyChannel, [ReplyPing, "Did you mean: ", convert_russian(String)]}}};
+		true -> core ! {irc, {msg, {ReplyChannel, [ReplyPing, "Did you mean: ", util:fix_utf8(convert_russian(String))]}}};
 		false -> ok
 	end.
 
@@ -115,13 +122,13 @@ do_pr_link_token(Token, Channel, Ping) ->
 				_ ->
 					if XUser == [] -> User = DefU; true -> User = XUser end,
 					if XRepo == [] -> Repo = DefR; true -> Repo = XRepo end,
-					os:putenv("url", ["http://github.com/", User, $/, Repo, "/issues/", Num]),
-					URLTitle = string:strip(re:replace(util:safe_os_cmd("./urltitle.sh $url"), "([^·]*·[^·]*) · .*", "\\1", [{return, list}])),
+					os:putenv("url2", ["http://github.com/", User, $/, Repo, "/issues/", Num]),
+					URLTitle = string:strip(re:replace(util:safe_os_cmd("./urltitle.sh \"$url2\""), "([^·]*·[^·]*) · .*", "\\1", [{return, list}])),
 					case re:run(URLTitle, "Issue #[0-9]+$", [{capture, none}]) of
 						match -> ShowURL = ["http://github.com/", User, $/, Repo, "/issues/", Num];
 						nomatch -> ShowURL = ["http://github.com/", User, $/, Repo, "/pull/", Num]
 					end,
-					core ! {irc, {msg, {Channel, [Ping, ShowURL, " - ", util:parse_htmlentities(list_to_binary(URLTitle))]}}}
+					core ! {irc, {msg, {Channel, [Ping, $<, ShowURL, "> - ", util:parse_htmlentities(list_to_binary(URLTitle))]}}}
 			end;
 		false -> ok
 	end.

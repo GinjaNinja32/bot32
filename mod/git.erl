@@ -31,7 +31,7 @@ branch_params(Params, Channel, Type) ->
 
 do_extras(Tokens, Reply, Ping) ->
 	case re:run(string:join(Tokens, " "), "(?:\\s|^)\\[(?:([^[ ][^| ]*)\\|)?([^]# ]*[^]#0-9 ][^]# ]*)(?:(#[^] ]+))?\\](\\s|$)", [{capture, all_but_first, binary}]) of
-		{match, [RawID, File, ExtraParams, _]} ->
+		{match, [RawID, File, ExtraParams, _]} when byte_size(File) > 2 ->
 			ID = case RawID of
 				<<>> -> config:get_value(config, [?MODULE, default, list_to_binary(Reply)], <<"bay">>);
 				_ -> RawID
@@ -41,6 +41,8 @@ do_extras(Tokens, Reply, Ping) ->
 				Result ->
 					core ! {irc, {msg, {Reply, [Ping, Result]}}}
 			end;
+		{match, [RawID, File, ExtraParams, _]} ->
+			logging:log(info, ?MODULE, "~p ~p ~p", [RawID, File, ExtraParams]);
 		_ -> ok
 	end,
 	ok.
@@ -108,12 +110,13 @@ load_tree(ID) ->
 	Home = config:require_value(config, [?MODULE, location, ID]),
 	Remote = config:get_value(config, [?MODULE, remote, ID], <<"origin">>),
 	Branch = config:get_value(config, [?MODULE, branch, ID], <<"master">>),
-	lists:map(fun list_to_binary/1, string:tokens(util:safe_os_cmd(["cd ",binary_to_list(Home),"; git ls-files --with-tree ",binary_to_list(Remote),"/", binary_to_list(Branch)]), "\r\n")).
+	lists:map(fun list_to_binary/1, string:tokens(util:safe_os_cmd(["cd ",binary_to_list(Home),"; git ls-tree --name-only -r ",binary_to_list(Remote),"/", binary_to_list(Branch)]), "\r\n")).
 
-search_tree(ID, String, ExtraParams) ->
+search_tree(ID, RawString, ExtraParams) ->
 	Tree = config:require_value(temp, [?MODULE, trees, ID]),
 	GHLoc = config:require_value(config, [?MODULE, github, ID]),
 	Branch = config:get_value(config, [?MODULE, branch, ID], <<"master">>),
+	String = util:bin_to_lower(RawString),
 	case lists:filter(fun(T) ->
 				binary:match(util:bin_to_lower(T), String) /= nomatch
 			end, Tree) of

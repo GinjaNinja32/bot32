@@ -87,5 +87,14 @@ romanise(N) ->
 	romanise(HighestFactor) ++ romanise(N - HighestFactor).
 
 
-
-
+romanise2(N) ->
+	case lists:foldl(fun({V, S}, {C, Str}) ->
+		{C rem V, Str ++ lists:duplicate(C div V, S)} end,
+		{N, ""},
+		[                                         {1000, "M"},
+		 { 900, "CM"}, { 500, "D"}, { 400, "CD"}, { 100, "C"},
+		 {  90, "XC"}, {  50, "L"}, {  40, "XL"}, {  10, "X"},
+		 {   9, "IX"}, {   5, "V"}, {   4, "IV"}, {   1, "I"}]) of
+		{0, S} -> lists:flatten(S);
+		{N, _} -> "failed: " ++ integer_to_list(N)
+	end.

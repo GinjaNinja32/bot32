@@ -3,12 +3,12 @@
 case $1 in
 	search)
 		term=$(echo $2 | sed 's/ /+/g')
-		curl -s "http://store.steampowered.com/search/?cc=gb&term=$term" |
+		curl -s "https://store.steampowered.com/search/?cc=$3&term=$term" |
 				grep -Po '(?<=data-ds-appid=")[0-9]+(?=")' |
 				head -1
 		;;
 	info)
-		curl -s "http://store.steampowered.com/api/appdetails/?appids=$2&cc=$3"
+		curl -s "https://store.steampowered.com/api/appdetails/?appids=$2&cc=$3"
 		;;
 	*)
 		echo "What?"

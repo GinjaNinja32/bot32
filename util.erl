@@ -81,6 +81,11 @@ parse_htmlentities(<<T, B/binary>>, X) ->
 	parse_htmlentities(<<"&#", Num/binary, ";", B/binary>>, X).
 
 charents() ->
+	lists:flatmap(fun({Keys,V}) ->
+		lists:map(fun(K) -> {K,V} end, Keys)
+	end, html:entities()).
+
+charents0() ->
 	[
 		{<<"amp" >>, $&},
 		{<<"gt"  >>, $>},
@@ -350,14 +355,15 @@ bin_to_lower(<<>>, X) -> X.
 
 pick_rand([X]) -> X;
 pick_rand(List) ->
-	if
-		length(List) > 100 ->
-			[Half] = dice3:get_n_m(1, 2),
-			pick_rand(element(Half, lists:split(length(List) bsr 1, List)));
-		true ->
-			[N] = dice3:get_n_m(1, length(List)),
-			lists:nth(N, List)
-	end.
+	simple_pick(List).
+%	if
+%		length(List) > 100 ->
+%			[Half] = dice3:get_n_m(1, 2),
+%			pick_rand(element(Half, lists:split(length(List) bsr 1, List)));
+%		true ->
+%			[N] = dice3:get_n_m(1, length(List)),
+%			lists:nth(N, List)
+%	end.
 
 simple_pick(Lst) ->
 	lists:nth(random:uniform(length(Lst)), Lst).

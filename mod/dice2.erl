@@ -184,11 +184,9 @@ get_real_tokens2(D,[      's' |T]) -> get_real_tokens2(D#dp{show=true}, T);
 get_real_tokens2(D,X) -> {D, lists:reverse(X)}.
 
 dice(String, Expand) ->
-%	common:debug("dice", "~p | ~p", [String, Expand]),
 	case tokenise(String) of
 		error -> "Error parsing dice string!";
 		Tokens ->
-%			common:debug("dice", "~p", [Tokens]),
 			{DP, Toks} = get_real_tokens(#dp{}, Tokens),
 			case parse(Toks) of
 				error -> "Error parsing dice string!";

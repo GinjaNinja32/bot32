@@ -64,7 +64,6 @@ encode_single(_, _, []) -> $?;
 encode_single(Codepoint, N, [{Point, Count}|_]) when Point =< Codepoint andalso Codepoint < Point+Count ->
 	N + (Codepoint - Point);
 encode_single(Codepoint, N, [{Point, Count}|Rest]) ->
-	logging:log(info, ?MODULE, "~p at ~p is not ~p:~p, moving on with ~p", [Codepoint, N, Point, Count, N+Count]),
 	encode_single(Codepoint, N+Count, Rest).
 
 decode_single(Byte) ->
@@ -74,7 +73,6 @@ decode_single(_, []) -> 16#FFFD; % U+FFFD REPLACEMENT CHARACTER
 decode_single(Offset, [{Point, Count}|_]) when Offset < Count ->
 	Point + Offset;
 decode_single(Offset, [{Point, Count}|Rest]) ->
-	logging:log(info, ?MODULE, "~p is not at ~p:~p, moving on with ~p", [Offset, Point, Count, Offset-Count]),
 	decode_single(Offset - Count, Rest).
 
 encode(UTF8) when is_list(UTF8) ->

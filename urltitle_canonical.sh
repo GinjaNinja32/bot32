@@ -17,10 +17,15 @@ read_dom () {
 }
 
 readit() {
-	link=""
+	link="$URL"
 	title=""
 	while read_dom; do
 		case "$ENTITY" in
+			/head)
+				echo "$link"
+				echo "$title"
+				exit 0
+				;;
 			title)
 				title="$CONTENT"
 				if [[ "$link" != "" ]]; then
@@ -50,15 +55,16 @@ readit() {
 		esac
 	done
 
-	echo "$URL"
+	echo "$link"
 	echo "$title"
 }
 
 data="$(wget -4 --header="Accept-Language: en-gb, en;q=0.7" --header="User-Agent: $useragent" -qT 10 -O - --save-headers $URL)"
 
-html="$(echo "$data" | grep -aEA999999 '^\s*$')"
+headers="$(echo "$data" | tr -d '\r' | awk 'BEGIN{p=1}; /^$/{p=0}; p')"
+html="$(echo "$data" | tr -d '\r' | awk '/^$/,LAST')" # grep -aEA999999 '^\s*$')"
 
-datatype="$(echo "$html" 2>/dev/null | file -)"
+datatype="$(echo -n "$html" 2>/dev/null | file -)"
 if $DEBUG; then
 	echo "datatype: $datatype"
 fi
@@ -67,7 +73,7 @@ if [[ "$datatype" != *text* ]]; then
 	exit 0
 fi
 
-charset="$(echo "$data" | grep -aE '^$|Content-Type:.*charset=.*' | head -n1 | sed -r 's/Content-Type:.*charset=(\S+).*/\1/g')"
+charset="$(echo "$headers" | grep -aE 'Content-Type:.*charset=.*' | head -n1 | sed -r 's/Content-Type:.*charset=(\S+).*/\1/g')"
 if $DEBUG; then
 	echo "charset: $charset"
 fi
@@ -88,6 +94,8 @@ if [[ "$charset" == "" ]]; then
 		fi
 	fi
 fi
+
+charset="$(echo "$charset" | tr -d '-' | tr 'A-Z' 'a-z' | sed 's/^windows/windows-/')"
 
 if [[ "$charset" != "" && "$charset" != "utf8" ]]; then
         html="$(echo "$html" | iconv -f "$charset" -t utf8 -)"

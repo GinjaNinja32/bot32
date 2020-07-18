@@ -25,7 +25,9 @@ get_commands() ->
 
 bash(#{reply:=Reply, ping:=Ping, params:=[Param]}) ->
 	util:unicode_os_putenv("args", Param),
-	{irc, {msg, {Reply, io_lib:format("~s~99999p", [Ping, util:safe_os_cmd("bash -c \"$args\"")])}}}.
+	%{irc, {msg, {Reply, io_lib:format("~s~99999p", [Ping, util:safe_os_cmd("bash -c \"$args\"")])}}}.
+	Result = util:safe_os_cmd("bash -c \"$args\""),
+	{irc, {msg, {Reply, io_lib:format("~s~s", [Ping, re:replace(Result, "[\r\n]", [3,"14; ",3,2,2], [global])])}}}.
 
 py(#{reply:=Reply, ping:=Ping, params:=[Param]}) ->
 	util:unicode_os_putenv("script", Param),
@@ -47,18 +49,29 @@ pyl(#{reply:=Reply, ping:=Ping, params:=[Param]}) ->
 	lines2channel(Reply, Ping, "", RRaw).
 
 lines2channel(Reply, Pre, Post, RRaw) ->
+	MaxLines = 5,
 	R = lists:flatmap(fun
 			(10) -> [10];
 			(9) -> "    ";
 			(T) -> [T]
 		end, RRaw),
+	L = case lists:flatmap(fun(T) -> case string:strip(T) of [] -> []; S -> [S] end end, string:tokens(R, "\n")) of
+		X when length(X) =< MaxLines -> X;
+		X ->
+			File = io_lib:format("~32.16.0b", [binary:decode_unsigned(crypto:hash(md5, R))]),
+			Filename = io_lib:format("/home/bot32/www/~s.txt", [File]),
+			file:write_file(Filename, R),
+
+			lists:sublist(X, MaxLines-1) ++ [io_lib:format("[~b lines omitted, see https://gn32.uk/admin/~s.txt for full output]", [length(X) - MaxLines + 1, File])]
+	end,
+	
 	lists:foreach(fun
 			(T) ->
 				case string:strip(T) of
 					[] -> ok;
 					_ -> core ! {irc, {msg, {Reply, [Pre, T, Post]}}}
 				end
-		end, string:tokens(R, "\n")).
+		end, L).
 
 
 eecho(Params=#{params:=Tokens}) ->
@@ -75,11 +88,12 @@ lsym(#{reply:=RT, ping:=P, params:=Par}) ->
 
 shl(#{reply:=RT, ping:=P, params:=Params}) ->
 	PStr = lists:flatten(string:join(Params, " ")),
-	String = case lists:last(PStr) of
+	RString = case lists:last(PStr) of
 		$. -> PStr;
 		_ -> PStr ++ "."
 	end,
 	Bindings = config:get_value(data, [eval, shell], []),
+	String = util:utf8_chars(list_to_binary(RString)),
 	case erl_scan:string(String) of
 		{ok, Tokens, _} ->
 			case erl_parse:parse_exprs(Tokens) of
@@ -87,7 +101,7 @@ shl(#{reply:=RT, ping:=P, params:=Params}) ->
 					case catch erl_eval:exprs(Forms, Bindings) of
 						{value, Value, NewBinds} ->
 							config:set_value(data, [eval, shell], NewBinds),
-							{irc, {msg, {RT, [P, io_lib:format("~99999p", [Value])]}}};
+							{irc, {msg, {RT, [P, util:fix_utf8(io_lib:format("~99999p", [Value]))]}}};
 						{'EXIT', {Reason, Stack}} when is_list(Stack) -> {irc, {msg, {RT, [P, format_reasonstack(Reason, Stack)]}}};
 						{'EXIT', Term} -> {irc, {msg, {RT, [P, io_lib:format("Code exited with ~p", [Term])]}}};
 						Term -> {irc, {msg, {RT, [P, io_lib:format("Code threw ~p", [Term])]}}}
@@ -149,7 +163,7 @@ gen_eval_str(Func) ->
 			_ -> Raw ++ "."
 		end,
 		case catch Func(Str) of
-			{ok, Value} -> {irc, {msg, {ReplyTo, [Ping, re:replace(io_lib:format("~s", [Value]), "[\r\n]", "")]}}};
+			{ok, Value} -> {irc, {msg, {ReplyTo, [Ping, re:replace(util:fix_utf8(io_lib:format("~s", [Value])), "[\r\n]", "")]}}};
 			{'EXIT', {Reason, Stack}} when is_list(Stack) -> {irc, {msg, {ReplyTo, [Ping, format_reasonstack(Reason, Stack)]}}};
 			{'EXIT', Term} -> {irc, {msg, {ReplyTo, [Ping, io_lib:format("Code exited with ~p", [Term])]}}};
 			{cerr, Term} -> {irc, {msg, {ReplyTo, [Ping, Term]}}};
@@ -160,7 +174,8 @@ gen_eval_str(Func) ->
 format_reasonstack(Reason, [TopFrame|_]) ->
 	io_lib:format("Error: ~p at ~p", [Reason, TopFrame]).
 
-eval(String) ->
+eval(RString) ->
+	String = util:utf8_chars(list_to_binary(RString)),
 	case erl_scan:string(String) of
 		{ok, Tokens, _} ->
 			case erl_parse:parse_exprs(Tokens) of

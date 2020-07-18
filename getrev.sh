@@ -55,8 +55,8 @@ elif $ancestor; then
 	if [[ $commit_count == 1 ]]; then commit_count="1 commit"
 	else commit_count="$commit_count commits"
 	fi
-	dev_time=$(git log origin/"$branch" -n 1 --format=%at) # Unix timestamps
-	rev_time=$(git log $rev -n 1 --format=%at)
+	dev_time=$(git log origin/"$branch" -n 1 --format=%ct) # Unix timestamps
+	rev_time=$(git log $rev -n 1 --format=%ct)
 	time_difference=$(timediff $(($dev_time - $rev_time)))
 	echo "Current server revision is $time_difference ($commit_count) behind $branch; update required - https://$github/compare/$rev...$branch"
 elif $descendant; then

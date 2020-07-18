@@ -3,6 +3,10 @@
 
 -include("definitions.hrl").
 
+fix_ahelps(#{reply:=Reply, ping:=Ping, nick:=Nick}) ->
+        message:create_message("server module", "GinjaNinja32", io_lib:format("~s triggered fix_ahelps", [Nick])),
+        modules:reload(#{reply=>Reply, ping=>Ping, params=>["server"]}).
+
 get_commands() ->
 	[
 		{"notify",   generic(notify,   none),    user},
@@ -14,7 +18,8 @@ get_commands() ->
 		{"info",     generic(info,    "server"), server},
 		{"laws",     generic(laws,    "server"), server},
 		{"pm",       generic(pm,      "server"), server},
-		{"asearch",  generic(asearch, "server"), server}
+		{"asearch",  generic(asearch, "server"), server},
+		{"fixahelps", fun fix_ahelps/1, server}
 	].
 
 initialise() ->
@@ -199,11 +204,15 @@ age(VID, ID, _, Reply, Ping, [Who|_]) ->
 				]) of
 		{error, T} -> io_lib:format("Error: ~p", [T]);
 		Dict ->
-			Age = hd(orddict:fetch_keys(Dict)),
-			AsInt = list_to_integer(Age, 10),
-			NowDays = calendar:date_to_gregorian_days(element(1, calendar:now_to_datetime(erlang:timestamp()))),
-			{Y,M,D} = calendar:gregorian_days_to_date(NowDays - AsInt),
-			io_lib:format("Age of ~s: ~s (~b-~2..0b-~2..0b)", [Who, hd(orddict:fetch_keys(Dict)), Y, M, D])
+			case hd(orddict:fetch_keys(Dict)) of
+				"Ckey not found" ->
+					io_lib:format("~s not found in database", [Who]);
+				Age ->
+					AsInt = list_to_integer(Age, 10),
+					NowDays = calendar:date_to_gregorian_days(element(1, calendar:now_to_datetime(erlang:timestamp()))),
+					{Y,M,D} = calendar:gregorian_days_to_date(NowDays - AsInt),
+					io_lib:format("Age of ~s: ~s (~b-~2..0b-~2..0b)", [Who, hd(orddict:fetch_keys(Dict)), Y, M, D])
+			end
 	end,
 	{irc, {msg, {Reply, [Ping, VID, RMsg]}}}.
 
@@ -268,6 +277,11 @@ laws(VID, ID, _, Reply, Ping, What) ->
 						end
 					end,
 					core ! {irc, {msg, {Reply, [Ping, VID, D("name"), $/, D("key"), "'s laws:"]}}},
+					case D("master") of
+						"???" -> ok;
+						"?" -> core ! {irc, {msg, {Reply, [Ping, VID, "Independent (no master)"]}}};
+						Master -> core ! {irc, {msg, {Reply, [Ping, VID, "Master: ", Master, " (sync: ", D("sync"), ")"]}}}
+					end,
 					ShowLaws("ion", "Ion:  "),
 					case D("zero") of
 						"?" -> ok;
@@ -359,8 +373,11 @@ readsock(Socket) ->
 	case gen_tcp:recv(Socket, 0, 60000) of
 		{ok, {http_request, 'GET', URL, _}} ->
 			Plist = case URL of
-				{abs_path, T} -> tl(tl(T));
-				T -> tl(T)
+				{abs_path, T} when is_list(T) andalso length(T) > 0 andalso length(tl(T)) > 0 -> tl(tl(T));
+				T when is_list(T) andalso length(T) > 0 -> tl(T);
+				T ->
+					logging:log(error, ?MODULE, "unknown result ~9999p", [T]),
+					[]
 			end,
 			Dict = byond:params2dict(Plist),
 			Response = case case {dget("pwd", Dict), dget("type", Dict)} of
@@ -408,6 +425,7 @@ readsock(Socket) ->
 									RuntimeList = lists:map(fun byond:params2dict/1, byond:params2list(R)),
 									case check_password_for_repo(Pwd) of
 										{ok, Repo} ->
+											%logging:log(info, ?MODULE, "Not reporting runtimes for ~s", [Repo]),
 											runtime_report:report_runtimes(Repo, Revision, RuntimeList),
 											ok;
 										error -> forbidden

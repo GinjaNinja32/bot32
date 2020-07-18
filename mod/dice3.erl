@@ -5,7 +5,7 @@
 
 get_commands() ->
 	[
-		{"dice", fun dice/1, [{"dice string", long, "d6"}], user},
+		{"dice3", fun dice/1, [{"dice string", long, "d6"}], user},
 		{"edice", fun edice/1, [{"dice string", long, "d6"}], user},
 		{"gurps", fun gurps/1, [{"target",integer}, {"comment",long,""}], user},
 		{"srun", fun srun/1, [{"dice",integer}], user},
@@ -54,7 +54,9 @@ gurps(#{reply:=RT, ping:=P, nick:=Nick, params:=[T,RawComment], selector:=Select
 		T >= 16 -> [6, 16,   17];
 		T == 15 -> [5, 15,   16];
 		T >=  7 -> [4,  T,   16];
-		true    -> [4,  T, T+10]
+		T >=  4 -> [4,  T, T+10];
+		T >= -6 -> [4,  4, T+10];
+		true    -> [4,  4,    4]
 	end,
 	Formatter = fun
 		([false,false,false]) -> [Comment, "\x036\x02Critical Failure!\x03\x02"];
@@ -508,13 +510,13 @@ rollraw(N, M) ->
 		random when N > 100 -> {"\x038!\x03 ", roll_total(N, M)};
 		random when M =< 100 -> {ok, get_n_m(N, M)};
 		_ when N > 10 -> {ok, roll_total(N, M)};
-		_ -> {ok, lists:map(fun(_) -> random:uniform(M) end, lists:duplicate(N, x))}
+		_ -> {ok, lists:map(fun(_) -> rand:uniform(M) end, lists:duplicate(N, x))}
 	end.
 
 roll_total(N, M) -> roll_total(N, M, []).
 
 roll_total(0, _, Total) -> Total;
-roll_total(N, M, Total) -> roll_total(N-1, M, [random:uniform(M)|Total]).
+roll_total(N, M, Total) -> roll_total(N-1, M, [rand:uniform(M)|Total]).
 
 get_n_m(N, M) ->
 	case get_avail(M) of

@@ -7,8 +7,10 @@ handle_event(msg, Params = {User=#user{nick=Nick}, Channel, Tokens}) ->
 	case parse_command(Tokens) of
 		{RCommand, RArguments, Selector} ->
 			logging:log(debug, ?MODULE, "Command in ~s from ~s: ~s~s ~s", [Channel, Nick, RCommand, if Selector /= [] -> [$@|Selector]; true -> [] end, string:join(RArguments, " ")]),
-			{Command, Arguments} = lists:foldl(fun(Module, {C,A}) ->
-					util:call_or(Module, pre_command, [C, A], {C, A})
+			{Command, Arguments} = lists:foldl(fun(Module, {C0, A0}) ->
+					{C1, A1} = util:call_or(Module, pre_command, [C0, A0], {C0, A0}),
+					{C2, A2} = util:call_or(Module, pre_command, [Nick, C1, A1], {C1, A1}),
+					{C2, A2}
 				end, {RCommand, RArguments}, config:require_value(config, [bot, modules])),
 			Rank = permissions:rankof(User, Channel),
 			case handle_command(Rank, User, Channel, Command, Arguments, Selector) of
@@ -18,6 +20,8 @@ handle_event(msg, Params = {User=#user{nick=Nick}, Channel, Tokens}) ->
 					logging:log(error, ?MODULE, "handle_command exited ~p", [Term]);
 				_ -> ok
 			end;
+		ignore ->
+			ok;
 		notcommand ->
 			RC = reply_channel(Nick, Channel),
 			RP = reply_ping(Nick, RC),
@@ -31,25 +35,30 @@ handle_event(_, _) -> ok.
 parse_command([]) -> notcommand;
 parse_command(Params) ->
 	<<FirstChar/utf8, Rest/binary>> = list_to_binary(hd(Params)),
-	case lists:member(FirstChar, config:require_value(config, [bot, prefix])) of
-		true when Rest /= <<>> -> desel(binary_to_list(Rest), tl(Params));
-		true -> notcommand;
-		false ->
-			if
-				length(Params) > 1 ->
-					BotAliases = [config:require_value(config, [bot, nick]) | config:require_value(config, [bot, names])],
-					case lists:any(fun(Alias) ->
-								R = util:regex_escape(Alias),
-								re:run(hd(Params), <<"^", R/binary, "($|[^a-zA-Z0-9])">>, [caseless, {capture, none}]) == match
-							end, BotAliases) of
-						true ->
-							case tl(Params) of
-								[] -> {[], [], []};
-								_ -> desel(hd(tl(Params)), tl(tl(Params)))
+	case FirstChar of
+		3 -> ignore;
+		_ ->
+			case lists:member(FirstChar, config:require_value(config, [bot, prefix])) of
+				true -> desel(binary_to_list(Rest), tl(Params));
+				%true when Rest /= <<>> -> desel(binary_to_list(Rest), tl(Params));
+				%true -> notcommand;
+				false ->
+					if
+						length(Params) > 1 ->
+							BotAliases = [config:require_value(config, [bot, nick]) | config:require_value(config, [bot, names])],
+							case lists:any(fun(Alias) ->
+										R = util:regex_escape(Alias),
+										re:run(hd(Params), <<"^", R/binary, "($|[^a-zA-Z0-9])">>, [caseless, {capture, none}]) == match
+									end, BotAliases) of
+								true ->
+									case tl(Params) of
+										[] -> {[], [], []};
+										_ -> desel(hd(tl(Params)), tl(tl(Params)))
+									end;
+								false -> notcommand
 							end;
-						false -> notcommand
-					end;
-				true -> notcommand
+						true -> notcommand
+					end
 			end
 	end.
 
@@ -75,19 +84,26 @@ reply_ping(Nick, Channel) ->
 			end
 	end.
 
+describe_default([]) -> "\"\"";
+describe_default(T) -> io_lib:format("~p", [T]).
+
 describe_spec(Command, Spec) ->
 	["Usage: ", Command, " ",
 		string:join(lists:map(fun
 				({_,ignore}) -> "(ignored)";
 				(ignore) -> "(ignored)";
+				({Name,_,Default}) -> [$[,Name," = ",describe_default(Default),$]];
 				({Name,_}) -> [$<,Name,$>];
-				(Type) -> [$[,atom_to_list(Type),$]]
+				(Type) ->
+					logging:log(warn, ?MODULE, "found old-style atom ~p in help for ~s", [Type, Command]),
+					[$[,atom_to_list(Type),$]]
 			end, Spec), " ")].
 
 purespec(Spec) ->
 	lists:map(fun
-			({_Name,Type}) -> Type;
-			(Type) -> Type
+			({_Name,Type,Default}) -> {Type,Default};
+			({_Name,Type}) -> {Type,'$none'};
+			(Type) -> {Type,'$none'}
 		end, Spec).
 
 get_args(Spec, Args) ->
@@ -99,29 +115,31 @@ get_args(Spec, Args) ->
 
 get_args([], [], X) -> X;
 get_args([], _, _) -> {error, "Too many arguments provided."};
+
+get_args([{_,Def}|SRst], [], X) when Def /= '$none' -> get_args(SRst, [], [Def|X]);
 get_args(_, [], _) -> {error, "Not enough arguments provided."};
 
-get_args([short|SRst],   [T|ARst], X) -> get_args(SRst,ARst,[T|X]);
+get_args([{short,_}|SRst],   [T|ARst], X) -> get_args(SRst,ARst,[T|X]);
 
-get_args([ignore], _, X) -> X;
-get_args([ignore|SRst], [_|ARst], X) -> get_args(SRst, ARst, X);
+get_args([{ignore,_}], _, X) -> X;
+get_args([{ignore,_}|SRst], [_|ARst], X) -> get_args(SRst, ARst, X);
 
-get_args([long], [], _) -> {error, "Not enough arguments provided."};
-get_args([long], Rst, X) -> [string:join(Rst, " ") | X];
-get_args([long|_], _, _) -> {error, "Invalid argument specification (bot bug)"};
+get_args([{long,_}], [], _) -> {error, "Not enough arguments provided."};
+get_args([{long,_}], Rst, X) -> [string:join(Rst, " ") | X];
+get_args([{long,_}|_], _, _) -> {error, "Invalid argument specification (bot bug)"};
 
-get_args([list], [], _) -> {error, "Not enough arguments provided."};
-get_args([list], Rst, X) -> [Rst | X];
-get_args([list|_], _, _) -> {error, "Invalid argument specification (bot bug)"};
+get_args([{list,_}], [], _) -> {error, "Not enough arguments provided."};
+get_args([{list,_}], Rst, X) -> [Rst | X];
+get_args([{list,_}|_], _, _) -> {error, "Invalid argument specification (bot bug)"};
 
-get_args([integer|SRst], [T|ARst], X) ->
+get_args([{integer,_}|SRst], [T|ARst], X) ->
 	try
 		Z = list_to_integer(T),
 		get_args(SRst, ARst, [Z|X])
 	catch
 		error:badarg -> {error, io_lib:format("Invalid integer ~s", [T])}
 	end;
-get_args([Unk|_], _, _) -> {error, io_lib:format("Unknown or invalid argument type ~p (bot bug)", [Unk])}.
+get_args([{Unk,_}|_], _, _) -> {error, io_lib:format("Unknown or invalid argument type ~p (bot bug)", [Unk])}.
 
 handle_command(Ranks, User, Channel, Command, Arguments, Selector) ->
 	RC = reply_channel(User#user.nick, Channel),
@@ -196,7 +214,10 @@ help(#{origin:=User, nick:=Nick, reply:=Reply, ping:=Ping, params:=Params}) ->
 				end, permissions:rankof(User, Reply));
 		_ ->
 			{HelpCommand, _} = lists:foldl(fun
-					(Module, {C, A}) -> util:call_or(Module, pre_command, [C,A], {C,A})
+					(Module, {C0, A0}) ->
+						{C1, A1} = util:call_or(Module, pre_command, [C0, A0], {C0, A0}),
+						{C2, A2} = util:call_or(Module, pre_command, [Nick, C1, A1], {C1, A1}),
+						{C2, A2}
 				end, {hd(Params), none}, config:require_value(config, [bot, modules])),
 			HelpTopic = string:join([HelpCommand | tl(Params)], " "),
 			case lists:foldl(fun

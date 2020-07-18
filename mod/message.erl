@@ -11,8 +11,14 @@ get_commands() ->
 		{"delmsg", fun delmsg/1, [{"id", integer}], user},
 		{"sent", fun sent/1, user},
 		{"pending", fun pending/1, admin},
+		{"pendingfrom", fun pendingfrom/1, admin},
 		{"whosent", fun whosent/1, admin},
-		{"retargmsg", fun retarget/1, [{"id",integer}, {"target",short}], user}
+		{"retargmsg", fun retarget/1, [{"id",integer}, {"target",short}], user},
+
+		{"dset", fun set_discord/1, [{"irc",short},{"discord",long}], admin},
+		{"dget", fun get_discord/1, [{"irc",short}], admin},
+		{"ddel", fun del_discord/1, [{"irc",short}], admin},
+		{"dping", fun ping_discord/1, [], admin}
 	].
 
 initialise() ->
@@ -56,6 +62,50 @@ check_presence_for(NickR) ->
 				false -> ok
 			end
 	end.
+
+set_discord(#{reply:=Reply, ping:=Ping, params:=[IRC,Discord]}) ->
+	config:set_value(data, [?MODULE, discord, IRC], Discord),
+	{irc, {msg, {Reply, [Ping, "added ", IRC, " mapping to discord as ", Discord]}}}.
+
+get_discord(#{reply:=Reply, ping:=Ping, params:=[IRC]}) ->
+	case config:get_value(data, [?MODULE, discord, IRC]) of
+		'$none' ->
+			{irc, {msg, {Reply, [Ping, IRC, " is not mapped to discord"]}}};
+		Discord ->
+			{irc, {msg, {Reply, [Ping, IRC, " maps to discord as ", Discord]}}}
+	end.
+
+del_discord(#{reply:=Reply, ping:=Ping, params:=[IRC]}) ->
+	config:del_value(data, [?MODULE, discord, IRC]),
+	{irc, {msg, {Reply, [Ping, "removed ", IRC, " mapping to discord"]}}}.
+
+ping_discord(#{reply:=Reply}) ->
+	PingMap = lists:foldl(fun({IRC,Discord}, Acc) ->
+		case has_messages(IRC) of
+			true ->
+				case orddict:find(Discord, Acc) of
+					{ok, V} -> orddict:store(Discord, lists:umerge([IRC], V), Acc);
+					error -> orddict:store(Discord, [IRC], Acc)
+				end;
+			false -> Acc
+		end end, [], config:get_value(data, [?MODULE, discord])),
+
+	Pings = lists:map(fun({Discord, IRCs}) ->
+			io_lib:format("~s (~s)", [Discord, string:join(IRCs, ", ")])
+		end, PingMap),
+
+	util:groupstrs(
+		fun(S) -> core ! {irc, {msg, {Reply, [S, " - You have message(s) on IRC at the nicks in brackets. Use !irc for a webchat link."]}}} end,
+		250, Pings, " "),
+	ok.
+
+has_messages(NickR) ->
+	Nick = string:to_lower(NickR),
+	lists:foldl(fun
+		({ID, {Sender,Recipient,Delivered,Timestamp,Message}}, Acc) when Recipient == Nick andalso not Delivered ->
+			true;
+		(_, Acc) -> Acc
+	end, false, config:get_value(data, [?MODULE, messages])).
 
 show_messages_for(NickR, Channel) -> check_messages_for(NickR, fun(T) -> core ! {irc,{msg,{Channel,T}}} end).
 check_messages_for(NickR) -> check_messages_for(NickR, fun(T) -> core ! {irc,{msg,{NickR,T}}} end).
@@ -142,8 +192,17 @@ create_message(FromR, ToR, Msg) ->
 		FromL -> {FromL, "you"};
 		To -> {To, ToR}
 	end,
+	NickNotFound = case lists:member(seen, config:get_value(config, [bot, modules])) of
+		true ->
+			case config:get_value(data, [seen, RealTo]) of
+				{_, _} -> false;
+				_ -> true
+			end;
+		false -> false
+	end,
 	if
 		RealTo == SelfL -> "I'm right here, why do you want to send me a message?";
+		NickNotFound -> io_lib:format("I've never seen anyone called ~s.", [ToR]);
 		true ->
 			Timestamp = calendar:now_to_universal_time(now()),
 			ID = config:mod_get_value(data, [?MODULE, next_id], fun(T) -> T+1 end),
@@ -160,30 +219,47 @@ pending(#{reply:=Reply, ping:=Ping}) ->
 		config:get_value(data, [?MODULE, messages]))),
 
 	core ! {irc, {msg, {Reply, [Ping, io_lib:format("There are ~b pending messages to ~b recipients.", [Pending, length(Recipients)])]}}},
-	pendingf(Reply, Ping, PendingLst).
+
+	Show = fun(Line) -> core ! {irc, {msg, {Reply, [Ping, string:join(Line, " ")]}}} end,
+	pendingf(Show, PendingLst).
+
+pendingfrom(#{reply:=Reply, ping:=Ping}) ->
+	PendingLst = lists:map(fun({X,{Send,_,_,_,_}}) -> io_lib:format("~b:~s", [X,Send]) end, lists:filter(fun({_,{_,_,T,_,_}}) -> not T end, config:get_value(data, [?MODULE, messages]))),
+	Pending = length(PendingLst),
+
+	Senders = lists:umerge(lists:map(
+			fun({_,{T,_,Del,_,_}}) -> if Del -> []; true -> [T] end end,
+		config:get_value(data, [?MODULE, messages]))),
+
+	core ! {irc, {msg, {Reply, [Ping, io_lib:format("There are ~b pending messages from ~b senders.", [Pending, length(Senders)])]}}},
+
+	Show = fun(Line) -> core ! {irc, {msg, {Reply, [Ping, string:join(Line, " ")]}}} end,
+	pendingf(Show, PendingLst).
+	
 
 whosent(#{reply:=Reply, ping:=Ping, params:=Params}) ->
 	lists:foldl(fun(T,_) ->
 		ID = list_to_integer(T),
 		case config:get_value(data, [?MODULE, messages, ID]) of
 			'$none' -> core ! {irc, {msg, {Reply, [Ping, io_lib:format("Message ~b does not exist.", [ID])]}}};
-			{Src,Dst,_,_,_} ->
-				core ! {irc, {msg, {Reply, [Ping, io_lib:format("Message ~b was sent to ~s by ~s.", [ID, Dst, Src])]}}}
+			{Src,Dst,_,Timestamp,_} ->
+				{Date,Time} = format_time(Timestamp),
+				core ! {irc, {msg, {Reply, [Ping, io_lib:format("Message ~b was sent to ~s by ~s at ~s ~s.", [ID, Dst, Src, Date, Time])]}}}
 		end end,
 		0,
 		Params),
 	ok.
 
-pendingf(R, P, Lst) -> pendingf(R, P, tl(Lst), [hd(Lst)]).
 
-pendingf(R, P, [], B) ->
-	core ! {irc, {msg, {R, [P, string:join(lists:reverse(B), " ")]}}},
-	ok;
-pendingf(R, P, [A|Rst], B) ->
+pendingf(F, Lst) -> pendingf(F, Lst, []).
+
+pendingf(F, [], B) -> F(lists:reverse(B)), ok;
+pendingf(F, [A|Rst], B) ->
 	if
 		length(B) > 19 ->
-			core ! {irc, {msg, {R, [P, string:join(lists:reverse(B), " ")]}}},
-			pendingf(R, P, Rst, [A]);
+			F(lists:reverse(B)),
+			pendingf(F, Rst, [A]);
 		true ->
-			pendingf(R, P, Rst, [A|B])
-	end.
+			pendingf(F, Rst, [A|B])
+	end,
+	ok.

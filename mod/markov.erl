@@ -26,14 +26,24 @@ defilter(M0) ->
 	M1.
 
 initialise() ->
+	logging:log(info, ?MODULE, "reading trees..."),
 	Trees = config:get_value(data, [?MODULE]),
+	logging:log(info, ?MODULE, "spawning..."),
+	Origin = self(),
 	spawn(fun() ->
+			logging:log(info, ?MODULE, "registering..."),
 			register(markov, self()),
+			logging:log(info, ?MODULE, "done startup"),
+			Origin ! done,
 			loop(Trees)
-		end).
+		end),
+	receive
+		done -> ok
+	end.
 
 deinitialise() ->
-	markov ! stop.
+	markov ! stop,
+	util:waitfor_gone(markov).
 
 set(_, [], V) -> V;
 set(D,[K|Ks],V) ->
@@ -60,8 +70,15 @@ inc(D, [K|Ks]) ->
 
 loop(Trees) ->
 	receive
+		write ->
+			logging:log(info, ?MODULE, "writing trees..."),
+			config:set_value(data, [?MODULE], Trees),
+			logging:log(info, ?MODULE, "done writing trees"),
+			loop(Trees);
 		stop ->
-			config:set_value(data, [?MODULE], Trees);
+			logging:log(info, ?MODULE, "writing trees..."),
+			config:set_value(data, [?MODULE], Trees),
+			logging:log(info, ?MODULE, "done writing trees");
 		{Chan, M, Reply} ->
 			case (catch case Reply of
 				pinged -> reply(Trees, Chan, M), Trees;
@@ -86,16 +103,17 @@ loop(Trees) ->
 handle_event(msg_nocommand, {#user{nick=_Nick}, Channel, Tokens}) ->
 	M = filter(list_to_binary(string:join(Tokens, " "))),
 
-	case hd(M) of
-		<<"nt">> -> ok;
-		<<"nanotrasen_inc">> -> ok;
-		<<$!, _/binary>> -> ok;
+	case {Channel, hd(M)} of
+		{_, <<"nt">>} -> ok;
+		{_, <<"nanotrasen_inc">>} -> ok;
+		{_, <<$!, _/binary>>} -> ok;
+		{"#bs12game", _} -> ok;
 		_ ->
 
 			Nick = list_to_binary(string:to_lower(config:require_value(config, [bot, nick]))),
 			NickS = <<Nick/binary, "s">>,
 
-			X = case lists:member(Nick, M) orelse lists:member(NickS, M) orelse lists:member(<<"nt">>, M) orelse lists:member(<<"nts">>, M) orelse lists:member(<<"nti">>, M) orelse lists:member(<<"ntis">>, M) of
+			X = case lists:member(Nick, M) orelse lists:member(NickS, M) orelse lists:member(<<"nti">>, M) orelse lists:member(<<"ntis">>, M) of
 				true -> pinged;
 				false -> random:uniform(100) =< config:get_value(config, [?MODULE, replyrate], 0)
 			end,

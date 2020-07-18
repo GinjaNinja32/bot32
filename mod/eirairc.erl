@@ -12,7 +12,7 @@ handle_event(msg_ignored, {User, Channel, Tokens}) ->
 			case case re:run(String, "\\*\\*\\* (.*) \\*\\*\\*", ?OPTS) of
 				{match, [Message]} -> {"CONSOLE", string:tokens(Message, " ")};
 				nomatch ->
-					case re:run(String, "\x02?<([^>]+)>\x02? (.+)", ?OPTS) of
+					case re:run(String, "\x02?<([^>]+)>(?:\x02|\x0F)? (.+)", ?OPTS) of
 						{match, [Nick, Message]} ->
 							{re:replace(Nick, <<16#feff/utf8>>, <<>>, [global, {return, list}]), string:tokens(Message, " ")};
 						nomatch -> false

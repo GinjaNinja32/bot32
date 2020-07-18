@@ -12,35 +12,42 @@ format_out() {
 		fi
 	else
 		awk 1 ORS=';  '
+		echo
 	fi
 }
 
-timeout="$HOME/timeout --just-kill --no-info-on-success --detect-hangups -h 10 -t 10 -m 102400"
+if [[ "$secure" == "true" ]]; then
+	timeout="$HOME/timeout --just-kill --no-info-on-success --detect-hangups -h 600 -t 600"
+else
+	timeout="$HOME/timeout --just-kill --no-info-on-success --detect-hangups -h 10 -t 10 -m 102400"
+fi
 
 file=$1
 
 if [[ $2 == "run" ]]; then
-	DreamDaemon $file.dmb -invisible -ultrasafe 2>&1 | tail -n +4 | head -c 512
+	if [[ "$secure" == "true" ]]; then
+		DreamDaemon "$file.dmb" -invisible -safe 2>&1 | tail -n +4 | head -c 512
+	else
+		DreamDaemon "$file.dmb" -invisible -ultrasafe 2>&1 | tail -n +4 | head -c 512
+	fi
 	exit 0
 fi
 
 cd dm/
 
-export BYOND_SYSTEM=/home/nyx/byond/use
-export PATH=/home/nyx/byond/use/bin:$PATH
-export LD_LIBRARY_PATH=/home/nyx/byond/use/bin:$LD_LIBRARY_PATH
+. /home/bot32/byond/byondsetup
 
-output=$($timeout DreamMaker $file.dme 2>&1)
+output=$($timeout DreamMaker "$file.dme" 2>&1)
 return=$?
 
 if [[ $return != 0 ]]; then
 	echo "$output" | tail -n +3 | format_out
 else
-	if [[ -e $file.rsc ]]; then
+	if [[ "$secure" != "true" && -e $file.rsc ]]; then
 		echo "You attempted to use a resource file; this is blocked for security reasons."
 	else
-		$timeout ../$0 $file run | format_out
+		$timeout "../$0" "$file" run | format_out
 	fi
 fi
 
-rm $file.*
+rm "$file".*

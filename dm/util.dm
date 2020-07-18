@@ -170,3 +170,17 @@
 	return L
 
 #define typeid(x) (length("\ref[x]") == 12 ? copytext("\ref[x]", 4, 6) : "0[copytext("\ref[x]", 4, 5)]")
+
+/proc/dir2text(direction)
+	switch (direction)
+		if (NORTH)     return "north"
+		if (SOUTH)     return "south"
+		if (EAST)      return "east"
+		if (WEST)      return "west"
+		if (NORTHEAST) return "northeast"
+		if (SOUTHEAST) return "southeast"
+		if (NORTHWEST) return "northwest"
+		if (SOUTHWEST) return "southwest"
+		if (UP)        return "up"
+		if (DOWN)      return "down"
+	return "unknown ([direction])"

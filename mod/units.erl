@@ -41,4 +41,5 @@ units_alt(Params) ->
 get_units_reply(Cmd) ->
 	Ret = util:safe_os_cmd(Cmd),
 	Toks = string:tokens(Ret, "\n"),
-	string:join(Toks, "; ").
+	Out = string:join(Toks, "; "),
+	Out.

@@ -5,6 +5,7 @@ get_commands() ->
 	[
 		{"tfcm2o", generic(fun metal2ore/1), user},
 		{"tfco2m", generic(fun ore2metal/1), user},
+		{"tfcm2s", generic(fun metal2stone/1), user},
 		{"tfcs2o", generic(fun stone2ore/1), user},
 		{"tfco2s", generic(fun ore2stone/1), user},
 		{"tfcs2t", generic(fun stone2type/1), user},
@@ -27,6 +28,19 @@ ore2metal(T) ->
 		error -> [T|" -> ?"];
 		{ok,{Metal,_}} -> [T," -> "|Metal]
 	end.
+
+metal2stone(T) ->
+	case ores_of_metal(T) of
+		[] -> ["? -> "|T];
+		List ->
+			Res = lists:usort(lists:flatmap(fun(X) ->
+				case orddict:find(X, ore_list()) of
+					error -> [];
+					{ok, {_,StoneTypes}} -> StoneTypes
+				end end, List)),
+			[string:join(Res,", ")," -> ores of "|T]
+	end.
+
 stone2ore(T) ->
 	case ores_in_stone(T) of
 		[] -> [T|" -> ?"];
@@ -37,6 +51,7 @@ ore2stone(T) ->
 		error -> ["? -> "|T];
 		{ok, {_,StoneTypes}} -> [string:join(StoneTypes,", ")," -> "|T]
 	end.
+
 stone2type(T) ->
 	case orddict:find(T, stone_list()) of
 		{ok, Type} -> [T," - "|Type];

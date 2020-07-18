@@ -47,14 +47,14 @@ do_regex(What, Regexes, Chan, Nick) ->
 
 apply_all(Line, Regexes) ->
 	lists:foldl(fun({F,R,O},L) ->
-			case re:replace(L,F,R,[{return,binary}|O]) of
+			case re:replace(L,list_to_binary(F),list_to_binary(R),[{return,binary},unicode|O]) of
 				L ->
 					throw(err_nochange);
 				NL -> NL
 			end
 		end, Line, Regexes).
 
-diff(A, B) ->
+diff(_, B) ->
 	B.
 
 remove_line(Nick, Chan, Type, Line) ->
@@ -99,7 +99,6 @@ opts(Opts) ->
 	lists:map(fun
 			($g) -> global;
 			($i) -> caseless;
-			($u) -> unicode;
 			(T) -> throw({error, ["Unknown option character ",T]})
 		end, Opts).
 
